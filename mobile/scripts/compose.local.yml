@@ -1,0 +1,11 @@
+# Only changes runtime public addresses; server source, .env, volumes and credentials are reused.
+services:
+  api:
+    environment:
+      PUBLIC_ORIGIN: https://${THINK_MEET_LAN_IP:?Set THINK_MEET_LAN_IP}
+      LIVEKIT_PUBLIC_URL: wss://${THINK_MEET_LAN_IP}/livekit
+  web:
+    environment:
+      LAN_IP: ${THINK_MEET_LAN_IP}
+  livekit:
+    command: ["--config", "/etc/livekit.yaml", "--rtc.node_ip.ipv4", "${THINK_MEET_LAN_IP}"]

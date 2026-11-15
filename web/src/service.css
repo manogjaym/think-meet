@@ -1,0 +1,18 @@
+.login-page { background: var(--surface-3, #f7f8fa); min-height: 100dvh; }
+.login-card { background: var(--tm-color-white); width: min(var(--tm-layout-login-card-max-width), 100%); border: 1px solid var(--line); border-radius: var(--status-card-radius); padding: var(--tm-component-login-card-padding); }
+.login-brand { display: flex; align-items: center; gap: 10px; margin-bottom: var(--space-8); }
+.login-brand svg { width: var(--tm-component-login-brand-size); height: var(--tm-component-login-brand-size); }
+.login-page .login-card h1 { font-size: var(--tm-typography-login-heading); line-height: var(--tm-line-height-login-heading); letter-spacing: -.02em; }
+.login-page .login-card > p { color: var(--muted); font-size: var(--type-body); line-height: 1.5; margin: 10px 0 var(--tm-spacing-s28); }
+.login-card form .field { margin-bottom: var(--tm-spacing-s20); }
+.login-page .login-card .login-note { margin-bottom: 0; font-size: 12px; }
+.service-error { display: flex; align-items: center; gap: var(--space-2); color: var(--tm-color-service-error-text); font-size: 14px; line-height: 1.5; padding: var(--space-3); background: var(--tm-color-service-error-background); border-radius: var(--tm-radius-r8); margin: var(--space-3) 0; }
+.service-status { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-4); min-height: 45dvh; padding: var(--space-8); text-align: center; }
+.service-status p { color: var(--muted); }
+.service-status button { min-height: 44px; }
+.join-preview video { position: absolute; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+.join-input-meter { height: 5px; background: #e7e9ed; border-radius: var(--tm-radius-r10); margin: var(--space-3) 0 6px; overflow: hidden; }
+.join-input-meter span { display: block; background: #4f9d76; height: 100%; transition: width .1s; }
+.service-copy-link { overflow-wrap: anywhere; font-size: 12px; }
+.device-permission-retry { margin-top: var(--space-2); text-decoration: underline; }
+@media (max-width:design(layout.loginPhoneBreakpoint)) { .login-card { padding: var(--tm-spacing-s28) var(--tm-component-login-phone-card-padding); } }

@@ -1,0 +1,156 @@
+@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
+package com.woongjin.thinkmeet.platform
+
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.interop.UIKitView
+import androidx.compose.ui.window.ComposeUIViewController
+import com.woongjin.thinkmeet.App
+import com.woongjin.thinkmeet.data.Share
+import com.woongjin.thinkmeet.data.ThinkMeetApi
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.darwin.Darwin
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.suspendCancellableCoroutine
+import platform.Foundation.NSFileManager
+import platform.UIKit.UIView
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+import kotlinx.cinterop.addressOf
+import kotlinx.cinterop.usePinned
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import io.ktor.utils.io.ByteChannel
+import io.ktor.utils.io.ByteReadChannel
+import io.ktor.utils.io.writeFully
+import platform.posix.fopen
+import platform.posix.fread
+import platform.posix.ferror
+import platform.posix.fclose
+
+/** Swift owns AVFoundation/LiveKit and Keychain; Kotlin owns application state and all screens. */
+interface IosNativeBridge {
+    fun listen(listener: (MediaState) -> Unit)
+    fun connect(url: String, token: String, camera: Boolean, microphone: Boolean, completion: (String?) -> Unit)
+    fun action(name: String, enabled: Boolean, completion: (String?) -> Unit)
+    fun videoView(identity: String, screen: Boolean): UIView
+    fun previewView(enabled: Boolean): UIView
+    fun updatePreview(view: UIView, enabled: Boolean)
+    fun listenPictureInPicture(listener: (PictureInPictureState) -> Unit)
+    fun updatePictureInPicture(enabled: Boolean, target: PipVideoTarget?)
+    fun enterPictureInPicture(completion: (String?) -> Unit)
+    fun closePictureInPicture()
+    fun materialView(): UIView
+    fun updateMaterial(view: UIView, url: String, cookie: String, type: String, page: Int, playing: Boolean, position: Double, updatedAt: String, onAspectRatio: (Float) -> Unit)
+    fun disposeMaterial(view: UIView)
+    fun read(key: String, fallback: String): String
+    fun write(key: String, value: String)
+    fun pickFile(completion: (String?, String?, String?, Long) -> Unit)
+    fun share(url: String)
+    fun copy(text: String)
+}
+object IosPlatform {
+    var bridge: IosNativeBridge? = null
+    internal var mediaOwner: Any? = null
+    internal var pictureInPictureOwner: Any? = null
+}
+private fun native() = checkNotNull(IosPlatform.bridge) { "NativeBridge must be installed before MainViewController" }
+fun MainViewController() = ComposeUIViewController { App() }
+actual fun platformName() = "iOS"
+actual fun clientPlatformId() = "ios"
+actual fun createHttpClient() = HttpClient(Darwin) { configureThinkMeet() }
+actual fun readPreference(key: String, fallback: String) = native().read(key, fallback)
+actual fun writePreference(key: String, value: String) = native().write(key, value)
+actual fun shareLink(url: String) = native().share(url)
+actual fun copyText(text: String) = native().copy(text)
+@Composable actual fun BackHandler(enabled: Boolean, onBack: () -> Unit) = Unit
+
+private class IosMediaController : MediaController {
+    private val mutable = MutableStateFlow(MediaState())
+    override val state: StateFlow<MediaState> = mutable
+    init { native().listen { mutable.value = it } }
+    private suspend fun perform(name: String, enabled: Boolean = false) = suspendCancellableCoroutine<Unit> { continuation ->
+        native().action(name, enabled) { error ->
+            if (continuation.isActive) if (error == null) continuation.resume(Unit) else continuation.resumeWithException(IllegalStateException(error))
+        }
+    }
+    override suspend fun connect(url: String, token: String, camera: Boolean, microphone: Boolean) = suspendCancellableCoroutine<Unit> { continuation ->
+        native().connect(url, token, camera, microphone) { error ->
+            if (continuation.isActive) if (error == null) continuation.resume(Unit) else continuation.resumeWithException(IllegalStateException(error))
+        }
+        continuation.invokeOnCancellation {
+            if (IosPlatform.mediaOwner === this) native().action("disconnect", false) {}
+        }
+    }
+    override suspend fun disconnect() {
+        // A disposed meeting's asynchronous cleanup must not disconnect the next meeting.
+        // Its DisposableEffect already schedules ownership-checked native teardown.
+        if (IosPlatform.mediaOwner === this) perform("disconnect")
+    }
+    override suspend fun setCamera(enabled: Boolean) = perform("camera", enabled)
+    override suspend fun setMicrophone(enabled: Boolean) = perform("microphone", enabled)
+    override suspend fun flipCamera() = perform("flip")
+    override suspend fun setScreenShare(enabled: Boolean) = perform("screen", enabled)
+    override suspend fun setSpeaker(enabled: Boolean) = perform("speaker", enabled)
+}
+@Composable actual fun rememberMediaController(): MediaController {
+    val media = remember { IosMediaController().also { IosPlatform.mediaOwner = it } }
+    DisposableEffect(media) { onDispose {
+        // Prejoin is disposed in the same composition that creates the meeting controller.
+        // Its cleanup must not tear down that controller's newly connecting native room.
+        if (IosPlatform.mediaOwner === media) {
+            IosPlatform.mediaOwner = null
+            native().action("disconnect", false) {}
+        }
+    } }
+    return media
+}
+@Composable actual fun VideoSurface(controller: MediaController, identity: String, screen: Boolean, modifier: Modifier) {
+    val state by controller.state.collectAsState()
+    key(identity, screen, state.participants.firstOrNull { it.identity == identity }?.let { if (screen) it.screen else it.camera }) {
+        UIKitView(factory = { native().videoView(identity, screen) }, modifier = modifier, interactive = false)
+    }
+}
+@Composable actual fun CameraPreview(controller: MediaController, enabled: Boolean, modifier: Modifier) {
+    UIKitView(factory = { native().previewView(enabled) }, modifier = modifier, update = { native().updatePreview(it, enabled) }, onRelease = { native().updatePreview(it, false) }, interactive = false)
+}
+@Composable actual fun rememberFilePicker(onResult: (PickedFile?) -> Unit): () -> Unit {
+    val latest by rememberUpdatedState(onResult)
+    return remember { { native().pickFile { name, path, mime, size ->
+        val file = if (name != null && path != null && mime != null) {
+            PickedFile(name, size, mime, openChannel = { fileChannel(path) }, release = { NSFileManager.defaultManager.removeItemAtPath(path, null) })
+        } else null
+        latest(file)
+    } } }
+}
+
+private fun fileChannel(path: String): ByteReadChannel {
+    val channel = ByteChannel(autoFlush = true)
+    CoroutineScope(Dispatchers.Default).launch {
+        val source = fopen(path, "rb")
+        if (source == null) { channel.cancel(IllegalStateException("자료를 열지 못했어요.")); return@launch }
+        try {
+            val buffer = ByteArray(64 * 1024)
+            while (true) {
+                val count = buffer.usePinned { fread(it.addressOf(0), 1u, buffer.size.toULong(), source).toInt() }
+                if (count == 0) { check(ferror(source) == 0) { "자료를 읽지 못했어요." }; break }
+                channel.writeFully(buffer, 0, count)
+            }
+            channel.close()
+        } catch (error: Throwable) { channel.cancel(error) } finally { fclose(source) }
+    }
+    return channel
+}
+@Composable actual fun MaterialSurface(api: ThinkMeetApi, share: Share, lessonId: String, modifier: Modifier, onAspectRatio: (Float) -> Unit) {
+    val id = share.materialId ?: return
+    var cookie by remember(id) { mutableStateOf("") }
+    LaunchedEffect(id) { cookie = api.cookieHeader() }
+    val aspect by rememberUpdatedState(onAspectRatio)
+    key(id) {
+        UIKitView(factory = { native().materialView() }, modifier = modifier, update = { view ->
+            if (cookie.isNotEmpty()) native().updateMaterial(view, api.materialContentUrl(id, lessonId), cookie, share.type, share.page, share.playing, share.position, share.updatedAt, aspect)
+        }, onRelease = { native().disposeMaterial(it) }, interactive = false)
+    }
+}

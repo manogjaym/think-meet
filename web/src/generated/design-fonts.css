@@ -1,0 +1,5 @@
+/* Generated from design/fonts/manifest.json. Same release and weights are bundled in Compose. */
+@font-face { font-family: 'Pretendard Variable'; font-style: normal; font-weight: 400; font-display: swap; src: url('/design/fonts/Pretendard-Regular.woff2?v=fad853f7f47c') format('woff2'); }
+@font-face { font-family: 'Pretendard Variable'; font-style: normal; font-weight: 500; font-display: swap; src: url('/design/fonts/Pretendard-Medium.woff2?v=d03481330eeb') format('woff2'); }
+@font-face { font-family: 'Pretendard Variable'; font-style: normal; font-weight: 600; font-display: swap; src: url('/design/fonts/Pretendard-SemiBold.woff2?v=c863f76a7de5') format('woff2'); }
+@font-face { font-family: 'Pretendard Variable'; font-style: normal; font-weight: 700; font-display: swap; src: url('/design/fonts/Pretendard-Bold.woff2?v=4609c3356e53') format('woff2'); }

@@ -1,0 +1,49 @@
+{
+  "name": "think-meet-server",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/main.js",
+    "dev": "tsx watch src/main.ts",
+    "generate": "prisma generate",
+    "migrate": "prisma migrate deploy",
+    "seed": "tsx src/cli.ts seed",
+    "cli": "tsx src/cli.ts",
+    "test": "tsx --test test/*.test.ts",
+    "test:integration": "node --env-file=.env --test test/api.integration.mjs"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.922.0",
+    "@nestjs/common": "^11.1.0",
+    "@nestjs/core": "^11.1.0",
+    "@nestjs/platform-express": "^11.1.0",
+    "@nestjs/platform-socket.io": "^11.1.0",
+    "@nestjs/swagger": "^11.2.0",
+    "@nestjs/websockets": "^11.1.0",
+    "@prisma/client": "6.19.3",
+    "argon2": "^0.44.0",
+    "cookie": "^1.0.2",
+    "express": "^5.1.0",
+    "jose": "^5.10.0",
+    "livekit-server-sdk": "^2.14.0",
+    "multer": "^2.5.0",
+    "pdf-lib": "^1.17.1",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "socket.io": "^4.8.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.3",
+    "@types/multer": "^2.0.0",
+    "@types/node": "^22.0.0",
+    "prisma": "6.19.3",
+    "tsx": "^4.20.0",
+    "typescript": "^5.7.0"
+  },
+  "overrides": {
+    "multer": "$multer",
+    "deepmerge-ts": "^8.0.0"
+  }
+}

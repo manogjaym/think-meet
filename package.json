@@ -1,0 +1,13 @@
+{
+  "name": "think-meet-shared-workspace",
+  "private": true,
+  "version": "1.0.0",
+  "engines": {"node": ">=22.22.0"},
+  "scripts": {
+    "shared:generate": "node scripts/generate-shared.mjs",
+    "shared:check": "node scripts/check-shared.mjs",
+    "test:shared": "node --test contracts/test/*.test.mjs",
+    "verify": "node scripts/verify.mjs",
+    "features:check": "node features/check.mjs"
+  }
+}

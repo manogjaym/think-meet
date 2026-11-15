@@ -1,0 +1,10 @@
+.gradle/
+.kotlin/
+**/build/
+local.properties
+iosApp/Pods/
+iosApp/.build/
+iosApp/build/
+**/xcuserdata/
+**/.DS_Store
+artifacts/

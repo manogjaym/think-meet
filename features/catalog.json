@@ -1,0 +1,127 @@
+{
+  "version": 1,
+  "features": [
+    {
+      "id": "classroom.core",
+      "title": "기존 공통 수업 기능",
+      "stage": "baseline",
+      "requiresRevision": 0,
+      "defaultEnabled": true,
+      "platforms": [
+        "web",
+        "android",
+        "ios"
+      ],
+      "spec": "classroom-core.md",
+      "contracts": {
+        "operations": [
+          "listStudents",
+          "listLessons",
+          "createLesson",
+          "resolveLesson",
+          "getLesson",
+          "updateLesson",
+          "cancelLesson",
+          "connectedLesson",
+          "endLesson",
+          "joinLesson",
+          "leaveLesson",
+          "kickParticipant",
+          "inviteStudents",
+          "getSnapshot",
+          "listMaterials",
+          "uploadMaterial",
+          "deleteMaterial",
+          "getMaterialContent"
+        ],
+        "events": [
+          "subscribe",
+          "stroke.preview"
+        ],
+        "commands": [
+          "chat.send",
+          "hand.set",
+          "share.start",
+          "share.stop",
+          "media.update",
+          "document.page",
+          "stroke.add",
+          "stroke.erase",
+          "annotation.undo",
+          "annotation.redo",
+          "annotation.clear"
+        ]
+      },
+      "implementation": {
+        "server": {
+          "status": "done",
+          "files": [
+            "server/src/controllers.ts",
+            "server/src/gateway.ts",
+            "server/src/lessons.ts"
+          ]
+        },
+        "web": {
+          "status": "done",
+          "files": [
+            "web/src/App.tsx",
+            "web/src/lib/useMeeting.ts"
+          ]
+        },
+        "android": {
+          "status": "done",
+          "files": [
+            "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/ui/AppState.kt",
+            "mobile/composeApp/src/androidMain/kotlin/com/woongjin/thinkmeet/platform/AndroidMedia.kt"
+          ]
+        },
+        "ios": {
+          "status": "done",
+          "files": [
+            "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/ui/AppState.kt",
+            "mobile/iosApp/ThinkMeet/NativeBridge.swift"
+          ]
+        }
+      }
+    },
+    {
+      "id": "meeting.pip",
+      "title": "네이티브 화면 속 화면",
+      "stage": "baseline",
+      "requiresRevision": 0,
+      "defaultEnabled": true,
+      "platforms": [
+        "android",
+        "ios"
+      ],
+      "spec": "native-pip.md",
+      "contracts": {
+        "operations": [],
+        "events": [],
+        "commands": []
+      },
+      "implementation": {
+        "server": {
+          "status": "not-applicable",
+          "reason": "시스템 PiP는 기존 수업 세션을 사용하는 클라이언트 기능"
+        },
+        "web": {
+          "status": "not-applicable",
+          "reason": "네이티브 시스템 PiP 기능이며 브라우저 UI와 별도"
+        },
+        "android": {
+          "status": "done",
+          "files": [
+            "mobile/composeApp/src/androidMain/kotlin/com/woongjin/thinkmeet/platform/AndroidPictureInPicture.kt"
+          ]
+        },
+        "ios": {
+          "status": "done",
+          "files": [
+            "mobile/iosApp/ThinkMeet/VideoCallPictureInPicture.swift"
+          ]
+        }
+      }
+    }
+  ]
+}

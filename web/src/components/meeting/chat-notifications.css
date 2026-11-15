@@ -1,0 +1,22 @@
+.chat-notification-region { position: relative; flex: 0 0 0; min-height: 0; z-index: 45; }
+.meeting-chat-notification { position: absolute; bottom: 20px; right: 24px; display: flex; align-items: flex-start; width: min(360px, calc(100% - 48px)); border: 1px solid var(--line); border-radius: var(--tm-radius-r12); background: var(--tm-color-white); color: var(--text); color-scheme: light; box-shadow: 0 8px 32px #0004, 0 2px 6px #0002; animation: chat-notification-enter 180ms ease-out; }
+.chat-notification-open { display: flex; align-items: flex-start; flex: 1; gap: var(--space-3); min-width: 0; padding: var(--space-4) 0 var(--space-4) var(--space-4); border: 0; border-radius: 11px 0 0 11px; background: transparent; color: inherit; text-align: left; }
+.chat-notification-open:hover { background: var(--surface-3); }
+.chat-notification-open > .avatar { margin-top: 1px; }
+.chat-notification-content { display: flex; flex-direction: column; flex: 1; gap: 5px; min-width: 0; }
+.chat-notification-heading { display: flex; align-items: baseline; gap: var(--space-2); min-width: 0; }
+.chat-notification-heading strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--type-support); line-height: 1.5; }
+.chat-notification-heading small { flex-shrink: 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.chat-notification-preview { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-secondary); font-size: var(--type-support); line-height: 1.5; }
+.chat-notification-action { display: flex; align-items: center; gap: 3px; margin-top: var(--space-1); color: var(--accent); font-size: var(--type-caption); line-height: 1.5; font-weight: var(--weight-semibold); }
+.chat-notification-dismiss { display: grid; place-items: center; flex: 0 0 40px; width: 40px; height: 40px; margin: var(--space-1) var(--space-1) 0 0; border: 0; border-radius: var(--tm-radius-r8); color: var(--muted); background: transparent; }
+.chat-notification-dismiss:hover { color: var(--text); background: var(--surface-3); }
+@keyframes chat-notification-enter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@media (max-width: design(layout.meetingCompactBreakpoint)) {
+  .meeting-chat-notification { right: 12px; bottom: 16px; width: min(360px, calc(100% - 24px)); }
+}
+@media (max-height: 500px) {
+  .meeting-chat-notification { bottom: 12px; }
+  .chat-notification-open { padding-top: var(--space-3); padding-bottom: var(--space-3); }
+}
+@media (prefers-reduced-motion: reduce) { .meeting-chat-notification { animation: none; } }

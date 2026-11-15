@@ -1,0 +1,130 @@
+import { test, expect } from '@playwright/test'
+import { readFileSync, mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { execFileSync } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
+import { createRequire } from 'node:module'
+import { createLesson, login } from './helpers'
+const require = createRequire(import.meta.url)
+const { PDFDocument, rgb } = require('pdf-lib')
+
+const fixtureDirectory=mkdtempSync(join(tmpdir(),'think-meet-e2e-'))
+const fixtureVideo=join(fixtureDirectory,'lesson-test.mp4')
+const containerVideo=`/tmp/think-meet-e2e-${randomUUID()}.mp4`
+test.beforeAll(()=>{
+  execFileSync('docker',['exec','think-meet-api-1','ffmpeg','-hide_banner','-loglevel','error','-f','lavfi','-i','testsrc=size=320x180:rate=10','-f','lavfi','-i','sine=frequency=440:sample_rate=44100','-t','8','-c:v','libx264','-pix_fmt','yuv420p','-c:a','aac','-movflags','+faststart','-y',containerVideo])
+  execFileSync('docker',['cp',`think-meet-api-1:${containerVideo}`,fixtureVideo])
+})
+test.afterAll(()=>{
+  execFileSync('docker',['exec','think-meet-api-1','rm','-f',containerVideo])
+  rmSync(fixtureDirectory,{recursive:true,force:true})
+})
+
+test('two participants exchange media, chat, hands, PDF annotations, video, reconnection and moderation', async ({ browser, baseURL }) => {
+  test.setTimeout(240000)
+  const teacherContext = await browser.newContext({baseURL,ignoreHTTPSErrors:true,permissions:['camera','microphone']})
+  const studentContext = await browser.newContext({baseURL,ignoreHTTPSErrors:true,permissions:['camera','microphone']})
+  const teacher = await teacherContext.newPage(), student = await studentContext.newPage()
+  let lesson: any
+  const uploaded: string[]=[]
+  const errors: string[]=[]
+  teacher.on('pageerror',error=>errors.push(error.message));student.on('pageerror',error=>errors.push(error.message))
+  try {
+    await login(teacher,'teacher1')
+    lesson = await createLesson(teacherContext.request,2)
+    const firstStudent=lesson.students[0]
+    await login(student,firstStudent.username)
+    await student.goto(`/lessons/${lesson.id}/prejoin`)
+    await student.getByRole('button',{name:'지금 참여하기',exact:true}).click()
+    await expect(student.getByRole('heading',{name:'곧 수업이 시작돼요'})).toBeVisible()
+    await teacher.goto(`/lessons/${lesson.id}/prejoin`)
+    await teacher.getByRole('button',{name:'수업 시작하기',exact:true}).click()
+    await expect(teacher.locator('.call-connected')).toHaveText('연결됨')
+    await expect(student.locator('.call-connected')).toHaveText('연결됨')
+    const remoteTeacher=student.locator(`.video-tile[data-participant="${lesson.teacher.id}"] video`)
+    const remoteStudent=teacher.locator(`.video-tile[data-participant="${firstStudent.id}"] video`)
+    await expect.poll(async()=>remoteTeacher.evaluate((video:HTMLVideoElement)=>video.videoWidth>0&&video.readyState>=2)).toBe(true)
+    await expect.poll(async()=>remoteStudent.evaluate((video:HTMLVideoElement)=>video.videoWidth>0&&video.readyState>=2)).toBe(true)
+    await expect.poll(async()=>student.getByTestId('remote-audio').count()).toBeGreaterThan(0)
+    await student.getByRole('button',{name:'카메라 끄기',exact:true}).click()
+    await expect(teacher.locator(`.video-tile[data-participant="${firstStudent.id}"] .tile-camera-status`)).toHaveText('카메라 꺼짐')
+    await student.getByRole('button',{name:'카메라 켜기',exact:true}).click()
+    await expect.poll(async()=>remoteStudent.evaluate((video:HTMLVideoElement)=>video.videoWidth>0&&video.readyState>=2)).toBe(true)
+    await student.getByRole('button',{name:'손들기',exact:true}).click()
+    await expect(teacher.locator(`.video-tile[data-participant="${firstStudent.id}"] .hand-badge`)).toBeVisible()
+    await teacher.locator('.call-controls').getByRole('button',{name:'채팅',exact:true}).click()
+    await teacher.getByLabel('채팅 메시지',{exact:true}).fill('실제 수업 연결 확인')
+    await teacher.getByRole('button',{name:'메시지 전송'}).click()
+    await student.locator('.call-controls').getByRole('button',{name:'채팅',exact:true}).click()
+    await expect(student.locator('.messages')).toContainText('실제 수업 연결 확인')
+    await teacher.locator('.call-controls').getByRole('button',{name:'수업 자료',exact:true}).click()
+    await teacher.getByRole('button',{name:'문서',exact:true}).click()
+    const pdf=await PDFDocument.create()
+    for(let i=0;i<2;i++){const page=pdf.addPage([600,400]);page.drawText(`Class worksheet page ${i+1}`,{x:50,y:320,size:24,color:rgb(.1,.2,.5)})}
+    const pdfBytes=Buffer.from(await pdf.save())
+    await teacher.locator('input[type=file]').setInputFiles({name:'e2e-worksheet.pdf',mimeType:'application/pdf',buffer:pdfBytes})
+    await expect(teacher.locator('.content-share').filter({hasText:'e2e-worksheet.pdf'})).toBeVisible()
+    const list=await (await teacherContext.request.get('/api/v1/materials')).json()
+    uploaded.push(...list.filter((m:any)=>m.name==='e2e-worksheet.pdf').map((m:any)=>m.id))
+    await teacher.locator('.content-share').filter({hasText:'e2e-worksheet.pdf'}).first().click()
+    await expect(student.getByLabel('e2e-worksheet.pdf 1페이지',{exact:true})).toBeVisible()
+    await expect.poll(async()=>student.locator('canvas').evaluate((canvas:HTMLCanvasElement)=>canvas.width)).toBeGreaterThan(300)
+    await teacher.getByRole('button',{name:'PDF 다음 페이지',exact:true}).click()
+    await expect(student.getByLabel('e2e-worksheet.pdf 2페이지',{exact:true})).toBeVisible()
+    await student.getByRole('button',{name:'판서 시작',exact:true}).click()
+    const svg=student.getByLabel('수업 판서 영역',{exact:true})
+    const rect=(await svg.boundingBox())!
+    await student.mouse.move(rect.x+rect.width*.2,rect.y+rect.height*.3)
+    await student.mouse.down();await student.mouse.move(rect.x+rect.width*.6,rect.y+rect.height*.5,{steps:12});await student.mouse.up()
+    await expect(teacher.locator('.live-annotation path')).toHaveCount(1)
+    await student.getByRole('button',{name:'실행 취소',exact:true}).click()
+    await expect(teacher.locator('.live-annotation path')).toHaveCount(0)
+    await student.getByRole('button',{name:'다시 실행',exact:true}).click()
+    await expect(teacher.locator('.live-annotation path')).toHaveCount(1)
+    await student.reload()
+    await expect(student.locator('.call-connected')).toHaveText('연결됨')
+    await expect(student.locator('.live-annotation path')).toHaveCount(1)
+    await teacher.getByRole('button',{name:'공유 중지',exact:true}).click()
+    await teacher.locator('.call-controls').getByRole('button',{name:'수업 자료',exact:true}).click()
+    await teacher.getByRole('button',{name:'미디어',exact:true}).click()
+    await teacher.locator('input[type=file]').setInputFiles({name:'e2e-lesson.mp4',mimeType:'video/mp4',buffer:readFileSync(fixtureVideo)})
+    await expect(teacher.locator('.content-share').filter({hasText:'e2e-lesson.mp4'})).toBeVisible()
+    const mediaList=await (await teacherContext.request.get('/api/v1/materials')).json()
+    uploaded.push(...mediaList.filter((m:any)=>m.name==='e2e-lesson.mp4').map((m:any)=>m.id))
+    await teacher.locator('.content-share').filter({hasText:'e2e-lesson.mp4'}).first().click()
+    await expect(student.getByTestId('shared-media')).toBeVisible()
+    await teacher.getByRole('button',{name:'영상 재생',exact:true}).click()
+    await expect.poll(async()=>student.getByTestId('shared-media').evaluate((v:HTMLVideoElement)=>v.currentTime)).toBeGreaterThan(1)
+    await teacher.getByRole('button',{name:'영상 정지',exact:true}).click()
+    await expect.poll(async()=>student.getByTestId('shared-media').evaluate((v:HTMLVideoElement)=>v.paused)).toBe(true)
+    const range=await teacherContext.request.get(`/api/v1/materials/${uploaded[uploaded.length-1]}/content`,{headers:{Range:'bytes=0-127'}})
+    expect(range.status()).toBe(206);expect((await range.body()).length).toBe(128)
+    await teacher.getByRole('button',{name:'공유 중지',exact:true}).click()
+    // Offline/reconnect restores the durable class state and chat.
+    await studentContext.setOffline(true);await studentContext.setOffline(false)
+    await expect(student.locator('.call-connected')).toHaveText('연결됨')
+    await student.locator('.call-controls').getByRole('button',{name:'채팅',exact:true}).click()
+    await expect(student.locator('.messages')).toContainText('실제 수업 연결 확인')
+    // Saved admission JWT must not bypass the moderation guard.
+    const staleAdmission=await (await studentContext.request.post(`/api/v1/lessons/${lesson.id}/join`)).json()
+    await teacher.getByRole('button',{name:/참가자 \d+명/}).click()
+    await teacher.getByRole('button',{name:`${firstStudent.name} 퇴장`,exact:true}).click()
+    await teacher.getByRole('button',{name:'퇴장시키기',exact:true}).click()
+    await expect(student.getByRole('heading',{name:'선생님에 의해 수업에서 퇴장되었습니다'})).toBeVisible()
+    const denied=await studentContext.request.post(`/api/v1/lessons/${lesson.id}/join`)
+    expect(denied.status()).toBe(403)
+    const replay=await studentContext.request.get(`/livekit/rtc/validate?access_token=${encodeURIComponent(staleAdmission.token)}`)
+    expect(replay.status()).toBe(403)
+    await teacher.getByRole('button',{name:'수업 종료',exact:true}).click()
+    await teacher.getByRole('button',{name:'모두 종료',exact:true}).click()
+    await expect(teacher.getByRole('heading',{name:'수업이 모두 종료되었어요'})).toBeVisible()
+    const closed=await (await teacherContext.request.get(`/api/v1/lessons/${lesson.id}`)).json()
+    expect(closed.status).toBe('ENDED');expect(closed.startedAt).toBeTruthy();expect(closed.endedAt).toBeTruthy()
+    expect(errors).toEqual([])
+  } finally {
+    if(lesson) await teacherContext.request.post(`/api/v1/lessons/${lesson.id}/end`).catch(()=>{})
+    for(const id of uploaded) await teacherContext.request.delete(`/api/v1/materials/${id}`).catch(()=>{})
+    await teacherContext.close();await studentContext.close()
+  }
+})

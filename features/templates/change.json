@@ -1,0 +1,13 @@
+{
+  "id": "meeting-example",
+  "summary": "동작·권한·오류 처리와 영향 화면을 구체적으로 작성합니다.",
+  "scope": "shared",
+  "featureIds": ["meeting.example"],
+  "platforms": {
+    "server": {"status": "implemented"},
+    "web": {"status": "implemented"},
+    "android": {"status": "implemented"},
+    "ios": {"status": "implemented"}
+  },
+  "verification": ["변경에 필요한 핵심 검사 명령과 결과를 작성합니다."]
+}

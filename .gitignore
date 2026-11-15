@@ -1,0 +1,23 @@
+# 개발 환경과 의존성
+.DS_Store
+node_modules/
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# 빌드 결과와 로컬 검사 기록
+dist/
+build/
+.cache/
+.mypy_cache/
+.pytest_cache/
+__pycache__/
+*.pyc
+*.log
+*.tsbuildinfo
+test-results/
+playwright-report/
+/changed-files.txt
+
+/web/.figma/

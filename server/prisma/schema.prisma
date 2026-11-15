@@ -1,0 +1,136 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "postgresql"
+  url = env("DATABASE_URL")
+}
+model User {
+  id String @id @default(uuid()) @db.Uuid
+  username String @unique
+  name String
+  role String
+  passwordHash String
+  createdAt DateTime @default(now())
+  sessions LoginSession[]
+  teacherLinks TeacherStudent[] @relation("teacher")
+  studentLinks TeacherStudent[] @relation("student")
+}
+model LoginSession {
+  id String @id
+  userId String @db.Uuid
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  @@index([userId])
+}
+model TeacherStudent {
+  teacherId String @db.Uuid
+  studentId String @db.Uuid
+  teacher User @relation("teacher", fields: [teacherId], references: [id], onDelete: Cascade)
+  student User @relation("student", fields: [studentId], references: [id], onDelete: Cascade)
+  @@id([teacherId, studentId])
+}
+model Lesson {
+  id String @id @default(uuid()) @db.Uuid
+  teacherId String @db.Uuid
+  title String
+  description String @default("")
+  accessMode String @default("INVITE_ONLY")
+  startsAt DateTime
+  endsAt DateTime?
+  status String @default("SCHEDULED")
+  code String @unique
+  startedAt DateTime?
+  endedAt DateTime?
+  roomName String @unique
+  seq Int @default(0)
+  share Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  members LessonMember[]
+  messages Message[]
+  strokes Stroke[]
+  attendance Attendance[]
+  @@index([teacherId, startsAt])
+  @@index([accessMode, status, startsAt])
+}
+model LessonMember {
+  lessonId String @db.Uuid
+  userId String @db.Uuid
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  banned Boolean @default(false)
+  raised Boolean @default(false)
+  admissionId String?
+  online Boolean @default(false)
+  disconnectedAt DateTime?
+  @@id([lessonId, userId])
+  @@index([userId])
+}
+model Attendance {
+  id String @id @default(uuid()) @db.Uuid
+  lessonId String @db.Uuid
+  userId String @db.Uuid
+  admissionId String
+  livekitSid String? @unique
+  joinedAt DateTime @default(now())
+  leftAt DateTime?
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  @@index([lessonId, userId])
+}
+model Message {
+  id String @id @default(uuid()) @db.Uuid
+  lessonId String @db.Uuid
+  userId String @db.Uuid
+  userName String
+  clientId String
+  text String
+  createdAt DateTime @default(now())
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  @@unique([lessonId, userId, clientId])
+  @@index([lessonId, createdAt])
+}
+model Material {
+  id String @id @default(uuid()) @db.Uuid
+  ownerId String @db.Uuid
+  name String
+  kind String
+  objectKey String @unique
+  size Int
+  contentType String
+  duration Float?
+  pages Int?
+  createdAt DateTime @default(now())
+  @@index([ownerId])
+}
+model Stroke {
+  id String @id
+  lessonId String @db.Uuid
+  authorId String @db.Uuid
+  shareId String
+  page Int @default(1)
+  tool String
+  color String
+  points Json
+  deleted Boolean @default(false)
+  revision Int @default(0)
+  createdAt DateTime @default(now())
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  @@index([lessonId, shareId, page])
+}
+model WebhookEvent {
+  id String @id
+  createdAt DateTime @default(now())
+}
+model AnnotationOperation {
+  id String @id @default(uuid()) @db.Uuid
+  lessonId String @db.Uuid
+  actorId String @db.Uuid
+  shareId String
+  page Int
+  patches Json
+  undone Boolean @default(false)
+  createdAt DateTime @default(now())
+  touchedAt DateTime @updatedAt
+  @@index([lessonId, actorId, shareId, page, undone])
+}

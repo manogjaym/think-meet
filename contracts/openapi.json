@@ -1,0 +1,2027 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Think Meet shared API",
+    "version": "1.0.0",
+    "description": "Canonical REST schemas shared by NestJS, React and KMP. Socket.IO is defined in realtime.json."
+  },
+  "x-contract-revision": 1,
+  "servers": [
+    {
+      "url": "/api/v1"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "operationId": "health",
+        "tags": [
+          "health"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/capabilities": {
+      "get": {
+        "operationId": "capabilities",
+        "tags": [
+          "capabilities"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CapabilitiesResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "operationId": "authMe",
+        "tags": [
+          "auth"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "operationId": "authLogin",
+        "tags": [
+          "auth"
+        ],
+        "responses": {
+          "default": {
+            "description": "API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginInput"
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "operationId": "authLogout",
+        "tags": [
+          "auth"
+        ],
+        "responses": {
+          "default": {
+            "description": "API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/students": {
+      "get": {
+        "operationId": "listStudents",
+        "tags": [
+          "students"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/User"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "x-feature": "classroom.core"
+      }
+    },
+    "/lessons": {
+      "get": {
+        "operationId": "listLessons",
+        "tags": [
+          "lessons"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Lesson"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "x-feature": "classroom.core"
+      },
+      "post": {
+        "operationId": "createLesson",
+        "tags": [
+          "lessons"
+        ],
+        "responses": {
+          "default": {
+            "description": "API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Lesson"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LessonInput"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "x-feature": "classroom.core"
+      }
+    },
+    "/join/{code}": {
+      "get": {
+        "operationId": "resolveLesson",
+        "tags": [
+          "join"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Lesson"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "x-feature": "classroom.core",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/lessons/{id}": {
+      "get": {
+        "operationId": "getLesson",
+        "tags": [
+          "lessons"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Lesson"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "x-feature": "classroom.core",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "updateLesson",
+        "tags": [
+          "lessons"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Lesson"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LessonInput"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "x-feature": "classroom.core",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/lessons/{id}/cancel": {
+      "post": {
+        "operationId": "cancelLesson",
+        "tags": [
+          "lessons"
+        ],
+        "responses": {
+          "default": {
+            "description": "API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Lesson"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "x-feature": "classroom.core",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/lessons/{id}/connected": {
+      "post": {
+        "operationId": "connectedLesson",
+        "tags": [
+          "lessons"
+        ],
+        "responses": {
+          "default": {
+            "description": "API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Lesson"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "x-feature": "classroom.core",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/lessons/{id}/end": {
+      "post": {
+        "operationId": "endLesson",
+        "tags": [
+          "lessons"
+        ],
+        "responses": {
+          "default": {
+            "description": "API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Lesson"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "x-feature": "classroom.core",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-cleanup": true
+      }
+    },
+    "/lessons/{id}/join": {
+      "post": {
+        "operationId": "joinLesson",
+        "tags": [
+          "lessons"
+        ],
+        "responses": {
+          "default": {
+            "description": "API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JoinResult"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "x-feature": "classroom.core",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/lessons/{id}/leave": {
+      "post": {
+        "operationId": "leaveLesson",
+        "tags": [
+          "lessons"
+        ],
+        "responses": {
+          "default": {
+            "description": "API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "x-feature": "classroom.core",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-cleanup": true
+      }
+    },
+    "/lessons/{id}/kick": {
+      "post": {
+        "operationId": "kickParticipant",
+        "tags": [
+          "lessons"
+        ],
+        "responses": {
+          "default": {
+            "description": "API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KickInput"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "x-feature": "classroom.core",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/lessons/{id}/invites": {
+      "post": {
+        "operationId": "inviteStudents",
+        "tags": [
+          "lessons"
+        ],
+        "responses": {
+          "default": {
+            "description": "API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Lesson"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InviteInput"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "x-feature": "classroom.core",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/lessons/{id}/snapshot": {
+      "get": {
+        "operationId": "getSnapshot",
+        "tags": [
+          "lessons"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeetingSnapshot"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "x-feature": "classroom.core",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/materials": {
+      "get": {
+        "operationId": "listMaterials",
+        "tags": [
+          "materials"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Material"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "x-feature": "classroom.core"
+      },
+      "post": {
+        "operationId": "uploadMaterial",
+        "tags": [
+          "materials"
+        ],
+        "responses": {
+          "default": {
+            "description": "API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Material"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "x-feature": "classroom.core",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                },
+                "required": [
+                  "file"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/materials/{id}": {
+      "delete": {
+        "operationId": "deleteMaterial",
+        "tags": [
+          "materials"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "x-feature": "classroom.core",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/materials/{id}/content": {
+      "get": {
+        "operationId": "getMaterialContent",
+        "tags": [
+          "materials"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "206": {
+            "description": "Partial byte range"
+          },
+          "416": {
+            "description": "Invalid byte range"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "x-feature": "classroom.core",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "lessonId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/webhooks/livekit": {
+      "post": {
+        "operationId": "livekitWebhook",
+        "tags": [
+          "webhooks"
+        ],
+        "responses": {
+          "default": {
+            "description": "API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        },
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/webhook+json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "description": "Raw signed LiveKit body; authentication remains signature-based."
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "sessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "think_meet_session"
+      }
+    },
+    "schemas": {
+      "Role": {
+        "type": "string",
+        "enum": [
+          "teacher",
+          "student"
+        ]
+      },
+      "LessonAccessMode": {
+        "type": "string",
+        "enum": [
+          "INVITE_ONLY",
+          "OPEN"
+        ]
+      },
+      "User": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "name",
+          "role"
+        ],
+        "x-kotlin-helper": "user"
+      },
+      "LessonParticipant": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "joinedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "userId",
+          "joinedAt"
+        ]
+      },
+      "Attendance": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "joinedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "leftAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "default": null
+          }
+        },
+        "required": [
+          "userId",
+          "joinedAt",
+          "leftAt"
+        ]
+      },
+      "Lesson": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "default": ""
+          },
+          "accessMode": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LessonAccessMode"
+              }
+            ],
+            "default": "INVITE_ONLY"
+          },
+          "teacher": {
+            "$ref": "#/components/schemas/User"
+          },
+          "students": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/User"
+            },
+            "default": []
+          },
+          "startsAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endsAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "default": null
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "SCHEDULED",
+              "LIVE",
+              "ENDED",
+              "CANCELLED"
+            ]
+          },
+          "code": {
+            "type": "string"
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "default": null
+          },
+          "endedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "default": null
+          },
+          "participants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LessonParticipant"
+            },
+            "default": []
+          },
+          "attendance": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Attendance"
+            },
+            "default": []
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "description",
+          "teacher",
+          "students",
+          "startsAt",
+          "endsAt",
+          "status",
+          "code",
+          "startedAt",
+          "endedAt"
+        ],
+        "x-kotlin-helper": "lesson"
+      },
+      "LessonInput": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "description": {
+            "type": "string",
+            "default": "",
+            "maxLength": 5000
+          },
+          "startsAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endsAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "accessMode": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LessonAccessMode"
+              }
+            ],
+            "default": "INVITE_ONLY"
+          },
+          "studentIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "default": [],
+            "maxItems": 100
+          }
+        },
+        "required": [
+          "title",
+          "startsAt",
+          "endsAt"
+        ]
+      },
+      "JoinResult": {
+        "type": "object",
+        "properties": {
+          "waiting": {
+            "type": "boolean"
+          },
+          "lesson": {
+            "$ref": "#/components/schemas/Lesson"
+          },
+          "token": {
+            "type": "string"
+          },
+          "livekitUrl": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "waiting",
+          "lesson"
+        ]
+      },
+      "Material": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "media",
+              "document"
+            ]
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "duration": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "pages": {
+            "type": "integer",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "type",
+          "size",
+          "createdAt"
+        ]
+      },
+      "Share": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "screen",
+              "media",
+              "document"
+            ]
+          },
+          "ownerId": {
+            "type": "string"
+          },
+          "materialId": {
+            "type": "string"
+          },
+          "material": {
+            "$ref": "#/components/schemas/Material"
+          },
+          "page": {
+            "type": "integer",
+            "default": 1
+          },
+          "playing": {
+            "type": "boolean",
+            "default": false
+          },
+          "position": {
+            "type": "number",
+            "format": "double",
+            "default": 0
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "ownerId",
+          "page",
+          "playing",
+          "position",
+          "updatedAt"
+        ]
+      },
+      "Point": {
+        "type": "object",
+        "properties": {
+          "x": {
+            "type": "number",
+            "format": "double",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "y": {
+            "type": "number",
+            "format": "double",
+            "minimum": 0,
+            "maximum": 1
+          }
+        },
+        "required": [
+          "x",
+          "y"
+        ]
+      },
+      "Stroke": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "authorId": {
+            "type": "string"
+          },
+          "shareId": {
+            "type": "string"
+          },
+          "page": {
+            "type": "integer"
+          },
+          "tool": {
+            "type": "string",
+            "enum": [
+              "pen",
+              "highlighter"
+            ]
+          },
+          "color": {
+            "type": "string"
+          },
+          "points": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Point"
+            }
+          },
+          "deleted": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": [
+          "id",
+          "authorId",
+          "shareId",
+          "page",
+          "tool",
+          "color",
+          "points",
+          "deleted"
+        ]
+      },
+      "PreviewStroke": {
+        "type": "object",
+        "properties": {
+          "shareId": {
+            "type": "string"
+          },
+          "page": {
+            "type": "integer"
+          },
+          "tool": {
+            "type": "string",
+            "enum": [
+              "pen",
+              "highlighter"
+            ]
+          },
+          "color": {
+            "type": "string"
+          },
+          "points": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Point"
+            }
+          },
+          "authorId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "shareId",
+          "page",
+          "tool",
+          "color",
+          "points"
+        ]
+      },
+      "StrokePreview": {
+        "type": "object",
+        "properties": {
+          "lessonId": {
+            "type": "string"
+          },
+          "shareId": {
+            "type": "string"
+          },
+          "page": {
+            "type": "integer"
+          },
+          "tool": {
+            "type": "string",
+            "enum": [
+              "pen",
+              "highlighter"
+            ]
+          },
+          "color": {
+            "type": "string"
+          },
+          "points": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Point"
+            }
+          },
+          "authorId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "lessonId",
+          "shareId",
+          "page",
+          "tool",
+          "color",
+          "points"
+        ]
+      },
+      "MeetingParticipant": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/User"
+          },
+          "online": {
+            "type": "boolean",
+            "default": false
+          },
+          "raised": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": [
+          "user",
+          "online",
+          "raised"
+        ]
+      },
+      "ChatMessage": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "clientId": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "userName": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "clientId",
+          "userId",
+          "userName",
+          "text",
+          "createdAt"
+        ]
+      },
+      "MeetingSnapshot": {
+        "type": "object",
+        "properties": {
+          "lessonId": {
+            "type": "string"
+          },
+          "lesson": {
+            "$ref": "#/components/schemas/Lesson"
+          },
+          "participants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MeetingParticipant"
+            },
+            "default": []
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChatMessage"
+            },
+            "default": []
+          },
+          "share": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Share"
+              }
+            ],
+            "nullable": true,
+            "default": null
+          },
+          "strokes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Stroke"
+            },
+            "default": []
+          },
+          "seq": {
+            "type": "integer",
+            "format": "int64",
+            "default": 0
+          },
+          "serverTime": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "lessonId",
+          "lesson",
+          "participants",
+          "messages",
+          "share",
+          "strokes",
+          "seq",
+          "serverTime"
+        ]
+      },
+      "RealtimeError": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "default": "CONNECTION"
+          },
+          "message": {
+            "type": "string",
+            "default": "연결을 확인해 주세요."
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ]
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ]
+      },
+      "LoginInput": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "password": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "username",
+          "password"
+        ]
+      },
+      "KickInput": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "userId"
+        ]
+      },
+      "InviteInput": {
+        "type": "object",
+        "properties": {
+          "studentIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "minItems": 1,
+            "maxItems": 100
+          }
+        },
+        "required": [
+          "studentIds"
+        ]
+      },
+      "SubscribeInput": {
+        "type": "object",
+        "properties": {
+          "lessonId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "lessonId"
+        ]
+      },
+      "CommandEnvelope": {
+        "type": "object",
+        "properties": {
+          "lessonId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "type": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "default": {}
+          },
+          "requestId": {
+            "type": "string",
+            "maxLength": 100
+          }
+        },
+        "required": [
+          "lessonId",
+          "type"
+        ]
+      },
+      "SuccessAck": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "enum": [
+              true
+            ],
+            "default": true
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/MeetingSnapshot"
+          }
+        },
+        "required": [
+          "ok",
+          "snapshot"
+        ]
+      },
+      "ErrorAck": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "enum": [
+              false
+            ],
+            "default": false
+          },
+          "error": {
+            "$ref": "#/components/schemas/RealtimeError"
+          }
+        },
+        "required": [
+          "ok",
+          "error"
+        ]
+      },
+      "CommandAck": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/SuccessAck"
+          },
+          {
+            "$ref": "#/components/schemas/ErrorAck"
+          }
+        ]
+      },
+      "CapabilitiesResponse": {
+        "type": "object",
+        "properties": {
+          "contractRevision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "features": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "boolean"
+            }
+          }
+        },
+        "required": [
+          "contractRevision",
+          "features"
+        ]
+      },
+      "ChatSendPayload": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "clientId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          }
+        },
+        "required": [
+          "text",
+          "clientId"
+        ]
+      },
+      "HandSetPayload": {
+        "type": "object",
+        "properties": {
+          "raised": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "raised"
+        ]
+      },
+      "ShareStartPayload": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "screen",
+              "media",
+              "document"
+            ]
+          },
+          "materialId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "EmptyPayload": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "MediaUpdatePayload": {
+        "type": "object",
+        "properties": {
+          "playing": {
+            "type": "boolean"
+          },
+          "position": {
+            "type": "number",
+            "format": "double",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "playing",
+          "position"
+        ]
+      },
+      "DocumentPagePayload": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "page"
+        ]
+      },
+      "StrokeAddPayload": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "shareId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "tool": {
+            "type": "string",
+            "enum": [
+              "pen",
+              "highlighter"
+            ]
+          },
+          "color": {
+            "type": "string",
+            "pattern": "^#[0-9a-fA-F]{6}$"
+          },
+          "points": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Point"
+            },
+            "minItems": 1,
+            "maxItems": 20000
+          }
+        },
+        "required": [
+          "id",
+          "shareId",
+          "page",
+          "tool",
+          "color",
+          "points"
+        ]
+      },
+      "StrokeErasePayload": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "maxItems": 500
+          }
+        },
+        "required": [
+          "ids"
+        ]
+      }
+    }
+  }
+}

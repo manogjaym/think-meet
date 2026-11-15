@@ -1,0 +1,29 @@
+{
+  "id": "shared-feature-foundation",
+  "summary": "공통 계약·기능 카탈로그·지원 협상·기본 비활성 공개 정책·교차 플랫폼 검사 기반을 실제 통신 코드에 연결합니다.",
+  "scope": "shared",
+  "featureIds": [
+    "classroom.core",
+    "meeting.pip"
+  ],
+  "platforms": {
+    "server": {
+      "status": "implemented"
+    },
+    "web": {
+      "status": "implemented"
+    },
+    "android": {
+      "status": "implemented"
+    },
+    "ios": {
+      "status": "implemented"
+    }
+  },
+  "verification": [
+    "npm run verify",
+    "Android/KMP core capability and wire tests + assembleDebug + linkDebugFrameworkIosSimulatorArm64",
+    "iOS Swift host build/resource and static-framework hash verification; iOS runtime is not verified",
+    "Existing Android emulator: generated DTO/legacy-server capability fallback smoke passed (1 test, 16 lessons decoded); evidence: features/VERIFICATION.md"
+  ]
+}

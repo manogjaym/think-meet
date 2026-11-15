@@ -1,0 +1,12 @@
+**/.terraform/
+**/*.tfstate*
+**/*.tfplan
+**/crash.log
+# terraform.tfvars의 환경별 기본 설정은 저장소에서 관리하고 자동 생성 입력은 로컬에 둡니다.
+**/backend.hcl
+**/backend-*.hcl
+.secrets/
+.build/
+__pycache__/
+# Generated local LiveKit configuration contains private API credentials.
+/local/livekit.yaml

@@ -1,0 +1,418 @@
+import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common'
+import { Prisma } from '@prisma/client'
+import { AccessToken, RoomServiceClient, WebhookReceiver } from 'livekit-server-sdk'
+import { jwtVerify } from 'jose'
+import { randomUUID, randomBytes } from 'node:crypto'
+import { z } from 'zod'
+import { Database, publicUser } from './auth'
+import { ApiError } from './errors'
+import type { PublicUser, Share, Command } from './types'
+const ids = z.array(z.string().uuid()).min(1).max(100)
+export const lessonInput = z.object({
+  title: z.string().trim().min(1, '학습 제목을 입력해 주세요.').max(200),
+  description: z.string().trim().max(5000).default(''),
+  startsAt: z.string().datetime({ offset: true }), endsAt: z.string().datetime({ offset: true }).nullable(),
+  accessMode: z.enum(['INVITE_ONLY', 'OPEN']).default('INVITE_ONLY'), studentIds: z.array(z.string().uuid()).max(100).default([]),
+}).superRefine((data, ctx) => {
+  if (data.accessMode === 'INVITE_ONLY' && !data.studentIds.length) ctx.addIssue({ code: 'custom', path: ['studentIds'], message: '참여할 학생을 한 명 이상 선택해 주세요.' })
+  if (data.endsAt !== null && Date.parse(data.endsAt) <= Date.parse(data.startsAt)) ctx.addIssue({ code: 'custom', message: '종료 시간은 시작 시간보다 늦어야 합니다.' })
+  if (Date.parse(data.startsAt) < Date.now() - 60000) ctx.addIssue({ code: 'custom', message: '현재 시간 이후로 예약해 주세요.' })
+})
+@Injectable()
+export class Lessons implements OnModuleInit, OnModuleDestroy {
+  readonly livekit = new RoomServiceClient(process.env.LIVEKIT_URL || 'http://livekit:7880', process.env.LIVEKIT_API_KEY, process.env.LIVEKIT_API_SECRET)
+  readonly receiver = new WebhookReceiver(process.env.LIVEKIT_API_KEY || '', process.env.LIVEKIT_API_SECRET || '')
+  publishSnapshot: (id: string, snapshot: any) => void | Promise<void> = () => {}
+  disconnectUser: (id: string, userId: string, code: string) => void = () => {}
+  notifyUsers: (ids: string[]) => void = () => {}
+  notifyAllUsers: () => void = () => {}
+  private locks = new Map<string, Promise<any>>()
+  private timer?: NodeJS.Timeout
+  constructor(readonly db: Database) {}
+  onModuleInit() { this.timer = setInterval(() => this.reconcile().catch(error => console.error('reconciliation failed', error.message)), 10000); this.timer.unref() }
+  onModuleDestroy() { clearInterval(this.timer) }
+  async locked<T>(id: string, fn: () => Promise<T>): Promise<T> {
+    const previous = this.locks.get(id) || Promise.resolve()
+    const next = previous.catch(() => {}).then(fn)
+    this.locks.set(id, next)
+    try { return await next } finally { if (this.locks.get(id) === next) this.locks.delete(id) }
+  }
+  teacher(user: PublicUser) { if (user.role !== 'teacher') throw new ApiError('FORBIDDEN', '선생님만 이용할 수 있습니다.', 403) }
+  async roster(user: PublicUser) {
+    this.teacher(user)
+    const rows = await this.db.teacherStudent.findMany({ where: { teacherId: user.id }, include: { student: true }, orderBy: { student: { name: 'asc' } } })
+    return rows.map(row => publicUser(row.student))
+  }
+  async validateRoster(teacherId: string, studentIds: string[]) {
+    if (new Set(studentIds).size !== studentIds.length) throw new ApiError('VALIDATION', '중복된 학생이 있습니다.')
+    const count = await this.db.teacherStudent.count({ where: { teacherId, studentId: { in: studentIds } } })
+    if (count !== studentIds.length) throw new ApiError('FORBIDDEN', '담당 학생만 초대할 수 있습니다.', 403)
+  }
+  async get(id: string) {
+    if (!z.string().uuid().safeParse(id).success) throw new ApiError('INVALID', '수업을 찾을 수 없습니다.', 404)
+    const lesson = await this.db.lesson.findUnique({ where: { id }, include: { members: true } })
+    if (!lesson) throw new ApiError('INVALID', '수업을 찾을 수 없습니다.', 404)
+    return lesson
+  }
+  async access(id: string, user: PublicUser, requireLive = false, teacherOnly = false) {
+    const lesson = await this.get(id)
+    if (teacherOnly && lesson.teacherId !== user.id) throw new ApiError('FORBIDDEN', '수업을 관리할 권한이 없습니다.', 403)
+    const member = lesson.members.find(member => member.userId === user.id)
+    if (!member && lesson.teacherId !== user.id && (lesson.accessMode !== 'OPEN' || requireLive)) throw new ApiError('ACCOUNT', '이 수업에 참여할 권한이 없습니다.', 403)
+    if (member?.banned) throw new ApiError('KICKED', '선생님에 의해 수업에서 퇴장되었습니다.', 403)
+    if (requireLive && lesson.status !== 'LIVE') throw new ApiError(lesson.status === 'CANCELLED' ? 'CANCELLED' : lesson.status === 'ENDED' ? 'ENDED' : 'WAITING', '현재 참여할 수 없는 수업입니다.', 409)
+    return lesson
+  }
+  async dto(lesson: any) {
+    const members = lesson.members || await this.db.lessonMember.findMany({ where: { lessonId: lesson.id } })
+    const users = await this.db.user.findMany({ where: { id: { in: [lesson.teacherId, ...members.map((m: any) => m.userId)] } } })
+    const teacher = users.find(user => user.id === lesson.teacherId)!
+    const attendance = await this.db.attendance.findMany({ where: { lessonId: lesson.id }, orderBy: { joinedAt: 'asc' } })
+    return {
+      id: lesson.id, title: lesson.title, description: lesson.description, accessMode: lesson.accessMode || 'INVITE_ONLY', teacher: publicUser(teacher),
+      students: users.filter(user => user.id !== lesson.teacherId).map(publicUser),
+      startsAt: lesson.startsAt.toISOString(), endsAt: lesson.endsAt?.toISOString() || null, status: lesson.status, code: lesson.code,
+      startedAt: lesson.startedAt?.toISOString() || null, endedAt: lesson.endedAt?.toISOString() || null,
+      attendance: attendance.map(row => ({ userId: row.userId, joinedAt: row.joinedAt.toISOString(), leftAt: row.leftAt?.toISOString() || null })),
+      participants: members.filter((m: any) => m.online && !m.banned).map((m: any) => ({ userId: m.userId, joinedAt: attendance.find(row => row.userId === m.userId && !row.leftAt)?.joinedAt.toISOString() || lesson.startedAt?.toISOString() || new Date().toISOString() })),
+    }
+  }
+  async list(user: PublicUser) {
+    const lessons = await this.db.lesson.findMany({ where: { OR: [{ teacherId: user.id }, { members: { some: { userId: user.id } } }, { accessMode: 'OPEN', status: { in: ['SCHEDULED', 'LIVE'] } }] }, include: { members: true }, orderBy: { startsAt: 'asc' } })
+    return Promise.all(lessons.map(lesson => this.dto(lesson)))
+  }
+  async create(user: PublicUser, input: unknown) {
+    this.teacher(user)
+    const data = lessonInput.parse(input)
+    if (data.studentIds.length) await this.validateRoster(user.id, data.studentIds)
+    const lesson = await this.db.lesson.create({ data: {
+      teacherId: user.id, title: data.title, description: data.description, accessMode: data.accessMode, startsAt: new Date(data.startsAt), endsAt: data.endsAt === null ? null : new Date(data.endsAt),
+      code: randomBytes(6).toString('hex'), roomName: `lesson-${randomUUID()}`,
+      members: { create: [user.id, ...data.studentIds].map(userId => ({ userId })) },
+    } })
+    this.notifyUsers([user.id, ...data.studentIds])
+    if (data.accessMode === 'OPEN') this.notifyAllUsers()
+    return this.dto(lesson)
+  }
+  async edit(id: string, user: PublicUser, input: unknown) {
+    return this.locked(id, async () => {
+      const lesson = await this.access(id, user, false, true)
+      if (lesson.status !== 'SCHEDULED') throw new ApiError('CONFLICT', '예정된 수업만 수정할 수 있습니다.', 409)
+      const data = lessonInput.parse(input)
+      if (data.studentIds.length) await this.validateRoster(user.id, data.studentIds)
+      await this.db.$transaction([
+        this.db.lesson.update({ where: { id }, data: { title: data.title, description: data.description, accessMode: data.accessMode, startsAt: new Date(data.startsAt), endsAt: data.endsAt === null ? null : new Date(data.endsAt) } }),
+        ...(data.accessMode === 'INVITE_ONLY' ? [this.db.lessonMember.deleteMany({ where: { lessonId: id, userId: { notIn: [user.id, ...data.studentIds] } } })] : []),
+        ...data.studentIds.map(userId => this.db.lessonMember.upsert({ where: { lessonId_userId: { lessonId: id, userId } }, create: { lessonId: id, userId }, update: {} })),
+      ])
+      await this.broadcast(id)
+      if (lesson.accessMode === 'OPEN' || data.accessMode === 'OPEN') this.notifyAllUsers()
+      return this.dto(await this.get(id))
+    })
+  }
+  async cancel(id: string, user: PublicUser) {
+    return this.locked(id, async () => {
+      const lesson = await this.access(id, user, false, true)
+      if (lesson.status !== 'SCHEDULED') throw new ApiError('CONFLICT', '예정된 수업만 취소할 수 있습니다.', 409)
+      await this.db.lesson.update({ where: { id }, data: { status: 'CANCELLED', endedAt: new Date(), share: Prisma.DbNull } })
+      await this.livekit.deleteRoom(lesson.roomName).catch(() => {})
+      await this.broadcast(id)
+      if (lesson.accessMode === 'OPEN') this.notifyAllUsers()
+      return this.dto(await this.get(id))
+    })
+  }
+  async resolve(code: string, user: PublicUser) {
+    const lesson = await this.db.lesson.findUnique({ where: { code } })
+    if (!lesson) throw new ApiError('INVALID', '링크 또는 참여 코드가 올바르지 않습니다.', 404)
+    await this.access(lesson.id, user)
+    if (lesson.status === 'CANCELLED' || lesson.status === 'ENDED') throw new ApiError(lesson.status, lesson.status === 'ENDED' ? '이미 종료된 수업입니다.' : '취소된 수업입니다.', 409)
+    return this.dto(lesson)
+  }
+  async join(id: string, user: PublicUser) {
+    return this.locked(id, async () => {
+      let lesson = await this.access(id, user)
+      if (lesson.status === 'ENDED' || lesson.status === 'CANCELLED') throw new ApiError(lesson.status, '이미 종료되거나 취소된 수업입니다.', 409)
+      if (!lesson.members.some(member => member.userId === user.id)) {
+        await this.db.lessonMember.upsert({ where: { lessonId_userId: { lessonId: id, userId: user.id } }, create: { lessonId: id, userId: user.id }, update: {} })
+        lesson = await this.get(id)
+        await this.broadcast(id)
+      }
+      if (user.id !== lesson.teacherId && lesson.status !== 'LIVE') return { waiting: true, lesson: await this.dto(lesson) }
+      // Room creation is server-only; LiveKit room.auto_create is disabled.
+      const rooms = await this.livekit.listRooms([lesson.roomName])
+      if (!rooms.length) await this.livekit.createRoom({ name: lesson.roomName, emptyTimeout: 600, departureTimeout: 60, maxParticipants: 101 })
+      const admissionId = randomUUID()
+      await this.db.lessonMember.update({ where: { lessonId_userId: { lessonId: id, userId: user.id } }, data: { admissionId } })
+      const token = new AccessToken(process.env.LIVEKIT_API_KEY, process.env.LIVEKIT_API_SECRET, { identity: user.id, name: user.name, ttl: '2m', metadata: JSON.stringify({ admissionId, userId: user.id, role: user.id === lesson.teacherId ? 'teacher' : 'student' }) })
+      token.addGrant({ roomJoin: true, room: lesson.roomName, canPublish: true, canSubscribe: true, canPublishData: false })
+      return { waiting: false, lesson: await this.dto(lesson), token: await token.toJwt(), livekitUrl: process.env.LIVEKIT_PUBLIC_URL || `${process.env.PUBLIC_ORIGIN?.replace(/^http/, 'ws')}/livekit` }
+    })
+  }
+  async connected(id: string, user: PublicUser) {
+    return this.locked(id, async () => {
+      const lesson = await this.access(id, user)
+      if (lesson.status === 'ENDED' || lesson.status === 'CANCELLED') throw new ApiError(lesson.status, '참여할 수 없는 수업입니다.', 409)
+      const participant = await this.livekit.getParticipant(lesson.roomName, user.id).catch(() => null)
+      if (!participant) throw new ApiError('NOT_CONNECTED', '영상 서버에 연결한 후 다시 시도해 주세요.', 409)
+      await this.applyParticipant(lesson, participant)
+      await this.broadcast(id)
+      return this.dto(await this.get(id))
+    })
+  }
+  async applyParticipant(lesson: any, participant: any) {
+    const member = await this.db.lessonMember.findUnique({ where: { lessonId_userId: { lessonId: lesson.id, userId: participant.identity } } })
+    let metadata: any = {}
+    try { metadata = JSON.parse(participant.metadata || '{}') } catch {}
+    if (!member || member.banned || member.admissionId !== metadata.admissionId || ['ENDED','CANCELLED'].includes(lesson.status)) {
+      await this.livekit.removeParticipant(lesson.roomName, participant.identity).catch(() => {})
+      return
+    }
+    const previous = await this.db.attendance.findFirst({ where: { lessonId: lesson.id, userId: member.userId, leftAt: null } })
+    if (previous && previous.livekitSid !== participant.sid) {
+      await this.db.attendance.update({ where: { id: previous.id }, data: { leftAt: new Date() } })
+    }
+    if (!previous || previous.livekitSid !== participant.sid) await this.db.attendance.upsert({ where: { livekitSid: participant.sid }, create: { lessonId: lesson.id, userId: member.userId, admissionId: member.admissionId!, livekitSid: participant.sid }, update: {} })
+    await this.db.lessonMember.update({ where: { lessonId_userId: { lessonId: lesson.id, userId: member.userId } }, data: { online: true, disconnectedAt: null } })
+    if (member.userId === lesson.teacherId && lesson.status === 'SCHEDULED') {
+      await this.db.lesson.updateMany({ where: { id: lesson.id, status: 'SCHEDULED' }, data: { status: 'LIVE', startedAt: new Date() } })
+      if (lesson.accessMode === 'OPEN') this.notifyAllUsers()
+    }
+  }
+  async leave(id: string, user: PublicUser) {
+    return this.locked(id, async () => {
+      const lesson = await this.access(id, user)
+      if (!lesson.members.some(member => member.userId === user.id)) return { ok: true }
+      await this.db.lessonMember.update({ where: { lessonId_userId: { lessonId: id, userId: user.id } }, data: { admissionId: null } })
+      await this.livekit.removeParticipant(lesson.roomName, user.id).catch(() => {})
+      await this.offline(id, user.id)
+      if ((lesson.share as Share | null)?.ownerId === user.id) await this.db.lesson.update({ where: { id }, data: { share: Prisma.DbNull } })
+      await this.broadcast(id)
+      return { ok: true }
+    })
+  }
+  async offline(id: string, userId: string, sid?: string) {
+    // A delayed disconnect from an old tab must not mark its replacement offline.
+    if (sid) {
+      const latest = await this.db.attendance.findFirst({ where: { lessonId: id, userId, leftAt: null } })
+      if (latest?.livekitSid !== sid) return
+    }
+    await this.db.$transaction([
+      this.db.attendance.updateMany({ where: { lessonId: id, userId, leftAt: null }, data: { leftAt: new Date() } }),
+      this.db.lessonMember.updateMany({ where: { lessonId: id, userId, online: true }, data: { online: false, disconnectedAt: new Date(), raised: false } }),
+    ])
+  }
+  async end(id: string, user: PublicUser) {
+    return this.locked(id, async () => {
+      const lesson = await this.access(id, user, false, true)
+      if (lesson.status === 'ENDED') return this.dto(lesson)
+      if (lesson.status !== 'LIVE') throw new ApiError('CONFLICT', '진행 중인 수업만 종료할 수 있습니다.', 409)
+      await this.db.$transaction([
+        this.db.lesson.update({ where: { id }, data: { status: 'ENDED', endedAt: new Date(), share: Prisma.DbNull } }),
+        this.db.lessonMember.updateMany({ where: { lessonId: id }, data: { online: false, raised: false, admissionId: null } }),
+        this.db.attendance.updateMany({ where: { lessonId: id, leftAt: null }, data: { leftAt: new Date() } }),
+      ])
+      await this.broadcast(id)
+      await this.livekit.deleteRoom(lesson.roomName).catch(() => {})
+      if (lesson.accessMode === 'OPEN') this.notifyAllUsers()
+      return this.dto(await this.get(id))
+    })
+  }
+  async kick(id: string, user: PublicUser, input: any) {
+    const { userId } = z.object({ userId: z.string().uuid() }).parse(input)
+    return this.locked(id, async () => {
+      const lesson = await this.access(id, user, true, true)
+      if (userId === lesson.teacherId || !lesson.members.some(member => member.userId === userId)) throw new ApiError('VALIDATION', '퇴장시킬 학생을 선택해 주세요.')
+      await this.db.lessonMember.update({ where: { lessonId_userId: { lessonId: id, userId } }, data: { banned: true, admissionId: null, raised: false } })
+      this.disconnectUser(id, userId, 'KICKED')
+      await this.livekit.removeParticipant(lesson.roomName, userId).catch(() => {})
+      await this.offline(id, userId)
+      const share = lesson.share as Share | null
+      if (share?.ownerId === userId) await this.db.lesson.update({ where: { id }, data: { share: Prisma.DbNull } })
+      await this.broadcast(id)
+      return { ok: true }
+    })
+  }
+  async invite(id: string, user: PublicUser, input: any) {
+    const { studentIds } = z.object({ studentIds: ids }).parse(input)
+    return this.locked(id, async () => {
+      const lesson = await this.access(id, user, false, true)
+      if (!['SCHEDULED','LIVE'].includes(lesson.status)) throw new ApiError('CONFLICT', '종료된 수업에는 초대할 수 없습니다.', 409)
+      await this.validateRoster(user.id, studentIds)
+      await this.db.$transaction(studentIds.map(userId => this.db.lessonMember.upsert({ where: { lessonId_userId: { lessonId: id, userId } }, create: { lessonId: id, userId }, update: {} })))
+      await this.broadcast(id)
+      return this.dto(await this.get(id))
+    })
+  }
+  async snapshot(id: string, user?: PublicUser) {
+    const lesson = user ? await this.access(id, user) : await this.get(id)
+    const users = await this.db.user.findMany({ where: { id: { in: lesson.members.map(member => member.userId) } } })
+    const messages = await this.db.message.findMany({ where: { lessonId: id }, orderBy: { createdAt: 'desc' }, take: 100 })
+    const share = lesson.share as Share | null
+    const strokes = share ? await this.db.stroke.findMany({ where: { lessonId: id, shareId: share.id }, orderBy: { createdAt: 'asc' } }) : []
+    return {
+      lessonId: id, lesson: await this.dto(lesson), seq: lesson.seq, serverTime: new Date().toISOString(),
+      participants: lesson.members.filter(member => !member.banned).map(member => ({ user: publicUser(users.find(user => user.id === member.userId)!), online: member.online, raised: member.raised })),
+      messages: messages.reverse().map(({ lessonId, ...message }) => message), share,
+      strokes: strokes.map(({ id, authorId, shareId, page, tool, color, points, deleted }) => ({ id, authorId, shareId, page, tool, color, points, deleted })),
+    }
+  }
+  async broadcast(id: string) {
+    await this.db.lesson.update({ where: { id }, data: { seq: { increment: 1 } } })
+    const snapshot = await this.snapshot(id)
+    await this.publishSnapshot(id, snapshot)
+    this.notifyUsers(snapshot.participants.map(member => member.user.id))
+    return snapshot
+  }
+  materialDto(material: any) { return { id: material.id, name: material.name, type: material.kind, size: material.size, duration: material.duration ?? undefined, pages: material.pages ?? undefined, createdAt: material.createdAt.toISOString() } }
+  async command(user: PublicUser, command: Command) {
+    return this.locked(command.lessonId, async () => {
+      const { lessonId: id, type, payload: p = {} } = command
+      const lesson = await this.access(id, user, true)
+      const share = lesson.share as Share | null
+      const requireShare = () => { if (!share) throw new ApiError('NO_SHARE', '공유 중인 콘텐츠가 없습니다.', 409); return share }
+      const teacher = () => { if (lesson.teacherId !== user.id) throw new ApiError('FORBIDDEN', '선생님만 조작할 수 있습니다.', 403) }
+      const writeShare = async (next: Share | null) => this.db.lesson.update({ where: { id }, data: { share: next ? next as any : Prisma.DbNull } })
+      if (type === 'chat.send') {
+        const body = z.object({ text: z.string().trim().min(1).max(2000), clientId: z.string().min(1).max(100) }).parse(p)
+        await this.db.message.upsert({ where: { lessonId_userId_clientId: { lessonId: id, userId: user.id, clientId: body.clientId } }, create: { lessonId: id, userId: user.id, userName: user.name, ...body }, update: {} })
+      } else if (type === 'hand.set') {
+        const { raised } = z.object({ raised: z.boolean() }).parse(p)
+        await this.db.lessonMember.update({ where: { lessonId_userId: { lessonId: id, userId: user.id } }, data: { raised } })
+      } else if (type === 'share.start') {
+        const body = z.object({ type: z.enum(['screen','media','document']), materialId: z.string().uuid().optional() }).parse(p)
+        if (body.type === 'screen') {
+          await writeShare({ id: randomUUID(), type: 'screen', ownerId: user.id, page: 1, playing: false, position: 0, updatedAt: new Date().toISOString() })
+        } else {
+          teacher()
+          await this.locked(`material:${body.materialId}`, async () => {
+            const material = body.materialId ? await this.db.material.findUnique({ where: { id: body.materialId } }) : null
+            if (!material || material.ownerId !== user.id || material.kind !== body.type) throw new ApiError('INVALID_MATERIAL', '공유할 자료를 찾을 수 없습니다.', 404)
+            await writeShare({ id: randomUUID(), type: body.type, ownerId: user.id, materialId: material.id, material: this.materialDto(material), page: 1, playing: false, position: 0, updatedAt: new Date().toISOString() })
+          })
+        }
+      } else if (type === 'share.stop') {
+        if (share && share.ownerId !== user.id && user.id !== lesson.teacherId) throw new ApiError('FORBIDDEN', '자신의 화면 공유만 중지할 수 있습니다.', 403)
+        await writeShare(null)
+      } else if (type === 'media.update') {
+        teacher(); const active = requireShare()
+        if (active.type !== 'media') throw new ApiError('CONFLICT', '영상 공유 상태가 아닙니다.', 409)
+        const body = z.object({ playing: z.boolean(), position: z.number().finite().min(0) }).parse(p)
+        if (active.material?.duration && body.position > active.material.duration + 1) throw new ApiError('VALIDATION', '재생 위치를 확인해 주세요.')
+        await writeShare({ ...active, ...body, updatedAt: new Date().toISOString() })
+      } else if (type === 'document.page') {
+        teacher(); const active = requireShare()
+        const { page } = z.object({ page: z.number().int().min(1) }).parse(p)
+        if (active.type !== 'document' || page > (active.material?.pages || 1)) throw new ApiError('VALIDATION', '문서 페이지를 확인해 주세요.')
+        await writeShare({ ...active, page, updatedAt: new Date().toISOString() })
+      } else if (type === 'stroke.add') {
+        const active = requireShare()
+        const body = z.object({ id: z.string().uuid(), shareId: z.string().uuid(), page: z.number().int().min(1), tool: z.enum(['pen','highlighter']), color: z.string().regex(/^#[0-9a-fA-F]{6}$/), points: z.array(z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) })).min(1).max(20000) }).parse(p)
+        if (body.shareId !== active.id || body.page !== active.page) throw new ApiError('STALE_SHARE', '공유 화면이 변경되었습니다.', 409)
+        const existing = await this.db.stroke.findUnique({ where: { id: body.id } })
+        if (existing && (existing.authorId !== user.id || existing.lessonId !== id)) throw new ApiError('CONFLICT', '중복된 판서 번호입니다.', 409)
+        if (!existing) {
+          await this.db.$transaction([
+            this.db.stroke.create({ data: { ...body, lessonId: id, authorId: user.id } }),
+            this.db.annotationOperation.deleteMany({ where: { lessonId: id, actorId: user.id, shareId: active.id, page: active.page, undone: true } }),
+            this.db.annotationOperation.create({ data: { lessonId: id, actorId: user.id, shareId: active.id, page: active.page, patches: [{ id: body.id, before: true, after: false }] } }),
+          ])
+        }
+      } else if (type === 'stroke.erase') {
+        const active = requireShare()
+        const { ids: strokeIds } = z.object({ ids: z.array(z.string().uuid()).max(500) }).parse(p)
+        const where = { id: { in: strokeIds }, lessonId: id, shareId: active.id, page: active.page, ...(user.id === lesson.teacherId ? {} : { authorId: user.id }) }
+        const targets = await this.db.stroke.findMany({ where: { ...where, deleted: false } })
+        if (targets.length) await this.db.$transaction([
+          this.db.stroke.updateMany({ where, data: { deleted: true } }),
+          this.db.annotationOperation.deleteMany({ where: { lessonId: id, actorId: user.id, shareId: active.id, page: active.page, undone: true } }),
+          this.db.annotationOperation.create({ data: { lessonId: id, actorId: user.id, shareId: active.id, page: active.page, patches: targets.map(stroke => ({ id: stroke.id, before: false, after: true })) } }),
+        ])
+      } else if (type === 'annotation.undo' || type === 'annotation.redo') {
+        const active = requireShare()
+        const redo = type === 'annotation.redo'
+        const operation = await this.db.annotationOperation.findFirst({
+          where: { lessonId: id, actorId: user.id, shareId: active.id, page: active.page, undone: redo },
+          orderBy: redo ? { touchedAt: 'desc' } : { createdAt: 'desc' },
+        })
+        if (operation) await this.db.$transaction([
+          ...(operation.patches as { id: string; before: boolean; after: boolean }[]).map(patch => this.db.stroke.updateMany({ where: { id: patch.id, lessonId: id, shareId: active.id, page: active.page }, data: { deleted: redo ? patch.after : patch.before } })),
+          this.db.annotationOperation.update({ where: { id: operation.id }, data: { undone: !redo } }),
+        ])
+      } else if (type === 'annotation.clear') {
+        const active = requireShare()
+        const where = { lessonId: id, shareId: active.id, page: active.page, ...(user.id === lesson.teacherId ? {} : { authorId: user.id }) }
+        const targets = await this.db.stroke.findMany({ where, select: { id: true } })
+        const targetIds = new Set(targets.map(stroke => stroke.id))
+        const operations = await this.db.annotationOperation.findMany({ where: { lessonId: id, shareId: active.id, page: active.page } })
+        await this.db.$transaction([
+          this.db.stroke.updateMany({ where, data: { deleted: true } }),
+          ...operations.flatMap(operation => {
+            const previous = operation.patches as { id: string; before: boolean; after: boolean }[]
+            const patches = previous.filter(patch => !targetIds.has(patch.id))
+            if (patches.length === previous.length) return []
+            return [patches.length ? this.db.annotationOperation.update({ where: { id: operation.id }, data: { patches } }) : this.db.annotationOperation.delete({ where: { id: operation.id } })]
+          }),
+        ])
+      } else throw new ApiError('UNKNOWN_COMMAND', '지원하지 않는 수업 조작입니다.')
+      return this.broadcast(id)
+    })
+  }
+  async authorizeLivekit(uri: string, proxySecret: string, authorization?: string) {
+    if (!process.env.PROXY_AUTH_SECRET || proxySecret !== process.env.PROXY_AUTH_SECRET) throw new ApiError('FORBIDDEN', '접근할 수 없습니다.', 403)
+    const url = new URL(uri, 'http://internal')
+    const queryToken = url.searchParams.get('access_token')
+    const bearerToken = authorization?.match(/^Bearer ([^\s]+)$/i)?.[1]
+    // Native SDKs use a header; browser clients may still use a query token.
+    // Conflicting credentials must never select a different admission implicitly.
+    if (queryToken && bearerToken && queryToken !== bearerToken) throw new ApiError('UNAUTHENTICATED', '입장 토큰이 일치하지 않습니다.', 401)
+    const token = bearerToken || queryToken
+    if (!token) throw new ApiError('UNAUTHENTICATED', '입장 토큰이 필요합니다.', 401)
+    let claims: any
+    try { claims = (await jwtVerify(token, new TextEncoder().encode(process.env.LIVEKIT_API_SECRET), { algorithms: ['HS256'], issuer: process.env.LIVEKIT_API_KEY })).payload } catch { throw new ApiError('UNAUTHENTICATED', '입장 토큰이 유효하지 않습니다.', 401) }
+    const lesson = await this.db.lesson.findUnique({ where: { roomName: claims.video?.room }, include: { members: true } })
+    const member = lesson?.members.find(member => member.userId === claims.sub)
+    let metadata: any = {}
+    try { metadata = JSON.parse(claims.metadata || '{}') } catch {}
+    if (!lesson || !member || member.banned || member.admissionId !== metadata.admissionId || !['LIVE','SCHEDULED'].includes(lesson.status) || (lesson.status === 'SCHEDULED' && lesson.teacherId !== member.userId)) throw new ApiError('FORBIDDEN', '수업에 참여할 권한이 없습니다.', 403)
+    return { ok: true }
+  }
+  async webhook(body: string, authorization: string) {
+    const event = await this.receiver.receive(body, authorization).catch(() => { throw new ApiError('INVALID_SIGNATURE', '유효하지 않은 webhook입니다.', 401) })
+    if (event.id && await this.db.webhookEvent.findUnique({ where: { id: event.id } })) return { ok: true }
+    const lesson = event.room?.name ? await this.db.lesson.findUnique({ where: { roomName: event.room.name }, include: { members: true } }) : null
+    if (lesson) await this.locked(lesson.id, async () => {
+      if (event.event === 'participant_joined' && event.participant) await this.applyParticipant(await this.get(lesson.id), event.participant)
+      if (event.event === 'participant_left' && event.participant) await this.offline(lesson.id, event.participant.identity, event.participant.sid)
+      if (event.event === 'track_unpublished' && event.participant && event.track?.source === 3) {
+        const current = await this.get(lesson.id)
+        const share = current.share as Share | null
+        if (share?.type === 'screen' && share.ownerId === event.participant.identity) await this.db.lesson.update({ where: { id: lesson.id }, data: { share: Prisma.DbNull } })
+      }
+      await this.broadcast(lesson.id)
+    })
+    if (event.id) await this.db.webhookEvent.upsert({ where: { id: event.id }, create: { id: event.id }, update: {} })
+    return { ok: true }
+  }
+  async reconcile() {
+    const lessons = await this.db.lesson.findMany({ where: { status: { in: ['LIVE','SCHEDULED'] }, OR: [{ members: { some: { admissionId: { not: null } } } }, { share: { not: Prisma.DbNull } }] }, include: { members: true } })
+    for (const candidate of lessons) await this.locked(candidate.id, async () => {
+      const lesson = await this.get(candidate.id)
+      let participants: any[]
+      try { participants = await this.livekit.listParticipants(lesson.roomName) } catch (error: any) { if (error.status !== 404 && error.code !== 'not_found') return; participants = [] }
+      let changed = false
+      for (const participant of participants) {
+        const member = lesson.members.find(member => member.userId === participant.identity)
+        if (!member?.online || member.banned) { await this.applyParticipant(lesson, participant); changed = true }
+      }
+      for (const member of lesson.members) if (member.online && !participants.some(participant => participant.identity === member.userId)) { await this.offline(lesson.id, member.userId); changed = true }
+      const share = lesson.share as Share | null
+      if (share) {
+        const owner = await this.db.lessonMember.findUnique({ where: { lessonId_userId: { lessonId: lesson.id, userId: share.ownerId } } })
+        if (!owner?.online && owner?.disconnectedAt && Date.now() - owner.disconnectedAt.getTime() > 30000) { await this.db.lesson.update({ where: { id: lesson.id }, data: { share: Prisma.DbNull } }); changed = true }
+      }
+      if (changed) await this.broadcast(lesson.id)
+    })
+    await this.db.loginSession.deleteMany({ where: { expiresAt: { lt: new Date() } } })
+    await this.db.webhookEvent.deleteMany({ where: { createdAt: { lt: new Date(Date.now() - 7 * 86400000) } } })
+  }
+}

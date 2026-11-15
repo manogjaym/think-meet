@@ -1,0 +1,81 @@
+name: Shared feature checks
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: shared-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  shared:
+    name: Contracts and feature parity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          lfs: true
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - name: Check stored generated files before any build
+        run: npm run shared:check
+      - name: Require a cross-platform change record
+        if: github.event_name == 'pull_request'
+        run: |
+          node ci/changed-files.mjs
+          npm run shared:check -- --changed-files changed-files.txt
+      - name: Test the contract and feature guards
+        run: npm run test:shared
+  web-server:
+    name: Web and server
+    needs: shared
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          lfs: true
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - run: npm ci --prefix server
+      - run: npm ci --prefix web
+      - run: npm run generate --prefix server
+      - run: npm run verify
+  native:
+    name: Android and iOS
+    needs: shared
+    runs-on: macos-15
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          lfs: true
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Check contracts, run common core tests and build both targets
+        working-directory: mobile
+        run: ./gradlew :composeApp:checkDesignTokens :composeApp:checkContracts :composeApp:testDebugUnitTest :composeApp:assembleDebug :composeApp:linkDebugFrameworkIosSimulatorArm64 --console=plain
+      - name: Build the iPhone/iPad host and verify shared fonts
+        working-directory: mobile
+        run: >-
+          xcodebuild -project iosApp/ThinkMeet.xcodeproj -scheme ThinkMeet
+          -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator'
+          ARCHS=arm64 SKIP_KOTLIN_BUILD=YES CODE_SIGNING_ALLOWED=NO
+          KMP_FRAMEWORK_DIR='$(SRCROOT)/../composeApp/build/bin/iosSimulatorArm64/debugFramework'
+          -derivedDataPath /tmp/thinkmeet-ci-ios build

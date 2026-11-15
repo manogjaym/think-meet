@@ -1,0 +1,96 @@
+{
+  "version": 1,
+  "path": "/socket.io",
+  "events": {
+    "subscribe": {
+      "direction": "client",
+      "schema": "SubscribeInput",
+      "ack": "CommandAck",
+      "feature": "classroom.core"
+    },
+    "command": {
+      "direction": "client",
+      "schema": "CommandEnvelope",
+      "ack": "CommandAck"
+    },
+    "stroke.preview": {
+      "direction": "bidirectional",
+      "schema": "StrokePreview",
+      "feature": "classroom.core"
+    },
+    "snapshot": {
+      "direction": "server",
+      "schema": "MeetingSnapshot"
+    },
+    "lessons:changed": {
+      "direction": "server",
+      "schema": null
+    },
+    "room:error": {
+      "direction": "server",
+      "schema": "RealtimeError"
+    },
+    "session:replaced": {
+      "direction": "server",
+      "schema": "SubscribeInput"
+    }
+  },
+  "commands": {
+    "chat.send": {
+      "payload": "ChatSendPayload",
+      "feature": "classroom.core"
+    },
+    "hand.set": {
+      "payload": "HandSetPayload",
+      "feature": "classroom.core"
+    },
+    "share.start": {
+      "payload": "ShareStartPayload",
+      "feature": "classroom.core"
+    },
+    "share.stop": {
+      "payload": "EmptyPayload",
+      "feature": "classroom.core",
+      "cleanup": true
+    },
+    "media.update": {
+      "payload": "MediaUpdatePayload",
+      "feature": "classroom.core"
+    },
+    "document.page": {
+      "payload": "DocumentPagePayload",
+      "feature": "classroom.core"
+    },
+    "stroke.add": {
+      "payload": "StrokeAddPayload",
+      "feature": "classroom.core"
+    },
+    "stroke.erase": {
+      "payload": "StrokeErasePayload",
+      "feature": "classroom.core"
+    },
+    "annotation.undo": {
+      "payload": "EmptyPayload",
+      "feature": "classroom.core"
+    },
+    "annotation.redo": {
+      "payload": "EmptyPayload",
+      "feature": "classroom.core"
+    },
+    "annotation.clear": {
+      "payload": "EmptyPayload",
+      "feature": "classroom.core"
+    }
+  },
+  "handshake": {
+    "auth": {
+      "platform": "web | android | ios",
+      "contractRevision": "nonnegative integer"
+    },
+    "headers": {
+      "platform": "X-ThinkMeet-Platform",
+      "revision": "X-ThinkMeet-Contract-Revision"
+    },
+    "authentication": "Session cookie only. Capability metadata never grants permissions."
+  }
+}

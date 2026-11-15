@@ -1,0 +1,17 @@
+{
+  "id": "meeting.example",
+  "title": "새 기능 제목",
+  "stage": "planned",
+  "requiresRevision": 2,
+  "defaultEnabled": false,
+  "platforms": ["web", "android", "ios"],
+  "spec": "meeting-example.md",
+  "contracts": {"operations": [], "events": [], "commands": []},
+  "implementation": {
+    "server": {"status": "pending", "files": []},
+    "web": {"status": "pending", "files": []},
+    "android": {"status": "pending", "files": []},
+    "ios": {"status": "pending", "files": []}
+  },
+  "verification": {}
+}

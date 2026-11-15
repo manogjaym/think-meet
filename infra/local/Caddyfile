@@ -1,0 +1,57 @@
+{
+  log {
+    format filter {
+      wrap json
+      fields {
+        request>uri delete
+      }
+    }
+  }
+  admin off
+  default_sni {$LAN_IP}
+  auto_https disable_redirects
+  servers {
+    protocols h1 h2
+  }
+}
+https://{$LAN_IP}, https://localhost, https://127.0.0.1 {
+  tls internal
+  encode zstd gzip
+  header {
+    X-Content-Type-Options nosniff
+    Referrer-Policy no-referrer
+    Permissions-Policy "camera=(self), microphone=(self), display-capture=(self)"
+  }
+  @internal path /api/v1/internal/* /internal/*
+  respond @internal 404
+  handle /local-ca.crt {
+    root * /data/caddy/pki/authorities/local
+    rewrite * /root.crt
+    header Content-Type application/x-x509-ca-cert
+    header Content-Disposition "attachment; filename=think-meet-root.crt"
+    file_server
+  }
+  handle /api/* {
+    reverse_proxy api:3000
+  }
+  handle /socket.io/* {
+    reverse_proxy api:3000
+  }
+  handle /livekit/* {
+    route {
+      forward_auth api:3000 {
+        uri /internal/livekit-auth
+        header_up -Connection
+        header_up -Upgrade
+        header_up X-Proxy-Secret {$PROXY_AUTH_SECRET}
+      }
+      uri strip_prefix /livekit
+      reverse_proxy livekit:7880
+    }
+  }
+  handle {
+    root * /srv
+    try_files {path} /index.html
+    file_server
+  }
+}

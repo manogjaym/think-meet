@@ -52,4 +52,4 @@ else
   python3 loadtest/manage.py "$@" --no-build
 fi
 printf '\n테스트 준비가 끝났습니다. 출력된 참여 링크에서 teacher1로 로그인하세요.\n'
-printf '전체 중지: %s/stop-test.command\n' "$(pwd)"
+printf '전체 중지: %s/scripts/stop-test.command\n' "$(pwd)"

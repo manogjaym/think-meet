@@ -38,8 +38,8 @@ python3 loadtest/manage.py start --students 5 --no-build
 ## 무작위 퇴장·재입장
 
 ```sh
-./start-test.command --churn                # 서버와 기본 학생 5명
-./start-test.command --students 5 --churn   # 인원 지정
+./scripts/start-test.command --churn                # 서버와 기본 학생 5명
+./scripts/start-test.command --students 5 --churn   # 인원 지정
 python3 loadtest/manage.py start --students 5 --churn  # 서버 실행 중
 ```
 
@@ -96,6 +96,6 @@ TEST_LOAD_ROOM=1 npx playwright test e2e/load-room.spec.ts --output=test-results
 
 ## 서버와 함께 실행·중지
 
-`infra/local/start-test.command`는 PostgreSQL·MinIO·서버와 학생 5명을 시작합니다. 학생도 같은 `think-meet` Compose 그룹에 포함됩니다. 학생 수를 줄이면 제외된 학생 컨테이너만 정리하며 API·DB·스토리지는 유지합니다. 이전 `think-meet-loadtest` 그룹의 학생은 다음 시작 때 중지·정리하고 결과 파일은 보존합니다.
+`infra/local/scripts/start-test.command`는 PostgreSQL·MinIO·서버와 학생 5명을 시작합니다. 학생도 같은 `think-meet` Compose 그룹에 포함됩니다. 학생 수를 줄이면 제외된 학생 컨테이너만 정리하며 API·DB·스토리지는 유지합니다. 이전 `think-meet-loadtest` 그룹의 학생은 다음 시작 때 중지·정리하고 결과 파일은 보존합니다.
 
-`stop-test.command` 또는 `scripts/stop.sh`는 학생을 먼저 퇴장시킨 뒤 API·LiveKit·웹·PostgreSQL·MinIO를 중지합니다. 데이터·인증서 볼륨은 유지합니다. `python3 loadtest/manage.py stop`은 학생만 중지합니다. 기본은 캐시 이미지이며 코드 변경을 반영하려면 `start-test.command --build`를 사용하세요.
+`scripts/stop-test.command` 또는 `scripts/stop.sh`는 학생을 먼저 퇴장시킨 뒤 API·LiveKit·웹·PostgreSQL·MinIO를 중지합니다. 데이터·인증서 볼륨은 유지합니다. `python3 loadtest/manage.py stop`은 학생만 중지합니다. 기본은 캐시 이미지이며 코드 변경을 반영하려면 `scripts/start-test.command --build`를 사용하세요.

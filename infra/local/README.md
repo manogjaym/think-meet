@@ -4,25 +4,25 @@ Docker Desktop·Compose와 Python 3로 웹·API·LiveKit·PostgreSQL·MinIO를 �
 
 ## 테스트 시작·중지
 
-Docker Desktop을 먼저 실행하세요. Python 3도 필요합니다. Finder에서 `start-test.command`를 더블클릭하면 PostgreSQL·MinIO·서버·가상 학생 5명을 시작합니다. 모든 컨테이너는 Docker Desktop의 `think-meet` 그룹에 표시됩니다. 터미널에서는 어느 경로에서든 실행할 수 있습니다.
+Docker Desktop을 먼저 실행하세요. Python 3도 필요합니다. Finder에서 `scripts/start-test.command`를 더블클릭하면 PostgreSQL·MinIO·서버·가상 학생 5명을 시작합니다. 모든 컨테이너는 Docker Desktop의 `think-meet` 그룹에 표시됩니다. 터미널에서는 어느 경로에서든 실행할 수 있습니다.
 
 ```sh
-/Users/pang/Project/woongjin/think-meet/infra/local/start-test.command
-/Users/pang/Project/woongjin/think-meet/infra/local/stop-test.command
+/Users/pang/Project/woongjin/think-meet/infra/local/scripts/start-test.command
+/Users/pang/Project/woongjin/think-meet/infra/local/scripts/stop-test.command
 ```
 
 `infra/local/`에서 사용할 옵션:
 
 ```sh
-./start-test.command 20               # 학생 20명
-./start-test.command --students 5 --build  # 코드 변경 후 재빌드
-./start-test.command --churn          # 무작위 퇴장·재입장
+./scripts/start-test.command 20               # 학생 20명
+./scripts/start-test.command --students 5 --build  # 코드 변경 후 재빌드
+./scripts/start-test.command --churn          # 무작위 퇴장·재입장
 ```
 
 - 기본값은 기존 이미지 재사용입니다. 이미지가 없거나 `--build`를 지정하면 빌드합니다.
 - 종료하지 않은 테스트 수업은 재사용합니다. 종료된 경우 새 무제한 수업을 만들고 참여 링크를 출력합니다.
 - `--churn`: 학생별로 1분마다 50% 확률로 퇴장하고 1분 뒤 재입장합니다. 옵션이 없으면 계속 접속합니다. 최신 학생 이미지는 캐시를 이용해 빌드합니다.
-- `stop-test.command`: 학생을 먼저 퇴장시키고 API·LiveKit·웹·PostgreSQL·MinIO를 중지합니다. 데이터·인증서 볼륨과 다른 프로젝트의 컨테이너는 보존합니다.
+- `scripts/stop-test.command`: 학생을 먼저 퇴장시키고 API·LiveKit·웹·PostgreSQL·MinIO를 중지합니다. 데이터·인증서 볼륨과 다른 프로젝트의 컨테이너는 보존합니다.
 
 교사·일반 학생·가상 학생의 공통 테스트 비밀번호는 `test123`입니다. Mac의 LAN IP가 바뀌면 아래 주소 변경 절차를 먼저 진행하세요.
 

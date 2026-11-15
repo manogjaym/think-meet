@@ -6,9 +6,13 @@ AWS 인프라와 로컬 Docker 설정을 관리합니다. Terraform은 서버 �
 
 ## 로컬 실행 설정
 
-`local/`의 `Caddyfile`, `livekit.yaml`, `minio-policy.json`을 `server/compose.yaml`이 읽습니다. 실행 명령과 `.env`는 `server/`에서 관리합니다. 실행은 [서버 안내](../server/README.md)를 따릅니다.
+`local/`에서 Compose·실행 스크립트·`.env`·인증서·백업·가상 학생 도구를 함께 관리합니다. 실행 위치와 명령은 [로컬 실행 안내](local/README.md)를 따릅니다. 서버 소스·Prisma·계정 CLI·서버 Dockerfile은 `server/`에 둡니다.
 
 `livekit.yaml`은 서버 초기화 스크립트가 생성합니다. 인증값이 들어 있으므로 Git에서 제외하며, 이동할 때 내용과 권한을 보존합니다. AWS Terraform 구성 위치와 상태 키는 유지합니다.
+
+로컬 PostgreSQL·MinIO도 `think-meet` Compose 프로젝트에서 자동 시작·중지합니다. 외부 Docker 네트워크나 기존 컨테이너를 별도로 준비할 필요는 없습니다. 전용 볼륨과 기존 데이터 이전 절차는 [로컬 실행 안내](local/README.md#서비스-실행접속)를 확인하세요.
+
+`local/minio/Dockerfile`은 고정된 공식 서버·관리 도구 소스로 로컬 MinIO 이미지를 빌드합니다. 비밀 설정이 있는 `local/` 전체를 빌드에 보내지 않고 이 하위 폴더만 빌드 문맥으로 사용합니다.
 
 ## 구성
 

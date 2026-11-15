@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { expect, type APIRequestContext, type Page } from '@playwright/test'
 
-export const env = Object.fromEntries(readFileSync(resolve('../server/.env'),'utf8').split('\n').filter(line=>line && !line.startsWith('#')).map(line=>{ const at=line.indexOf('=');return [line.slice(0,at),line.slice(at+1)] }))
+export const env = Object.fromEntries(readFileSync(resolve('../infra/local/.env'),'utf8').split('\n').filter(line=>line && !line.startsWith('#')).map(line=>{ const at=line.indexOf('=');return [line.slice(0,at),line.slice(at+1)] }))
 export const password = process.env.TEST_PASSWORD || env.SEED_PASSWORD
 export async function login(page: Page, username: string) {
   await page.goto('/login')

@@ -4,7 +4,7 @@ Chromium 컨테이너가 전용 계정으로 실제 수업에 입장해 가상 �
 
 ## 시작·상태·중지
 
-기본 서비스가 실행된 상태에서 `server/` 폴더에서 실행하세요.
+기본 서비스가 실행된 상태에서 `infra/local/` 폴더에서 실행하세요.
 
 ```sh
 python3 loadtest/manage.py start --students 5
@@ -64,7 +64,7 @@ python3 loadtest/manage.py start --students 5 --churn  # 서버 실행 중
 
 ```sh
 # 개별 학생 로그
-docker compose --project-directory . -f .loadtest/compose.yaml logs --tail 5 student-001
+docker compose -f compose.yaml -f .loadtest/compose.yaml logs --tail 5 student-001
 # 컨테이너 자원 사용량
 docker stats --no-stream
 ```
@@ -88,7 +88,7 @@ node --test loadtest/worker-tests.mjs
 실행 중인 방에서 교사 영상 수신을 확인하려면:
 
 ```sh
-cd ../web
+cd ../../web
 TEST_LOAD_ROOM=1 npx playwright test e2e/load-room.spec.ts --output=test-results/virtual-room
 ```
 
@@ -96,4 +96,6 @@ TEST_LOAD_ROOM=1 npx playwright test e2e/load-room.spec.ts --output=test-results
 
 ## 서버와 함께 실행·중지
 
-`server/start-test.command`는 서버와 학생 5명을 시작하고, `stop-test.command`는 학생·API·LiveKit·웹을 중지합니다. PostgreSQL·MinIO·데이터·인증서는 유지합니다. 기본은 캐시 이미지이며 코드 변경을 반영하려면 `start-test.command --build`를 사용하세요.
+`infra/local/start-test.command`는 PostgreSQL·MinIO·서버와 학생 5명을 시작합니다. 학생도 같은 `think-meet` Compose 그룹에 포함됩니다. 학생 수를 줄이면 제외된 학생 컨테이너만 정리하며 API·DB·스토리지는 유지합니다. 이전 `think-meet-loadtest` 그룹의 학생은 다음 시작 때 중지·정리하고 결과 파일은 보존합니다.
+
+`stop-test.command` 또는 `scripts/stop.sh`는 학생을 먼저 퇴장시킨 뒤 API·LiveKit·웹·PostgreSQL·MinIO를 중지합니다. 데이터·인증서 볼륨은 유지합니다. `python3 loadtest/manage.py stop`은 학생만 중지합니다. 기본은 캐시 이미지이며 코드 변경을 반영하려면 `start-test.command --build`를 사용하세요.

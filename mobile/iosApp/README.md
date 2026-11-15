@@ -12,12 +12,12 @@
 
 ### 로컬 HTTPS 인증서
 
-`server/certs/think-meet-root.crt` 공개 CA를 기기에 설치한 뒤 **설정 → 일반 → 정보 → 인증서 신뢰 설정**에서 전체 신뢰를 켭니다. TLS 검증을 우회하지 않습니다.
+`infra/local/certs/think-meet-root.crt` 공개 CA를 기기에 설치한 뒤 **설정 → 일반 → 정보 → 인증서 신뢰 설정**에서 전체 신뢰를 켭니다. TLS 검증을 우회하지 않습니다.
 
 이미 실행 중인 시뮬레이터에는 `mobile/iosApp/`에서 설치할 수 있습니다.
 
 ```sh
-xcrun simctl keychain booted add-root-cert ../../server/certs/think-meet-root.crt
+xcrun simctl keychain booted add-root-cert ../../infra/local/certs/think-meet-root.crt
 ```
 
 ## 빌드와 공통 리소스

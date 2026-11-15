@@ -1,0 +1,33 @@
+{
+  "id": "local-compose-stack",
+  "summary": "로컬 Compose·실행·초기화·백업·가상 학생 도구와 비공개 설정을 infra/local로 통합하고 기존 think-meet 그룹·볼륨·데이터를 보존합니다.",
+  "scope": "infrastructure",
+  "featureIds": [
+    "classroom.core"
+  ],
+  "platforms": {
+    "server": {
+      "status": "implemented"
+    },
+    "web": {
+      "status": "unchanged",
+      "reason": "Docker 실행 인프라 변경이며 웹 화면·API 계약·기능 공개 정책은 변경하지 않습니다."
+    },
+    "android": {
+      "status": "unchanged",
+      "reason": "로컬 서버 시작 도구만 공통 초기화에 연결하며 Android 앱 코드·화면·계약은 변경하지 않습니다."
+    },
+    "ios": {
+      "status": "implemented",
+      "reason": "iOS 안내의 공개 CA 설치 경로를 infra/local로 갱신했습니다. 앱 코드·화면·계약은 변경하지 않았으며 네이티브 빌드·실행은 인프라 작업 범위에서 제외합니다."
+    }
+  },
+  "verification": [
+    "python3 -m unittest discover -s infra/local/tests -p test_local_stack.py -v: 13/13 통과. 환경 보존·이전 실패 재시도·덮어쓰기 차단·학생 제어·Compose 구성 검사",
+    "node --test infra/local/loadtest/worker-tests.mjs: 5/5 통과. 기존 가상 학생 설정 회귀 검사",
+    "sh -n infra/local/scripts/start.sh infra/local/scripts/stop.sh infra/local/scripts/test-start.sh infra/local/scripts/test-stop.sh mobile/scripts/start-local-server.sh",
+    "npm run shared:check 및 --changed-files 검사: 계약·생성물·플랫폼 상태 확인",
+    "실제 Docker 실행·기존 DB 12개 테이블 457개 행 및 MinIO 파일 2개의 이전 전후 비교: server/VERIFICATION.md",
+    "Compose 빌드·마운트 경로, 기존 로컬 설정의 무손실 이전, 새 위치의 실제 시작·중지 및 데이터 볼륨 보존: infra/local/README.md"
+  ]
+}

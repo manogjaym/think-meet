@@ -24,18 +24,8 @@ command -v python3 >/dev/null 2>&1 || { printf 'Python 3가 필요합니다.\n' 
 command -v docker >/dev/null 2>&1 || { printf 'Docker Desktop을 설치해 주세요.\n' >&2; exit 1; }
 docker info >/dev/null 2>&1 || { printf 'Docker Desktop을 먼저 실행한 뒤 다시 시도해 주세요.\n' >&2; exit 1; }
 docker compose version >/dev/null 2>&1 || { printf 'Docker Compose를 사용할 수 없습니다.\n' >&2; exit 1; }
-for dependency in postgre-container-db-1 minio; do
-  running=$(docker inspect --format '{{.State.Running}}' "$dependency" 2>/dev/null || true)
-  if [ "$running" != true ]; then
-    printf '기존 %s 컨테이너를 실행한 뒤 다시 시도해 주세요. 기존 DB와 파일은 그대로 사용합니다.\n' "$dependency" >&2
-    exit 1
-  fi
-done
-
-if [ ! -f .env ] || [ ! -f ../infra/local/livekit.yaml ]; then
-  printf '최초 연결 설정을 준비합니다.\n'
-  python3 scripts/bootstrap.py
-fi
+printf 'PostgreSQL·MinIO와 로컬 연결 설정을 준비합니다.\n'
+python3 scripts/bootstrap.py
 for image in think-meet-api think-meet-web; do
   if ! docker image inspect "$image" >/dev/null 2>&1; then rebuild=true; fi
 done

@@ -9,10 +9,12 @@
 | [contracts/](contracts/README.md) | REST·Socket 계약과 구버전 호환성 기준 |
 | [features/](features/README.md) | 기능 명세, 구현·검증 상태, 공개 조건 |
 | [design/](design/README.md) | 로고·아이콘·글꼴·문구·디자인·반응형 기준 |
-| [infra/](infra/README.md) | AWS Terraform, 배포·운영 안내, 구성도, `local/` Docker 설정 |
+| [infra/](infra/README.md) | AWS Terraform, 배포·운영 안내, 구성도, [로컬 실행 도구](infra/local/README.md) |
 | [server/](server/README.md) | 인증·권한·수업 상태·데이터 처리 |
 | [web/](web/README.md) | React 화면과 브라우저 기기·미디어 연결 |
 | [mobile/](mobile/README.md) | Android/iOS Compose 화면과 미디어·PiP 연결 |
+
+로컬 서비스는 `infra/local/`에서 `./scripts/start.sh`로 시작하고 `./scripts/stop.sh`로 중지합니다. [설정·데이터 이전과 테스트 안내](infra/local/README.md)를 확인하세요.
 
 ## 공통 명령
 

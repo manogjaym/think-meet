@@ -191,7 +191,7 @@ npm run cli -- users
 | 명령 | 범위·준비 조건 |
 |---|---|
 | `npm run generate && npm run build && npm test` | Prisma 클라이언트 생성·타입 검사·권한/상태/토큰/동시성 단위 테스트. 갱신 서버를 시작하기 전에 `npm run migrate` 적용 |
-| `npm run test:integration` | 정상 Compose 상태에서 `server/` 기준 실행. `.env`와 형제 `web/`의 Playwright 설치 사용. 실제 HTTPS·브라우저·API·LiveKit·MinIO 검증 |
+| `npm run test:integration` | 정상 Compose 상태에서 `server/` 기준 실행. `../infra/local/.env`와 형제 `web/`의 Playwright 설치 사용. 실제 HTTPS·브라우저·API·LiveKit·MinIO 검증 |
 | `OPEN_TEST_DATABASE_URL=… OPEN_TEST_LIVEKIT_URL=… node --test test/open-lessons.integration.mjs` | 최신 빌드와 마이그레이션된 격리 PostgreSQL·LiveKit 필요. OPEN·INVITE_ONLY 회귀 검증 |
 
 일반 통합 테스트는 예약·초대 권한, 실제 LiveKit 입장, PDF 파싱·byte Range, 잘못된 파일·업로드 취소, 페이지 권한, 공유 중 삭제 차단을 확인합니다. 새 소켓에서도 유지되는 판서 추가/지우기 실행취소·다시실행, 채팅 중복 방지, 손들기, 전체 종료도 검사합니다. 테스트 수업은 구분되는 이름으로 만들고 종료·취소하며 업로드 파일을 정리합니다.
@@ -210,6 +210,6 @@ LOAD_TEST_PASSWORD=test123 node dist/cli.js load:prepare [count]
 - 계정은 `load_student_001`~`load_student_100`, 이름은 `가상 학생 001` 형식입니다. `load:prepare`는 일반 교사·학생 계정을 수정하지 않습니다.
 - 학생을 `teacher1`에 연결하고 설명이 `가상 학생들이 영상을 보내는 테스트 수업입니다. 교사가 종료할 때까지 유지됩니다.`인 수업에 초대합니다.
 - 이전 설명 `GURUMI_LOAD_TEST` 수업도 재사용하며 위 설명으로 바꿉니다. `SCHEDULED`·`LIVE`만 재사용하고 `ENDED`·`CANCELLED`는 다시 열지 않습니다. 강퇴 상태도 초기화하지 않습니다.
-- `loadtest/manage.py`는 교사·학생 로그인에 `test123`을 쓰며 매 시작 시 생성 환경 파일을 동기화합니다.
+- `../infra/local/loadtest/manage.py`는 교사·학생 로그인에 `test123`을 쓰며 매 시작 시 생성 환경 파일을 동기화합니다.
 
-CLI는 자격 증명 없이 `{lessonId,code,title,teacherUsername,studentUsernames}` JSON만 출력합니다. 수업은 `endsAt:null`, `SCHEDULED`로 생성됩니다. 정상 교사 로그인·입장 승인·실제 LiveKit 접속을 거쳐야 학생이 입장합니다. 인증·권한을 우회하지 않습니다. LIVE 이후 자동 종료하지 않으며 교사의 일반 종료 동작으로 닫습니다. 운영은 [loadtest/README.md](loadtest/README.md)를 참고하세요.
+CLI는 자격 증명 없이 `{lessonId,code,title,teacherUsername,studentUsernames}` JSON만 출력합니다. 수업은 `endsAt:null`, `SCHEDULED`로 생성됩니다. 정상 교사 로그인·입장 승인·실제 LiveKit 접속을 거쳐야 학생이 입장합니다. 인증·권한을 우회하지 않습니다. LIVE 이후 자동 종료하지 않으며 교사의 일반 종료 동작으로 닫습니다. 운영은 [가상 학생 운영 안내](../infra/local/loadtest/README.md)를 참고하세요.

@@ -59,7 +59,7 @@ xcodebuild -project iosApp/ThinkMeet.xcodeproj -scheme ThinkMeet \
 
 로그인 화면의 브랜드를 길게 누르거나 계정 메뉴의 **서버 연결 설정**에서 웹과 같은 HTTPS origin을 입력합니다. 기본값은 `https://192.168.0.64`입니다. 비밀번호·LiveKit API secret·서버 `.env`는 앱에 넣지 않습니다.
 
-Mac IP가 서버 `.env`의 주소와 다르면 다음 명령을 사용합니다. 원본 서버 파일은 수정하지 않습니다.
+Mac IP가 서버 `.env`의 주소와 다르면 다음 명령을 사용합니다. `.env`의 공개 주소는 유지하고 실행 시 현재 LAN 주소를 적용합니다.
 
 ```sh
 ./scripts/start-local-server.sh
@@ -67,9 +67,9 @@ Mac IP가 서버 `.env`의 주소와 다르면 다음 명령을 사용합니다.
 THINK_MEET_LAN_IP=192.168.0.64 ./scripts/start-local-server.sh
 ```
 
-기존 컨테이너·볼륨·계정을 재사용하며 API·웹·LiveKit의 공개 주소만 실행 시 바꿉니다. PostgreSQL·MinIO를 먼저 실행하고, Mac 방화벽에서 443/TCP·7881/TCP·7882/UDP를 허용합니다.
+`infra/local/`의 공통 시작 스크립트로 PostgreSQL·MinIO부터 자동 준비하고 API·웹·LiveKit을 빌드·실행합니다. 기존 계정·볼륨을 재사용하며 첫 스토리지 이전 절차는 [로컬 실행 안내](../infra/local/README.md#서비스-실행접속)를 따릅니다. 모든 컨테이너는 `think-meet` 그룹에서 관리합니다. Mac 방화벽에서 443/TCP·7881/TCP·7882/UDP를 허용합니다.
 
-자체 서명 개발 서버는 공개 CA `../server/certs/think-meet-root.crt`를 신뢰해야 합니다.
+자체 서명 개발 서버는 공개 CA `../infra/local/certs/think-meet-root.crt`를 신뢰해야 합니다.
 
 - Android: 디버그 앱에만 개발 CA를 포함합니다. 릴리스 앱은 시스템 CA를 사용합니다.
 - iOS: 프로파일 설치 후 **설정 → 일반 → 정보 → 인증서 신뢰 설정**에서 전체 신뢰를 켭니다.
@@ -152,7 +152,7 @@ PiP 테스트는 진입·복귀, 채팅 초안·입장 기록 유지, Home 자�
 
 ```sh
 export THINK_MEET_LIVEKIT_ORIGIN=https://서버주소
-export THINK_MEET_CA_FILE=../server/certs/think-meet-root.crt
+export THINK_MEET_CA_FILE=../infra/local/certs/think-meet-root.crt
 export VITE_THINK_MEET_LIVEKIT_PROXY=true
 ```
 

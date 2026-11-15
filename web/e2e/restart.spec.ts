@@ -13,7 +13,7 @@ test.describe("Docker restart acceptance", () => {
 
   test("live lesson, chat, PDF page, annotations and original file survive all application containers restarting", async ({ page, request }) => {
     test.setTimeout(180_000)
-    const serverDirectory = resolve(process.cwd(), "../server")
+    const localDirectory = resolve(process.cwd(), "../infra/local")
     const message = `재시작 영속성 확인 ${Date.now()}`
     const name = `restart-worksheet-${Date.now()}.pdf`
     let lessonId: string | undefined
@@ -63,7 +63,7 @@ test.describe("Docker restart acceptance", () => {
       expect(before.share?.materialId).toBe(materialId)
       expect(before.share?.page).toBe(2)
 
-      execFileSync("docker", ["compose", "--project-directory", serverDirectory, "--file", resolve(serverDirectory, "compose.yaml"), "restart", "api", "livekit", "web"], { cwd: serverDirectory, timeout: 120_000, stdio: "pipe" })
+      execFileSync("docker", ["compose", "--project-directory", localDirectory, "--file", resolve(localDirectory, "compose.yaml"), "restart", "api", "livekit", "web"], { cwd: localDirectory, timeout: 120_000, stdio: "pipe" })
       await expect.poll(async () => {
         try { return (await request.get("/api/v1/health", { timeout: 2500 })).status() }
         catch { return 0 }

@@ -9,7 +9,7 @@ const { chromium } = frontendRequire('@playwright/test')
 const { PDFDocument } = require('pdf-lib')
 const base = process.env.BASE_URL || process.env.PUBLIC_ORIGIN
 const password = process.env.SEED_PASSWORD
-if (!base || !password) throw new Error('Set BASE_URL (or PUBLIC_ORIGIN) and SEED_PASSWORD; node --env-file=.env --test test/api.integration.mjs')
+if (!base || !password) throw new Error('Set BASE_URL (or PUBLIC_ORIGIN) and SEED_PASSWORD; node --env-file=../infra/local/.env --test test/api.integration.mjs')
 const clientScript = path.resolve('../web/node_modules/livekit-client/dist/livekit-client.umd.js')
 const socketScript = path.resolve('../web/node_modules/socket.io-client/dist/socket.io.min.js')
 async function api(page, endpoint, data, method = data === undefined ? 'GET' : 'POST', headers = {}) {

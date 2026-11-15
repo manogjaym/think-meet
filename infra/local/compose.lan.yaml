@@ -1,4 +1,4 @@
-# Only changes runtime public addresses; server source, .env, volumes and credentials are reused.
+# Only changes runtime public addresses; saved .env, volumes and credentials are reused.
 services:
   api:
     environment:

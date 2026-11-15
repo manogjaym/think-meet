@@ -10,3 +10,9 @@
 __pycache__/
 # Generated local LiveKit configuration contains private API credentials.
 /local/livekit.yaml
+/local/.env-*
+/local/certs/
+/local/artifacts/
+/local/.loadtest/
+/local/LOCAL_ACCESS.md
+/local/loadtest/*.y4m

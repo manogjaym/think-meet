@@ -1,6 +1,28 @@
 # 서버 검증 기록
 
-아래는 기존 실행 결과입니다. 날짜별 검증 범위와 미확인 항목을 구분합니다.
+아래는 기존 실행 결과입니다. 날짜별 검증 범위와 미확인 항목을 구분합니다. 로컬 도구는 이후 `infra/local/`로 이동했습니다. 아래 명령·경로는 검사 당시 기록이며, 기존 `server/artifacts/` 증거는 현재 `infra/local/artifacts/`에 있습니다. 현재 실행·검증 안내는 [로컬 안내](../infra/local/README.md)를 따릅니다.
+
+## 로컬 Compose 통합 — 2026-11-15
+
+이 Mac의 ARM64 Docker Desktop, Compose 2.32.4, Python 3.8.10에서 실행했습니다. 로컬 실행·데이터 이전·백업 도구만 변경했으며 API·Socket 계약·화면·기능 공개 정책은 유지했습니다. Android/iOS 앱 빌드·실행과 휴대폰·태블릿 화면 비교는 인프라 작업 범위에서 제외했습니다.
+
+| 검사 | 이번 실행 결과 |
+|---|---|
+| `python3 -m unittest discover -s server/test -p test_local_stack.py -v` | 11/11 통과. 설정·비밀번호 보존, 외부 DB 변경 거부, 복사 실패 시 재시도·이전 컨테이너 실행 상태 복원, 대상 데이터 덮어쓰기 차단, 학생 제어, Compose 준비 상태·볼륨·비공개 포트 확인 |
+| `node --test server/loadtest/worker-tests.mjs` | 기존 가상 학생 설정 회귀 검사 5/5 통과 |
+| `sh -n server/scripts/start.sh server/scripts/stop.sh server/scripts/test-start.sh server/scripts/test-stop.sh mobile/scripts/start-local-server.sh` | 통과 |
+| `npm run shared:check`, `npm run shared:check -- --changed-files <이번 변경 파일 목록>` | 공통 계약·생성물·플랫폼 상태 검사 통과 |
+| `docker compose build minio` (`server/`에서 실행) | 공식 고정 버전 서버·관리 도구 소스의 ARM64 이미지 빌드 통과. 기존 바이너리 이미지 주소의 다운로드 실패를 소스 빌드로 해결 |
+| `./scripts/start.sh`, `./scripts/stop.sh` 후 `./scripts/start.sh` (`server/`) | 웹·API 빌드, 스토리지 준비 대기, 마이그레이션·seed, 인증서 복사와 전체 중지·재시작 통과 |
+| 이전 전후·최종 재시작 후 데이터 비교 | 기존 DB의 12개 테이블·457개 행이 동일. MinIO 파일 2개의 경로·SHA256 동일. 기존 비밀번호 해시·수업·파일 보존 |
+| `curl --cacert certs/think-meet-root.crt https://localhost/api/v1/health` (`server/`) | `status:ok`, `database:true`, `storage:true`, `livekit:true`. 인증서 검증 활성 상태로 통과 |
+| 같은 그룹의 임시 학생 컨테이너 2개로 축소·중지 | `think-meet` 소속 확인. 기본 5개 서비스의 컨테이너 ID·실행 상태 유지. 검증용 컨테이너·네트워크 정리 |
+
+최종 상태는 `think-meet` 그룹의 API·웹·LiveKit·PostgreSQL·MinIO가 모두 실행 중이며, API·PostgreSQL·MinIO는 healthy입니다. PostgreSQL·MinIO의 호스트 공개 포트는 없습니다. 원래 외부 PostgreSQL·MinIO 컨테이너와 다른 프로젝트의 데이터는 보존했습니다.
+
+로컬 비공개 증거는 `server/artifacts/local-compose-final-verification.json`, `server/artifacts/local-compose-worker-verification.json`, `server/artifacts/backups/20261115-051913-320958Z/migration-verification.json`입니다. 마지막 파일은 테이블별 행 수·내용 해시와 파일별 해시를 기록합니다. 이전 백업에는 원래 `.env.before`도 포함되며 Git에서 제외합니다.
+
+이번에는 실제 가상 학생의 영상 송출, Android/iOS 실행, 모바일 보조 시작 스크립트의 실제 실행, AMD64 이미지 빌드, 원격 CI·AWS 배포는 검사하지 않았습니다. 모바일 보조 스크립트는 공통 시작 경로 연결과 셸 문법을 확인했습니다. 현재 `.env`의 공개 주소는 `192.168.13.12`, 이 Mac의 현재 LAN 주소는 `192.168.0.28`로 달라 다른 기기·가상 학생 접속 전 주소를 맞춰야 합니다. 이번 실행에서는 저장된 공개 주소를 유지하고 localhost HTTPS로 상태를 확인했습니다.
 
 ## 공통 계약·기능 정책 — 2026-11-14
 

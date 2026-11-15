@@ -79,7 +79,7 @@ function verify(lesson, record, user) {
 }
 
 async function run() {
-  agent = new https.Agent({ ca: await readFile(resolve(root, 'server/certs/think-meet-root.crt')), rejectUnauthorized: true })
+  agent = new https.Agent({ ca: await readFile(resolve(root, 'infra/local/certs/think-meet-root.crt')), rejectUnauthorized: true })
   const fixtures = await loadManifest()
   if (command !== 'create' && !Object.keys(fixtures).length) throw new Error('No recorded fixtures; run create first')
   const user = await request('POST', 'auth/login', { username: 'teacher1', password: 'test123' })

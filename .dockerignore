@@ -15,6 +15,7 @@
 !mobile/composeApp/src/commonMain/kotlin/
 !mobile/composeApp/src/commonMain/kotlin/**
 web/.git
+web/.figma
 web/.agents
 web/.codex
 web/.aws

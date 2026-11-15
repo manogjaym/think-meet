@@ -21,6 +21,8 @@ npm run typecheck
 npm run build
 ```
 
+페이지 제목·설명·검색 노출 설정은 Git에서 관리하는 `site.config.json`을 사용합니다. `.figma/`는 빌드에 필요하지 않으며 웹 Docker 빌드에서도 제외합니다.
+
 ## 공통 디자인
 
 색상·글자 크기·간격·모서리는 [design/tokens.json](../design/tokens.json)에서 관리합니다. 변경 방법은 [디자인 안내](../design/README.md)를 따릅니다.

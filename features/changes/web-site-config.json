@@ -1,0 +1,17 @@
+{
+  "id": "web-site-config",
+  "summary": "웹 사이트 메타데이터를 추적되는 site.config.json으로 옮겨 .figma 폴더가 없는 환경에서도 웹·Docker 빌드가 가능하게 합니다.",
+  "scope": "infrastructure",
+  "featureIds": ["classroom.core"],
+  "platforms": {
+    "server": {"status": "unchanged", "reason": "웹 빌드 설정의 파일 의존만 수정하며 서버 코드·통신 계약은 변경하지 않습니다."},
+    "web": {"status": "implemented", "reason": "사이트 제목·설명·검색 노출 설정을 유지하고 .figma 파일에 대한 필수 import를 제거합니다."},
+    "android": {"status": "unchanged", "reason": "웹 전용 빌드 설정 수정이므로 Android 앱 코드·화면·빌드는 변경 범위에서 제외합니다."},
+    "ios": {"status": "unchanged", "reason": "웹 전용 빌드 설정 수정이므로 iOS 앱 코드·화면·빌드는 변경 범위에서 제외합니다."}
+  },
+  "verification": [
+    "npm run shared:check -- --changed-files <이번 변경 파일 목록>",
+    "기존 .figma/make/site.json과 새 site.config.json의 제목·설명·검색 노출 설정이 동일함을 확인",
+    "사용자 요청에 따라 추가 타입 검사·빌드 테스트는 사용자가 직접 진행합니다. Docker 빌드에서 .figma 폴더는 제외됩니다."
+  ]
+}

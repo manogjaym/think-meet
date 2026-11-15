@@ -7,7 +7,7 @@ import https from "node:https"
 import { execFileSync } from "node:child_process"
 import { resolveResponsiveCss } from "../design/scripts/responsive.mjs"
 
-import siteConfiguration from "./.figma/make/site.json"
+import siteConfiguration from "./site.config.json"
 
 // Vite config — https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
@@ -182,7 +182,7 @@ type FigmaSiteConfiguration = {
   }
 }
 
-/** Applies /.figma/make/site.json to the generated document shell. */
+/** Applies the tracked site.config.json to the generated document shell. */
 function figmaSiteConfiguration(config: FigmaSiteConfiguration): Plugin {
   function sanitizeHtmlValue(value: string | undefined): string {
     return value?.replace(/[^a-zA-Z0-9_-]/g, "") || ""

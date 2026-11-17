@@ -311,6 +311,9 @@ object DesignTokens {
         val LoginPhoneCardPadding = 22.dp
         val PrejoinAvatarSize = 88.dp
         val PrejoinControlIconSize = 23.dp
+        val RemotePointerCoreSize = 8.dp
+        val RemotePointerRingWidth = 2.dp
+        val RemotePointerSize = 24.dp
         val StatusCardRadius = 16.dp
         val TextareaMinHeight = 100.dp
         val WaitingIconSize = 60.dp

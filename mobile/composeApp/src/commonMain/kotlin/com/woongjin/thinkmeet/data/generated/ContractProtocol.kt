@@ -5,7 +5,7 @@ data class ContractHttpOperation(val id: String, val method: String, val path: S
 data class ContractFeature(val id: String, val stage: String, val requiresRevision: Int, val defaultEnabled: Boolean, val platforms: Set<String>)
 
 object ContractProtocol {
-    const val Revision = 1
+    const val Revision = 4
     const val ApiBasePath = "/api/v1"
     const val SocketPath = "/socket.io"
     const val PlatformHeader = "X-ThinkMeet-Platform"
@@ -18,10 +18,12 @@ object ContractProtocol {
         const val LessonsChanged = "lessons:changed"
         const val RoomError = "room:error"
         const val SessionReplaced = "session:replaced"
+        const val AssistancePointer = "assistance.pointer"
     }
     object FeatureIds {
         const val ClassroomCore = "classroom.core"
         const val MeetingPip = "meeting.pip"
+        const val MeetingRemoteAssistance = "meeting.remote-assistance"
     }
     val HttpOperations = listOf(
         ContractHttpOperation("health", "GET", "/api/v1/health", null),
@@ -52,6 +54,7 @@ object ContractProtocol {
     val Features = listOf(
         ContractFeature("classroom.core", "baseline", 0, true, setOf("web", "android", "ios")),
         ContractFeature("meeting.pip", "baseline", 0, true, setOf("android", "ios")),
+        ContractFeature("meeting.remote-assistance", "in-progress", 4, false, setOf("web", "android", "ios")),
     )
     private val commandFeatures: Map<String, String?> = mapOf(
         "chat.send" to "classroom.core",
@@ -65,6 +68,11 @@ object ContractProtocol {
         "annotation.undo" to "classroom.core",
         "annotation.redo" to "classroom.core",
         "annotation.clear" to "classroom.core",
+        "assistance.request" to "meeting.remote-assistance",
+        "assistance.respond" to "meeting.remote-assistance",
+        "assistance.start" to "meeting.remote-assistance",
+        "assistance.geometry" to "meeting.remote-assistance",
+        "assistance.stop" to null,
     )
     private val eventFeatures: Map<String, String?> = mapOf(
         "subscribe" to "classroom.core",
@@ -74,6 +82,7 @@ object ContractProtocol {
         "lessons:changed" to null,
         "room:error" to null,
         "session:replaced" to null,
+        "assistance.pointer" to "meeting.remote-assistance",
     )
     private fun operation(method: String, input: String): ContractHttpOperation? {
         val route = input.substringBefore('?').trimEnd('/')

@@ -98,6 +98,8 @@ Mac 방화벽에서 Docker의 `443/TCP`, `7881/TCP`, `7882/UDP`를 허용하세�
 
 LAN 주소 변경 시 `.env`의 `LAN_IP`, `PUBLIC_ORIGIN`, `LIVEKIT_PUBLIC_URL`을 함께 수정하고 `./scripts/start.sh`를 실행하세요. CA 볼륨을 유지하면 인증서를 다시 설치할 필요는 없습니다. 인터넷 공개에는 별도 도메인·공인 인증서·방화벽·TURN 배포가 필요합니다.
 
+`LAN_IP`는 브라우저가 접근할 수 있는 미디어 서버 주소여야 합니다. 인터넷 접속에는 공인 IP를 지정합니다. LiveKit은 실행 시 `--rtc.node_ip.ipv4`로 이 값을 읽으므로, 생성된 `livekit.yaml`에 이전 주소가 남아 있어도 현재 `.env` 값을 사용합니다. 주소만 바꿨다면 이 폴더에서 `docker compose up -d --no-build --force-recreate livekit api web`으로 세 서비스를 함께 재생성합니다. 로컬 IP 보조 설정 `compose.lan.yaml`도 같은 실행 옵션을 사용합니다.
+
 ## 계정 관리
 
 `infra/local/`에서 실행합니다. 비밀번호는 7~200자입니다.
@@ -175,3 +177,11 @@ Compose 프로젝트 이름은 `think-meet`이며 `think-meet_postgres_data`, `t
 로컬 비공개 결과는 `artifacts/local-layout-verification.json`에 보관합니다. 설정·인증서·백업·가상 학생 상태는 Git에서 제외됩니다. 이전 검증 기록의 경로·명령은 당시 기록으로 유지하며, 기존 `server/artifacts/`는 현재 이 폴더의 `artifacts/`에 있습니다.
 
 Android/iOS 앱 빌드·실행과 화면 비교, 실제 가상 학생 영상 송출, AMD64 이미지·원격 CI·AWS 배포는 이번 인프라 경로 변경 범위에서 제외했습니다. 모바일 도구는 새 시작 경로·공개 인증서 참조와 셸/JavaScript 문법을 확인했습니다.
+
+## 미디어 광고 주소 검증 — 2026-11-15
+
+`aimos-jm`에서 `.env`의 공인 IP와 생성된 `livekit.yaml`의 이전 내부 IP가 달라, 브라우저가 `172.19.0.2:7882` 후보에 연결하다 실패하는 것을 확인했습니다. Compose가 `--rtc.node_ip.ipv4`로 현재 `LAN_IP`를 직접 적용하도록 수정했습니다. LiveKit 1.13.11에서 일반 `--node-ip`는 이미 설정된 IPv4 값을 덮어쓰지 않아 IPv4 전용 옵션으로 검증했습니다.
+
+활성 참가자 0명을 확인하고 서버 Compose를 백업한 뒤 LiveKit만 빌드 없이 재생성했습니다. 실제 시작 로그의 `nodeIP:115.68.2.13`, TCP 7881·UDP 7882 설정, 내부 LiveKit API, 외부 HTTPS 상태와 TCP 7881 접근을 확인했습니다. API·웹·DB·스토리지는 재시작하지 않았습니다. 실제 브라우저 재입장·음성/영상 송수신과 UDP 패킷 왕복은 사용자 확인이 필요합니다.
+
+루트에서 `python3 -m unittest discover -s infra/local/tests -p test_local_stack.py -v` 14/14와 `npm run shared:check -- --changed-files <이번 변경 파일 목록>`를 통과했습니다. 기본 Compose와 LAN 보조 설정에서 환경 변수 변경이 실행 주소에 반영되는 검사를 추가했습니다. 앱·웹 UI·통신 계약은 변경하지 않아 네이티브 빌드와 화면 비교는 제외했습니다.

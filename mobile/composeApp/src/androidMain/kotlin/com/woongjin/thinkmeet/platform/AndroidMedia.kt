@@ -8,6 +8,7 @@ import android.content.pm.PackageManager
 import android.graphics.Rect
 import android.media.AudioManager
 import android.media.projection.MediaProjectionManager
+import android.media.projection.MediaProjectionConfig
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -56,7 +57,7 @@ internal class AndroidMediaController(private val context: Context) : MediaContr
     private var screenAudioTrack: LocalAudioTrack? = null
     private val videoRenderers = mutableMapOf<Pair<String, Boolean>, MutableSet<TextureViewRenderer>>()
     var permissionRequest: ((Array<String>, CompletableDeferred<Map<String, Boolean>>) -> Unit)? = null
-    var screenRequest: ((CompletableDeferred<Intent?>) -> Unit)? = null
+    var screenRequest: ((Boolean, CompletableDeferred<Intent?>) -> Unit)? = null
     init {
         scope.launch {
             room.events.collect { event ->
@@ -135,16 +136,54 @@ internal class AndroidMediaController(private val context: Context) : MediaContr
         ((room.localParticipant.getTrackPublication(Track.Source.CAMERA)?.track as? LocalVideoTrack) ?: preview)?.switchCamera()
     }
     override suspend fun setScreenShare(enabled: Boolean) {
-        if (enabled) {
-            val deferred = CompletableDeferred<Intent?>()
-            screenRequest?.invoke(deferred) ?: error("화면 공유를 시작할 수 없어요.")
-            val data = deferred.await() ?: error("화면 공유가 취소되었어요.")
-            room.localParticipant.setScreenShareEnabled(true, ScreenCaptureParams(data, onStop = { scope.launch { stopScreenAudio(); refresh() } }))
-            startScreenAudio()
-        } else {
+        if (enabled) startScreenShare(fullDisplay = false) else {
             stopScreenAudio()
             room.localParticipant.setScreenShareEnabled(false)
         }
+        refresh()
+    }
+
+    internal suspend fun setScreenShareFullDisplay(): LocalVideoTrack {
+        check(!state.value.screenSharing) { "기존 화면 공유를 중지한 뒤 원격 화면 안내를 시작해 주세요." }
+        val track = startScreenShare(fullDisplay = true)
+        refresh()
+        return track
+    }
+
+    private suspend fun startScreenShare(fullDisplay: Boolean): LocalVideoTrack {
+        val deferred = CompletableDeferred<Intent?>()
+        screenRequest?.invoke(fullDisplay, deferred) ?: error("화면 공유를 시작할 수 없어요.")
+        val data = deferred.await() ?: error("화면 공유가 취소되었어요.")
+        if (fullDisplay) check(room.localParticipant.getTrackPublication(Track.Source.SCREEN_SHARE) == null) {
+            "기존 화면 공유를 중지한 뒤 원격 화면 안내를 시작해 주세요."
+        }
+        room.localParticipant.setScreenShareEnabled(true, ScreenCaptureParams(data, onStop = { scope.launch { stopScreenAudio(); refresh() } }))
+        val track = room.localParticipant.getTrackPublication(Track.Source.SCREEN_SHARE)?.track as? LocalVideoTrack
+            ?: error("전체 화면 공유 연결을 확인하지 못했어요.")
+        try { startScreenAudio() }
+        catch (error: Throwable) {
+            // Sound permission setup can be cancelled after this video publication has succeeded.
+            if (fullDisplay) {
+                stopRemoteAssistanceCaptureNow(track)
+                withContext(NonCancellable) { runCatching { stopRemoteAssistanceScreenShare(track) } }
+            }
+            throw error
+        }
+        return track
+    }
+
+    /** Remove the capture immediately even when a stopped Activity cannot await normal cleanup. */
+    internal fun stopRemoteAssistanceCaptureNow(ownedTrack: LocalVideoTrack) {
+        val current = room.localParticipant.getTrackPublication(Track.Source.SCREEN_SHARE)?.track
+        if (current === ownedTrack) runCatching { ownedTrack.stopCapture() }
+    }
+
+    internal suspend fun stopRemoteAssistanceScreenShare(ownedTrack: LocalVideoTrack) {
+        if (room.localParticipant.getTrackPublication(Track.Source.SCREEN_SHARE)?.track !== ownedTrack) return
+        stopScreenAudio()
+        // The previous capture can terminate while its sound cleanup suspends.
+        if (room.localParticipant.getTrackPublication(Track.Source.SCREEN_SHARE)?.track === ownedTrack)
+            room.localParticipant.setScreenShareEnabled(false)
         refresh()
     }
 
@@ -272,12 +311,17 @@ internal class AndroidMediaController(private val context: Context) : MediaContr
             try { permissionLauncher.launch(requests) }
             catch (error: RuntimeException) { permissionPip?.endTransientInteraction(); permissionPip = null; deferred.completeExceptionally(error) }
         }
-        controller.screenRequest = { deferred -> screen?.cancel(); screen = deferred
+        controller.screenRequest = { fullDisplay, deferred -> screen?.cancel(); screen = deferred
             screenPip?.endTransientInteraction()
             screenPip = context.findMainActivity()?.pictureInPictureController
             screenPip?.beginTransientInteraction()
             val manager = context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-            try { screenLauncher.launch(manager.createScreenCaptureIntent()) }
+            try {
+                val intent = if (fullDisplay && Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+                    manager.createScreenCaptureIntent(MediaProjectionConfig.createConfigForDefaultDisplay())
+                else manager.createScreenCaptureIntent()
+                screenLauncher.launch(intent)
+            }
             catch (error: RuntimeException) { screenPip?.endTransientInteraction(); screenPip = null; deferred.completeExceptionally(error) }
         }
     }

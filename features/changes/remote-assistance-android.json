@@ -1,0 +1,19 @@
+{
+  "id": "remote-assistance-android",
+  "summary": "Android 학생의 명시적 승인과 전체 화면 캡처 후 PiP로 전환하고, 선생님이 누른 좌표를 다른 앱 위 포인터로 표시합니다.",
+  "scope": "shared",
+  "featureIds": ["meeting.remote-assistance"],
+  "platforms": {
+    "server": {"status": "implemented"},
+    "web": {"status": "implemented"},
+    "android": {"status": "implemented"},
+    "ios": {"status": "implemented", "reason": "선생님 요청·클릭 역할만 구현. 사용자가 Android 학생 우선을 선택했으며 iOS 학생의 외부 앱 오버레이 수신은 지원하지 않음"}
+  },
+  "verification": [
+    "npm run shared:check·변경 파일 목록 검사 및 npm run verify 통과. 서버 신규 10개 포함 관련 검사 50개 통과. 상세 결과: features/VERIFICATION.md#android-원격-화면-안내-2026-11-17",
+    "web/: ASSISTANCE_BASE_URL=http://127.0.0.1:8443 npx playwright test e2e/remote-assistance.spec.ts — 실제 컴포넌트 독립 화면 9개와 핵심/기능 지원 8개 통과. 실제 단말 송수신과 구분",
+    "mobile/: 공통 단위 검사 26개와 Android APK/검사 APK·iOS Simulator arm64 프레임워크 및 Swift 호스트 빌드 통과",
+    "기존 Android 에뮬레이터에서 RemoteAssistanceOverlayTest·RemoteAssistanceConsentTest 총 4개 통과. 실제 다른 UID 앱 위 표시/터치/PiP와 승인 UI 증거 보관. 실제 MediaProjection·LiveKit 교차 단말 전체 흐름·태블릿·회전·글자 확대·iOS 실행·원격 CI는 미검증",
+    "배포 호환성 기준 보존. 신규 기능은 in-progress·기본 OFF이며 운영 서비스 재시작·게시 없음"
+  ]
+}

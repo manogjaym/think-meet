@@ -1,0 +1,12 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<testsuite name="com.woongjin.thinkmeet.RemoteAssistanceOverlayTest" tests="4" failures="0" errors="0" skipped="0" time="115.765" timestamp="2026-11-17T11:40:48" hostname="localhost">
+  <properties>
+    <property name="device" value="TIF_Card_OCR_API35_12GB(AVD) - 15" />
+    <property name="flavor" value="" />
+    <property name="project" value=":composeApp" />
+  </properties>
+  <testcase name="otherAppReceivesTouchesUnderPointerWhilePipRemainsVisibleThenPointerExpires" classname="com.woongjin.thinkmeet.RemoteAssistanceOverlayTest" time="6.515" />
+  <testcase name="staleGeometryAndCaptureStopCannotLeaveAnOverlay" classname="com.woongjin.thinkmeet.RemoteAssistanceOverlayTest" time="2.111" />
+  <testcase name="sharingApprovalRequiresAnExplicitTapAndShowsPreparingOnce" classname="com.woongjin.thinkmeet.RemoteAssistanceConsentTest" time="27.828" />
+  <testcase name="refusalAndUnsupportedDeviceNeverInvokeApproval" classname="com.woongjin.thinkmeet.RemoteAssistanceConsentTest" time="65.046" />
+</testsuite>

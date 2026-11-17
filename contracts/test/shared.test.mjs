@@ -55,9 +55,10 @@ test('read-only check catches missing and edited output without rewriting it', a
 
 test('ready requires all advertised implementations and real verification references; new operations cannot hide under baseline', async () => {
   const changed = clone(source)
-  changed.api['x-contract-revision'] = 2
+  const revision = changed.api['x-contract-revision'] + 1
+  changed.api['x-contract-revision'] = revision
   const feature = clone(changed.catalog.features[0])
-  Object.assign(feature, { id: 'meeting.reactions', title: '수업 반응 기능', stage: 'ready', requiresRevision: 2, defaultEnabled: false, contracts: { operations: [], events: [], commands: [] } })
+  Object.assign(feature, { id: 'meeting.reactions', title: '수업 반응 기능', stage: 'ready', requiresRevision: revision, defaultEnabled: false, contracts: { operations: [], events: [], commands: [] } })
   feature.implementation.ios = { status: 'pending', files: [] }
   changed.catalog.features.push(feature)
   await assert.rejects(validateCatalog(changed, { verifyFiles: false, baseline: prior }), /passing core checks|pending/)

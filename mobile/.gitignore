@@ -2,6 +2,7 @@
 .kotlin/
 **/build/
 local.properties
+certs/
 iosApp/Pods/
 iosApp/.build/
 iosApp/build/

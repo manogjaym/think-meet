@@ -66,6 +66,8 @@ class MeetingRealtime internal constructor(
     val roomErrors: SharedFlow<RealtimeError> = roomErrorEvents.asSharedFlow()
     private val previewEvents = MutableSharedFlow<StrokePreview>(extraBufferCapacity = 32, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     val previews: SharedFlow<StrokePreview> = previewEvents.asSharedFlow()
+    private val assistanceEvents = MutableSharedFlow<AssistancePointer>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    val assistancePointers: SharedFlow<AssistancePointer> = assistanceEvents.asSharedFlow()
     private val lessonEvents = MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     val lessonsChanged: SharedFlow<Unit> = lessonEvents.asSharedFlow()
     private val transportLock = Mutex()
@@ -175,6 +177,7 @@ class MeetingRealtime internal constructor(
             when (name) {
                 ContractProtocol.Events.Snapshot -> if (payload != null) accept(ThinkMeetJson.decodeFromString(payload.toString()))
                 ContractProtocol.Events.StrokePreview -> if (payload != null) previewEvents.tryEmit(ThinkMeetJson.decodeFromString(payload.toString()))
+                ContractProtocol.Events.AssistancePointer -> if (payload != null && api.supportsFeature(ContractProtocol.FeatureIds.MeetingRemoteAssistance)) assistanceEvents.tryEmit(ThinkMeetJson.decodeFromString(payload.toString()))
                 ContractProtocol.Events.LessonsChanged -> lessonEvents.tryEmit(Unit)
                 ContractProtocol.Events.SessionReplaced -> if (payload?.jsonObject?.get("lessonId")?.jsonPrimitive?.content == lessonId) {
                     roomErrorEvents.tryEmit(RealtimeError("SESSION_REPLACED", "다른 기기에서 같은 수업에 입장했어요."))
@@ -205,6 +208,21 @@ class MeetingRealtime internal constructor(
         try { sendPacket(SocketIoCodec.event(ContractProtocol.Events.StrokePreview, payload)) }
         catch (error: CancellationException) { throw error }
         catch (_: Exception) { /* Transient previews need no retries. */ }
+    }
+
+    /** Pointer pulses are discarded while busy or disconnected; they never wait for a reconnect. */
+    suspend fun assistancePointer(pointer: AssistancePointer) {
+        if (!connection.value || !api.supportsFeature(ContractProtocol.FeatureIds.MeetingRemoteAssistance)) return
+        val session = transport ?: return
+        api.requireEvent(ContractProtocol.Events.AssistancePointer)
+        if (!transportLock.tryLock()) return
+        try {
+            if (!connection.value || transport !== session || !api.supportsFeature(ContractProtocol.FeatureIds.MeetingRemoteAssistance)) return
+            session.send(Frame.Text(SocketIoCodec.event(ContractProtocol.Events.AssistancePointer,
+                ThinkMeetJson.encodeToJsonElement(pointer.copy(authorId = null)))))
+        } catch (error: CancellationException) { throw error }
+        catch (_: Exception) { /* Transient pulses are not retried. */ }
+        finally { transportLock.unlock() }
     }
 
     private suspend fun request(event: String, payload: JsonElement): JsonElement {

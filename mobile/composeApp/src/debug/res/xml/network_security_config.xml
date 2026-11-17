@@ -1,1 +1,1 @@
-<network-security-config><base-config cleartextTrafficPermitted="false"><trust-anchors><certificates src="system" /><certificates src="user" /><certificates src="@raw/think_meet_root" /></trust-anchors></base-config></network-security-config>
+<network-security-config><base-config cleartextTrafficPermitted="false"><trust-anchors><certificates src="system" /><certificates src="user" /><certificates src="@raw/think_meet_server_root" /></trust-anchors></base-config></network-security-config>

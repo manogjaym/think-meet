@@ -33,3 +33,10 @@
 @media(max-width:design(layout.meetingCompactBreakpoint)) { .live-error { margin-inline:10px; } .live-shared-content { padding:84px var(--space-2) 92px; } .annotation-bar .annotation-history { display:flex; } .annotation-bar { gap:var(--space-1); padding:5px; } .annotation-bar button { min-height:36px; padding:0 6px; } .annotation-bar button span { display:none; } .annotation-colors { gap:var(--space-1); } .color-grid { gap:2px; } .color-grid button { width:22px; min-height:22px; } .annotation-bar .annotation-exit { margin-left:auto; } }
 .live-shared-content { justify-content:flex-start; align-items:flex-start; }
 .live-shared-content .content-surface { margin:auto; }
+.remote-assistance-status { display:flex; align-items:center; gap:var(--space-2); padding:var(--space-2) var(--space-3); background:var(--tm-color-meeting-share-background); color:var(--tm-color-meeting-share-text); font-size:var(--type-caption); line-height:1.5; }
+.remote-assistance-status > span { flex:1; min-width:0; overflow-wrap:anywhere; }
+.remote-assistance-status strong { margin-right:var(--space-2); }
+.remote-assistance-status button { flex:none; min-height:var(--tm-spacing-s44); padding:var(--space-1) var(--space-2); border:0; border-radius:var(--tm-radius-r8); background:var(--meeting-control); color:var(--meeting-text); font:inherit; }
+.remote-assistance-status button:disabled,.person-row > button:disabled { opacity:.4; cursor:not-allowed; }
+.remote-pointer-mark { position:absolute; z-index:3; display:flex; align-items:center; justify-content:center; width:var(--tm-component-remote-pointer-size); height:var(--tm-component-remote-pointer-size); border:var(--tm-component-remote-pointer-ring-width) solid var(--tm-color-danger); border-radius:50%; transform:translate(-50%,-50%); pointer-events:none; }
+.remote-pointer-mark i { display:block; width:var(--tm-component-remote-pointer-core-size); height:var(--tm-component-remote-pointer-core-size); background:var(--tm-color-danger); border-radius:50%; }

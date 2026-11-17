@@ -5,7 +5,7 @@
     "version": "1.0.0",
     "description": "Canonical REST schemas shared by NestJS, React and KMP. Socket.IO is defined in realtime.json."
   },
-  "x-contract-revision": 1,
+  "x-contract-revision": 4,
   "servers": [
     {
       "url": "/api/v1"
@@ -1421,6 +1421,9 @@
           "updatedAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "assistanceId": {
+            "type": "string"
           }
         },
         "required": [
@@ -1679,6 +1682,14 @@
           "serverTime": {
             "type": "string",
             "format": "date-time"
+          },
+          "assistance": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AssistanceSession"
+              }
+            ],
+            "nullable": true
           }
         },
         "required": [
@@ -2020,6 +2031,203 @@
         },
         "required": [
           "ids"
+        ]
+      },
+      "AssistanceGeometry": {
+        "type": "object",
+        "x-feature": "meeting.remote-assistance",
+        "properties": {
+          "width": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 16384
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 16384
+          },
+          "rotation": {
+            "type": "integer",
+            "enum": [
+              0,
+              90,
+              180,
+              270
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "width",
+          "height",
+          "rotation",
+          "version"
+        ]
+      },
+      "AssistanceSession": {
+        "type": "object",
+        "x-feature": "meeting.remote-assistance",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "teacherId": {
+            "type": "string"
+          },
+          "studentId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "approved",
+              "active"
+            ]
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "shareId": {
+            "type": "string"
+          },
+          "geometry": {
+            "$ref": "#/components/schemas/AssistanceGeometry"
+          }
+        },
+        "required": [
+          "id",
+          "teacherId",
+          "studentId",
+          "status",
+          "expiresAt"
+        ]
+      },
+      "AssistancePointer": {
+        "type": "object",
+        "x-feature": "meeting.remote-assistance",
+        "properties": {
+          "lessonId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sessionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "shareId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "geometryVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "x": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "y": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "authorId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "lessonId",
+          "sessionId",
+          "shareId",
+          "geometryVersion",
+          "x",
+          "y"
+        ]
+      },
+      "AssistanceRequestPayload": {
+        "type": "object",
+        "x-feature": "meeting.remote-assistance",
+        "properties": {
+          "studentId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "studentId"
+        ]
+      },
+      "AssistanceRespondPayload": {
+        "type": "object",
+        "x-feature": "meeting.remote-assistance",
+        "properties": {
+          "sessionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "approved": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "sessionId",
+          "approved"
+        ]
+      },
+      "AssistanceStartPayload": {
+        "type": "object",
+        "x-feature": "meeting.remote-assistance",
+        "properties": {
+          "sessionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "geometry": {
+            "$ref": "#/components/schemas/AssistanceGeometry"
+          }
+        },
+        "required": [
+          "sessionId",
+          "geometry"
+        ]
+      },
+      "AssistanceGeometryPayload": {
+        "type": "object",
+        "x-feature": "meeting.remote-assistance",
+        "properties": {
+          "sessionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "geometry": {
+            "$ref": "#/components/schemas/AssistanceGeometry"
+          }
+        },
+        "required": [
+          "sessionId",
+          "geometry"
+        ]
+      },
+      "AssistanceStopPayload": {
+        "type": "object",
+        "x-feature": "meeting.remote-assistance",
+        "properties": {
+          "sessionId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "sessionId"
         ]
       }
     }

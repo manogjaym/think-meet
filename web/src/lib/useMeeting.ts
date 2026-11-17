@@ -2,11 +2,14 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { Room, RoomEvent, Track, ConnectionState, DisconnectReason, type LocalTrackPublication } from "livekit-client"
 import type { Socket } from "socket.io-client"
 import { createAppSocket, emitVolatile, requestSocket } from "./socket"
-import type { CommandAck as Ack, StrokePreview, RealtimeError } from "../generated/contracts"
+import type { CommandAck as Ack, StrokePreview, RealtimeError, AssistancePointer } from "../generated/contracts"
 import { SOCKET_EVENTS as Events } from "../generated/contracts"
 import { api, ApiError, type ApiLesson, type JoinResult, type User } from "./api"
 import type { JoinDevices } from "../screens/Join"
 import { friendlyError, readDevicePreferences, type Command, type MeetingSnapshot, type PreviewStroke } from "./meeting"
+import { useFeature } from "./useFeature"
+import { isFeatureEnabled } from "./features"
+import { activeAssistance, matchesAssistancePointer, REMOTE_POINTER_INTERVAL_MS, REMOTE_POINTER_TTL_MS, type RemotePointer } from "./remoteAssistance"
 
 export function useMeeting({ lesson, user, initialDevices, admission, onEnded, onWaiting }: { lesson: ApiLesson; user: User; initialDevices: JoinDevices; admission?: JoinResult; onEnded: (reason?: string) => void; onWaiting?: () => void }) {
   const [room, setRoom] = useState<Room | null>(null)
@@ -17,6 +20,10 @@ export function useMeeting({ lesson, user, initialDevices, admission, onEnded, o
   const [appConnected, setAppConnected] = useState(false)
   const [revision, setRevision] = useState(0)
   const [previews, setPreviews] = useState<Record<string, PreviewStroke>>({})
+  const [remotePointer, setRemotePointer] = useState<RemotePointer | null>(null)
+  const assistanceEnabled = useFeature("meeting.remote-assistance")
+  const remotePointerTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const remotePointerSentAt = useRef(0)
   const [serverOffset, setServerOffset] = useState(0)
   const socketRef = useRef<Socket | null>(null)
   const snapshotRef = useRef<MeetingSnapshot | null>(null)
@@ -28,6 +35,11 @@ export function useMeeting({ lesson, user, initialDevices, admission, onEnded, o
   const onWaitingRef = useRef(onWaiting)
   onEndedRef.current = onEnded; onWaitingRef.current = onWaiting
   const options = useRef({ initialDevices, admission })
+  const clearRemotePointer = useCallback(() => {
+    clearTimeout(remotePointerTimer.current)
+    setRemotePointer(null)
+    remotePointerSentAt.current = 0
+  }, [])
   const finish = useCallback((reason?: string) => {
     if (closing.current) return
     closing.current = true
@@ -37,6 +49,7 @@ export function useMeeting({ lesson, user, initialDevices, admission, onEnded, o
     if (value.lessonId !== lesson.id || !mounted.current) return
     if (snapshotRef.current && value.seq < snapshotRef.current.seq) return
     snapshotRef.current = value
+    setRemotePointer(current => current && matchesAssistancePointer(current, value) ? current : null)
     setSnapshot(value)
     setPreviews({})
     setServerOffset(Date.parse(value.serverTime) - Date.now())
@@ -69,8 +82,8 @@ export function useMeeting({ lesson, user, initialDevices, admission, onEnded, o
       }).catch(error => { if (!cancelled) setError(friendlyError(error)) })
     }
     socket.on("connect", subscribe)
-    socket.on("disconnect", () => { if (!cancelled) setAppConnected(false) })
-    socket.on("connect_error", () => { if (!cancelled) setAppConnected(false) })
+    socket.on("disconnect", () => { if (!cancelled) { setAppConnected(false); clearRemotePointer() } })
+    socket.on("connect_error", () => { if (!cancelled) { setAppConnected(false); clearRemotePointer() } })
     socket.on(Events.Snapshot, accept)
     socket.on(Events.SessionReplaced, (event: { lessonId: string }) => { if (event.lessonId === lesson.id) finish("replaced") })
     socket.on(Events.RoomError, (event: RealtimeError) => {
@@ -95,7 +108,7 @@ export function useMeeting({ lesson, user, initialDevices, admission, onEnded, o
         })
         connectedRoom = nextRoom
         const refresh = () => { if (!cancelled) { setRevision(value => value + 1); setAudioBlocked(!nextRoom.canPlaybackAudio) } }
-        nextRoom.on(RoomEvent.ConnectionStateChanged, state => { if (!cancelled) setConnection(state) })
+        nextRoom.on(RoomEvent.ConnectionStateChanged, state => { if (!cancelled) { setConnection(state); if (state !== ConnectionState.Connected) clearRemotePointer() } })
         nextRoom.on(RoomEvent.Disconnected, reason => {
           refresh()
           if (cancelled || closing.current || intentionalLeave.current) return
@@ -149,9 +162,12 @@ export function useMeeting({ lesson, user, initialDevices, admission, onEnded, o
     }, 12000)
     return () => {
       cancelled = true; mounted.current = false; socket.disconnect(); socketRef.current = null; window.clearInterval(poll)
+      clearTimeout(remotePointerTimer.current)
       if (connectedRoom) { connectedRoom.removeAllListeners(); void connectedRoom.disconnect(true) }
     }
-  }, [lesson.id, user.id, accept, finish])
+  }, [lesson.id, user.id, accept, finish, clearRemotePointer])
+
+  useEffect(() => { if (!assistanceEnabled) clearRemotePointer() }, [assistanceEnabled, clearRemotePointer])
 
   useEffect(() => {
     if (!room || screenStarting.current) return
@@ -197,5 +213,21 @@ export function useMeeting({ lesson, user, initialDevices, admission, onEnded, o
     const socket = socketRef.current
     if (socket) emitVolatile(socket, Events.StrokePreview, { lessonId: lesson.id, ...preview })
   }
-  return { room, snapshot, connection, error, setError, audioBlocked, appConnected, revision, previews, serverOffset, command, setMic, setCam, startScreen, stopShare, leave, sendPreview }
+  const sendAssistancePointer = useCallback((x: number, y: number) => {
+    const socket = socketRef.current
+    const current = snapshotRef.current
+    const session = activeAssistance(current)
+    if (!socket?.connected || !session?.geometry || session.teacherId !== user.id || !isFeatureEnabled("meeting.remote-assistance")) return
+    const now = Date.now()
+    if (now - remotePointerSentAt.current < REMOTE_POINTER_INTERVAL_MS) return
+    const frame: AssistancePointer = { lessonId: lesson.id, sessionId: session.id, shareId: session.shareId!, geometryVersion: session.geometry.version, x, y, authorId: user.id }
+    if (!matchesAssistancePointer(frame, current)) return
+    remotePointerSentAt.current = now
+    // Pulse frames never wait for capabilities or reconnect, and never enter the command log.
+    emitVolatile(socket, Events.AssistancePointer, { ...frame })
+    clearTimeout(remotePointerTimer.current)
+    setRemotePointer({ ...frame, receivedAt: now })
+    remotePointerTimer.current = setTimeout(() => setRemotePointer(null), REMOTE_POINTER_TTL_MS)
+  }, [lesson.id, user.id])
+  return { room, snapshot, connection, error, setError, audioBlocked, appConnected, revision, previews, remotePointer, sendAssistancePointer, serverOffset, command, setMic, setCam, startScreen, stopShare, leave, sendPreview }
 }

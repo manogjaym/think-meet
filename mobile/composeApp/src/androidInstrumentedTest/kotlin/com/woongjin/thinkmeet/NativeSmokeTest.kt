@@ -1,5 +1,7 @@
 package com.woongjin.thinkmeet
 
+import com.woongjin.thinkmeet.config.ServerConfig
+
 import android.Manifest
 import android.graphics.Bitmap
 import android.os.Bundle
@@ -14,7 +16,6 @@ import com.woongjin.thinkmeet.data.MeetingSnapshot
 import com.woongjin.thinkmeet.data.ThinkMeetApi
 import com.woongjin.thinkmeet.platform.AppLinks
 import com.woongjin.thinkmeet.platform.createHttpClient
-import com.woongjin.thinkmeet.platform.readPreference
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.buildJsonObject
@@ -107,7 +108,7 @@ class NativeSmokeTest {
     /** A second real connection shares the fixture; page, drawing and history use the actual UI. */
     private fun exerciseNativePdf(lessonId: String, materialId: String) {
         val client = createHttpClient()
-        val api = ThinkMeetApi(client, readPreference("server.origin", "https://192.168.0.64"))
+        val api = ThinkMeetApi(client, ServerConfig.ORIGIN)
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         val realtime = api.realtime(scope, lessonId)
         var shareId: String? = null

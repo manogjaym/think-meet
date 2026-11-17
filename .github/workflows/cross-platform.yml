@@ -55,6 +55,7 @@ jobs:
     runs-on: macos-15
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
+      THINK_MEET_SERVER_ORIGIN: https://think-meet.example
     steps:
       - uses: actions/checkout@v7
         with:

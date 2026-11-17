@@ -1,0 +1,35 @@
+{
+  "id": "meeting-aspect-layout",
+  "summary": "참가자 영상과 발표자 보기를 실제 영상 영역의 화면 비율에 따라 상하·좌우로 배치합니다.",
+  "scope": "shared",
+  "featureIds": [
+    "classroom.core"
+  ],
+  "platforms": {
+    "server": {
+      "status": "unchanged",
+      "reason": "기존 참가자 화면 배치 수정이며 API·Socket·권한·기능 공개 정책을 변경하지 않습니다."
+    },
+    "web": {
+      "status": "implemented",
+      "reason": "영상 영역의 폭·높이로 열 수와 발표자 배치를 계산하고 ResizeObserver로 갱신합니다."
+    },
+    "android": {
+      "status": "implemented",
+      "reason": "공통 Compose 갤러리의 BoxWithConstraints에서 같은 비율 계산과 발표자 분기를 적용합니다."
+    },
+    "ios": {
+      "status": "implemented",
+      "reason": "Android와 같은 commonMain Compose 갤러리 구현을 사용합니다. 실제 iOS 실행 검증과는 구분합니다."
+    }
+  },
+  "verification": [
+    "2026-11-15 Asia/Seoul: 저장소 루트에서 npm run shared:check -- --changed-files /tmp/think-meet-aspect-layout-files.txt 통과. 이번 변경 파일만 검사하며 기존 서버 주소·인프라 작업은 제외했습니다.",
+    "web/에서 npm run typecheck 및 npm run build 통과. 기존 Vite 설정·큰 번들 경고는 남아 있습니다.",
+    "web/에서 PAGINATION_BASE_URL=http://127.0.0.1:8443 npx playwright test e2e/meeting-pagination.spec.ts: 7개 통과. 두 참가자의 바둑판·발표자 배치를 390×844, 844×390, 768×1024, 1024×768, 600×1000, 600×400에서 검사했습니다. 영상 경계·빈 열 없음·페이지 이동·참가자 퇴장·공유·목록 검색도 확인했습니다.",
+    "웹 화면 증거: web/test-results/meeting-pagination-two-par-987c7-spect-ratio-in-both-layouts/의 grid-*.png 및 speaker-*.png(로컬 산출물). 카메라를 끈 동일 모형 참가자 데이터의 브라우저 캡처이며 실제 서버·원격 영상 검증은 아닙니다.",
+    "mobile/에서 JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk-17.jdk/Contents/Home ANDROID_HOME=/Users/pang/Library/Android/sdk ./gradlew :composeApp:compileDebugKotlinAndroid :composeApp:compileKotlinIosSimulatorArm64 --console=plain 통과. Android·iOS 공통 Compose 컴파일이며 APK·Swift 앱 전체 빌드·기기 실행 결과는 아닙니다.",
+    "Android/iOS 기기 실행, 같은 계정·실제 수업 데이터의 웹·앱 휴대폰/태블릿 화면 비교, iOS 실기기 실행·원격 CI는 미실행입니다. 기존 에뮬레이터·서버 데이터·기기 설정을 변경하지 않았습니다.",
+    "기존 baseline의 화면 배치 수정이며 신규 기능·계약·플래그·ready 상태는 변경하지 않습니다. 전체 수업 회귀는 실행하지 않았습니다."
+  ]
+}

@@ -119,6 +119,9 @@
   --tm-component-login-phone-card-padding: 22px;
   --tm-component-prejoin-avatar-size: 88px;
   --tm-component-prejoin-control-icon-size: 23px;
+  --tm-component-remote-pointer-core-size: 8px;
+  --tm-component-remote-pointer-ring-width: 2px;
+  --tm-component-remote-pointer-size: 24px;
   --tm-component-status-card-radius: 16px;
   --tm-component-textarea-min-height: 100px;
   --tm-component-waiting-icon-size: 60px;

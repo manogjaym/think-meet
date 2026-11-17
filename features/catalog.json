@@ -122,6 +122,123 @@
           ]
         }
       }
+    },
+    {
+      "id": "meeting.remote-assistance",
+      "title": "Android 학생 원격 화면 안내",
+      "stage": "in-progress",
+      "requiresRevision": 4,
+      "defaultEnabled": false,
+      "platforms": [
+        "web",
+        "android",
+        "ios"
+      ],
+      "spec": "meeting-laser-pointer.md",
+      "contracts": {
+        "operations": [],
+        "events": [
+          "assistance.pointer"
+        ],
+        "commands": [
+          "assistance.request",
+          "assistance.respond",
+          "assistance.start",
+          "assistance.geometry",
+          "assistance.stop"
+        ]
+      },
+      "implementation": {
+        "server": {
+          "status": "done",
+          "files": [
+            "server/src/assistance.ts",
+            "server/src/gateway.ts",
+            "server/src/lessons.ts"
+          ]
+        },
+        "web": {
+          "status": "done",
+          "files": [
+            "web/src/components/meeting/SidePanel.tsx",
+            "web/src/components/meeting/SharedStage.tsx",
+            "web/src/lib/useMeeting.ts"
+          ]
+        },
+        "android": {
+          "status": "done",
+          "files": [
+            "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/meeting/RemoteAssistanceSession.kt",
+            "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/meeting/MeetingScreen.kt",
+            "mobile/composeApp/src/androidMain/kotlin/com/woongjin/thinkmeet/platform/AndroidRemoteAssistance.kt"
+          ]
+        },
+        "ios": {
+          "status": "done",
+          "files": [
+            "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/meeting/MeetingScreen.kt",
+            "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/meeting/SharedStage.kt",
+            "mobile/composeApp/src/iosMain/kotlin/com/woongjin/thinkmeet/platform/IosRemoteAssistance.kt"
+          ]
+        }
+      },
+      "verification": {
+        "server": {
+          "status": "passed",
+          "checks": [
+            "server/test/remote-assistance.test.ts"
+          ],
+          "evidence": [
+            "features/VERIFICATION.md"
+          ]
+        },
+        "web": {
+          "status": "pending",
+          "checks": [
+            "web/test/remote-assistance.test.mjs",
+            "web/e2e/remote-assistance.spec.ts"
+          ],
+          "evidence": [
+            "features/VERIFICATION.md"
+          ],
+          "screens": {
+            "phone": {
+              "status": "pending",
+              "evidence": [
+                "features/evidence/remote-assistance/web-phone-teacher-active.png"
+              ]
+            },
+            "tablet": {
+              "status": "pending",
+              "evidence": [
+                "features/evidence/remote-assistance/web-tablet-teacher-active.png"
+              ]
+            }
+          }
+        },
+        "android": {
+          "status": "pending",
+          "checks": [
+            "mobile/composeApp/src/commonTest/kotlin/com/woongjin/thinkmeet/meeting/RemoteAssistanceTest.kt",
+            "mobile/composeApp/src/commonTest/kotlin/com/woongjin/thinkmeet/meeting/RemoteAssistanceLifecycleTest.kt",
+            "mobile/composeApp/src/androidInstrumentedTest/kotlin/com/woongjin/thinkmeet/RemoteAssistanceConsentTest.kt",
+            "mobile/composeApp/src/androidInstrumentedTest/kotlin/com/woongjin/thinkmeet/RemoteAssistanceOverlayTest.kt"
+          ],
+          "evidence": [
+            "features/VERIFICATION.md",
+            "features/evidence/remote-assistance/android-other-app-pointer-pip.png"
+          ]
+        },
+        "ios": {
+          "status": "pending",
+          "checks": [
+            "mobile/composeApp/src/commonTest/kotlin/com/woongjin/thinkmeet/meeting/RemoteAssistanceTest.kt"
+          ],
+          "evidence": [
+            "features/VERIFICATION.md"
+          ]
+        }
+      }
     }
   ]
 }

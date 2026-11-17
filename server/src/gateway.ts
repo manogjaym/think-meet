@@ -6,8 +6,10 @@ import { Auth } from './auth'
 import { Lessons } from './lessons'
 import { ApiError } from './errors'
 import { FeaturePolicy } from './features'
+import { socketFeatureClient } from './feature-policy'
+import type { AssistanceBinding, AssistanceCommandContext } from './assistance'
 import { SOCKET_EVENTS } from './generated/contracts'
-import type { CommandEnvelope, SubscribeInput, StrokePreview } from './generated/contracts'
+import type { CommandEnvelope, SubscribeInput, StrokePreview, AssistancePointer } from './generated/contracts'
 const commandSchema = z.object({ lessonId: z.string().uuid(), type: z.string().min(1).max(100), payload: z.any().default({}), requestId: z.string().max(100).optional() })
 export function socketError(error: any) {
   if (error instanceof ApiError) return error.getResponse()
@@ -19,8 +21,11 @@ export function socketError(error: any) {
 export class Gateway implements OnGatewayConnection, OnGatewayDisconnect, OnModuleInit {
   @WebSocketServer() server!: Server
   private rates = new Map<string, { count: number; at: number }>()
+  private subscriptions = new Map<string, string>()
+  private pointerOrders = new WeakMap<AssistanceBinding, { received: number; delivered: number }>()
   constructor(readonly auth: Auth, readonly lessons: Lessons, readonly features: FeaturePolicy = new FeaturePolicy()) {}
   onModuleInit() {
+    this.lessons.assistanceConnected = session => this.assistanceConnected(session)
     this.lessons.publishSnapshot = (id, snapshot) => this.emitAuthorized(id, SOCKET_EVENTS.Snapshot, snapshot, new Set(snapshot.participants.map((member: any) => member.user.id)))
     this.lessons.notifyUsers = ids => { for (const id of ids) this.server?.to(`user:${id}`).emit(SOCKET_EVENTS.LessonsChanged) }
     this.lessons.notifyAllUsers = () => { this.server?.emit(SOCKET_EVENTS.LessonsChanged) }
@@ -59,7 +64,33 @@ export class Gateway implements OnGatewayConnection, OnGatewayDisconnect, OnModu
       socket.join(`user:${socket.data.user.id}`)
     } catch (error) { socket.emit(SOCKET_EVENTS.RoomError, socketError(error)); socket.disconnect(true) }
   }
-  handleDisconnect(socket: Socket) { this.rates.delete(socket.id) }
+  handleDisconnect(socket: Socket) {
+    this.rates.delete(socket.id)
+    for (const [key, socketId] of this.subscriptions) if (socketId === socket.id) this.subscriptions.delete(key)
+    void this.lessons.disconnectAssistance?.(socket.id).catch(error => console.error('assistance disconnect cleanup failed', error?.message))
+  }
+  private async assistanceUser(socket: Socket) {
+    try { return await this.auth.userFromCookie(socket.handshake.headers.cookie) }
+    catch (error) {
+      if (error instanceof ApiError && error.getStatus() === 401) this.handleDisconnect(socket)
+      throw error
+    }
+  }
+  private assistanceConnected(session: AssistanceBinding) {
+    const room = `lesson:${session.lessonId}`
+    return [[session.teacherId, session.teacherSocketId], [session.studentId, session.studentSocketId]].every(([userId, socketId]) => {
+      const socket = this.server?.sockets.sockets.get(socketId)
+      return socket?.rooms.has(room) && socket.data.user?.id === userId && this.subscriptions.get(`${session.lessonId}:${userId}`) === socketId
+    })
+  }
+  private assertAssistanceSocket(socket: Socket, lessonId: string, userId: string) {
+    if (!socket.rooms.has(`lesson:${lessonId}`) || this.subscriptions.get(`${lessonId}:${userId}`) !== socket.id) throw new ApiError('FORBIDDEN', '현재 수업에 연결된 기기에서 요청해 주세요.', 403)
+  }
+  private assertAndroidRecipient(socket: Socket) {
+    const client = socketFeatureClient(socket.handshake.headers, socket.handshake.auth)
+    if (client.platform !== 'android') throw new ApiError('ASSISTANCE_UNAVAILABLE', '학생의 Android 앱에서 화면 보기를 사용할 수 있어요.', 409)
+    this.features.assertEvent(SOCKET_EVENTS.AssistancePointer, {}, socket.handshake.headers, socket.handshake.auth)
+  }
   allowedOrigin(origin: string) { return [process.env.PUBLIC_ORIGIN, 'https://localhost', 'https://127.0.0.1', ...(process.env.DEV_ORIGINS || 'http://localhost:8443,http://127.0.0.1:8443').split(',')].includes(origin) }
   rate(socket: Socket, maximum = 60) {
     let hit = this.rates.get(socket.id)
@@ -73,9 +104,17 @@ export class Gateway implements OnGatewayConnection, OnGatewayDisconnect, OnModu
       const user = await this.auth.userFromCookie(socket.handshake.headers.cookie)
       this.features.assertEvent(SOCKET_EVENTS.Subscribe, input, socket.handshake.headers, socket.handshake.auth)
       socket.data.user = user
-      const snapshot = await this.lessons.snapshot(lessonId, user)
+      let snapshot = await this.lessons.snapshot(lessonId, user)
+      const key = `${lessonId}:${user.id}`
+      const previous = this.subscriptions.get(key)
+      const moving = [...socket.rooms].some(room => room.startsWith('lesson:') && room !== `lesson:${lessonId}`)
+      if (previous && previous !== socket.id) await this.lessons.disconnectAssistance(previous)
+      if (moving) await this.lessons.disconnectAssistance(socket.id)
+      for (const [oldKey, socketId] of this.subscriptions) if (socketId === socket.id && oldKey !== key) this.subscriptions.delete(oldKey)
       for (const room of socket.rooms) if (room.startsWith('lesson:')) socket.leave(room)
       socket.join(`lesson:${lessonId}`)
+      this.subscriptions.set(key, socket.id)
+      if (previous && previous !== socket.id || moving) snapshot = await this.lessons.snapshot(lessonId, user)
       return { ok: true, snapshot }
     } catch (error) { return { ok: false, error: socketError(error) } }
   }
@@ -84,9 +123,24 @@ export class Gateway implements OnGatewayConnection, OnGatewayDisconnect, OnModu
     try {
       this.rate(socket)
       const command: CommandEnvelope = commandSchema.parse(input)
-      const user = await this.auth.userFromCookie(socket.handshake.headers.cookie)
+      const user = command.type.startsWith('assistance.') ? await this.assistanceUser(socket) : await this.auth.userFromCookie(socket.handshake.headers.cookie)
       this.features.assertEvent(SOCKET_EVENTS.Command, command, socket.handshake.headers, socket.handshake.auth)
-      const snapshot = await this.lessons.command(user, { ...command, payload: command.payload || {} })
+      let context: AssistanceCommandContext | undefined
+      if (command.type.startsWith('assistance.')) {
+        this.assertAssistanceSocket(socket, command.lessonId, user.id)
+        context = { socketId: socket.id }
+        if (command.type === 'assistance.request') {
+          const { studentId } = z.object({ studentId: z.string().uuid() }).parse(command.payload)
+          const targetId = this.subscriptions.get(`${command.lessonId}:${studentId}`)
+          const target = targetId ? this.server?.sockets.sockets.get(targetId) : undefined
+          if (!target?.rooms.has(`lesson:${command.lessonId}`)) throw new ApiError('ASSISTANCE_UNAVAILABLE', '현재 수업에 연결된 Android 학생에게 요청해 주세요.', 409)
+          const targetUser = await this.assistanceUser(target)
+          if (targetUser.id !== studentId || targetUser.role !== 'student') throw new ApiError('FORBIDDEN', '수업에 참여한 학생에게 요청해 주세요.', 403)
+          this.assertAndroidRecipient(target)
+          context.studentSocketId = target.id
+        }
+      }
+      const snapshot = await this.lessons.command(user, { ...command, payload: command.payload || {} }, context)
       return { ok: true, snapshot }
     } catch (error) { return { ok: false, error: socketError(error) } }
   }
@@ -104,5 +158,44 @@ export class Gateway implements OnGatewayConnection, OnGatewayDisconnect, OnModu
     } catch (error) {
       if (error instanceof ApiError && ['FEATURE_UNAVAILABLE', 'CLIENT_UPDATE_REQUIRED'].includes((error.getResponse() as { code: string }).code)) socket.emit(SOCKET_EVENTS.RoomError, socketError(error))
     }
+  }
+  @SubscribeMessage(SOCKET_EVENTS.AssistancePointer)
+  async assistancePointer(@ConnectedSocket() socket: Socket, @MessageBody() input: any) {
+    try {
+      this.rate(socket)
+      const body: AssistancePointer = z.object({ lessonId: z.string().uuid(), sessionId: z.string().uuid(), shareId: z.string().uuid(),
+        geometryVersion: z.number().int().min(1).max(2147483647), x: z.number().min(0).max(1), y: z.number().min(0).max(1) }).parse(input)
+      const candidate = this.lessons.assistance.current(body.lessonId)
+      let order = candidate ? this.pointerOrders.get(candidate) : undefined
+      if (candidate && !order) { order = { received: 0, delivered: 0 }; this.pointerOrders.set(candidate, order) }
+      const received = order ? ++order.received : 0
+      const user = await this.assistanceUser(socket)
+      this.features.assertEvent(SOCKET_EVENTS.AssistancePointer, body, socket.handshake.headers, socket.handshake.auth)
+      const lesson = await this.lessons.access(body.lessonId, user, true, true)
+      const session = this.lessons.assistance.require(body.lessonId, body.sessionId)
+      if (session !== candidate || !order) return
+      this.assertAssistanceSocket(socket, body.lessonId, user.id)
+      if (session.teacherId !== user.id || session.teacherSocketId !== socket.id) throw new ApiError('FORBIDDEN', '이 요청의 선생님만 위치를 알려줄 수 있어요.', 403)
+      const current = () => this.lessons.assistance.current(body.lessonId) === session && session.status === 'active'
+        && session.shareId === body.shareId && session.geometry?.version === body.geometryVersion && this.assistanceConnected(session)
+      const share = lesson.share as any
+      if (!current() || share?.id !== body.shareId || share.assistanceId !== session.id || share.ownerId !== session.studentId || share.type !== 'screen') return
+      const target = this.server?.sockets.sockets.get(session.studentSocketId)
+      if (!target) return
+      try {
+        const student = await this.auth.userFromCookie(target.handshake.headers.cookie)
+        await this.lessons.access(body.lessonId, student, true)
+        if (student.id !== session.studentId) throw new ApiError('FORBIDDEN', '학생 연결이 변경되었어요.', 403)
+        this.assertAndroidRecipient(target)
+      } catch (error) {
+        target.emit(SOCKET_EVENTS.RoomError, socketError(error)); target.leave(`lesson:${body.lessonId}`)
+        await this.lessons.disconnectAssistance(target.id)
+        if (error instanceof ApiError && error.getStatus() === 401) target.disconnect(true)
+        throw error
+      }
+      if (!current() || received <= order.delivered) return
+      order.delivered = received
+      target.volatile.emit(SOCKET_EVENTS.AssistancePointer, { ...body, authorId: user.id })
+    } catch (error) { socket.emit(SOCKET_EVENTS.RoomError, socketError(error)) }
   }
 }

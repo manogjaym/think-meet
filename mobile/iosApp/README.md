@@ -4,7 +4,7 @@
 
 ## 실행 전 설정
 
-1. Xcode 26 이상, JDK 17 이상, iOS 17.2 이상을 준비합니다.
+1. Xcode 26 이상, JDK 17 이상, iOS 17.2 이상을 준비하고 [공통 서버 주소 설정](../README.md#서버-연결)에 따라 `mobile/.env`를 작성합니다. Xcode의 Kotlin 빌드도 같은 파일을 읽습니다.
 2. 앱과 `Broadcast` target에 같은 Apple 개발 팀을 지정합니다.
 3. 두 target의 App Groups에 `group.com.woongjin.thinkmeet`를 등록합니다. bundle ID를 바꾸면 앱·확장의 ID와 두 entitlements의 그룹도 함께 바꿉니다.
 
@@ -13,6 +13,8 @@
 ### 로컬 HTTPS 인증서
 
 `infra/local/certs/think-meet-root.crt` 공개 CA를 기기에 설치한 뒤 **설정 → 일반 → 정보 → 인증서 신뢰 설정**에서 전체 신뢰를 켭니다. TLS 검증을 우회하지 않습니다.
+
+다른 개발 서버를 쓰면 그 서버의 공개 루트 CA를 설치합니다. [공통 서버 설정](../README.md#서버-연결)의 `THINK_MEET_SERVER_CA_FILE`은 Android 디버그 번들용이며 iOS 신뢰 저장소를 자동으로 바꾸지 않습니다. 예를 들어 `mobile/certs/server-root.crt`를 사용하는 부팅된 시뮬레이터에는 이 폴더에서 `xcrun simctl keychain booted add-root-cert ../certs/server-root.crt`로 설치합니다.
 
 이미 실행 중인 시뮬레이터에는 `mobile/iosApp/`에서 설치할 수 있습니다.
 

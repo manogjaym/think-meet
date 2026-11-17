@@ -3,6 +3,8 @@
 package com.woongjin.thinkmeet.meeting
 
 import com.woongjin.thinkmeet.design.*
+import com.woongjin.thinkmeet.design.generated.DesignContent
+import com.woongjin.thinkmeet.design.generated.DesignTokens.Component
 import com.woongjin.thinkmeet.design.generated.DesignTokens.Colors as Palette
 import com.woongjin.thinkmeet.design.generated.DesignTokens.Spacing as Space
 import com.woongjin.thinkmeet.design.generated.DesignTokens.Radius as Corner
@@ -67,6 +69,10 @@ internal fun SharedStage(
     val share = snapshot.share ?: return
     val owner = snapshot.lesson.teacher.id == user.id
     val mediaState by media.state.collectAsState()
+    val capabilities by api.capabilities.collectAsState()
+    val socketConnected by realtime.connected.collectAsState()
+    val assistance = snapshot.assistance?.takeIf { it.status == "active" && it.shareId == share.id && share.type == "screen" && share.assistanceId == it.id }
+    val assistanceEnabled = capabilities.supports(ContractProtocol.FeatureIds.MeetingRemoteAssistance)
     val scope = rememberCoroutineScope()
     var annotating by remember(share.id) { mutableStateOf(false) }
     var tool by remember { mutableStateOf("pen") }
@@ -79,6 +85,18 @@ internal fun SharedStage(
     var optimistic by remember(share.id, share.page) { mutableStateOf<Map<String, DraftStroke>>(emptyMap()) }
     val strokes = remember(snapshot.strokes, share.id, share.page) { snapshot.strokes.filter { it.shareId == share.id && it.page == share.page && !it.deleted } }
     val screenAspect = mediaState.participants.firstOrNull { it.identity == share.ownerId }?.screenAspectRatio
+    var guideReady by remember { mutableStateOf(false) }
+    var pulse by remember(share.id, assistance?.geometry?.version) { mutableStateOf<AssistancePointer?>(null) }
+    LaunchedEffect(assistance?.id, assistance?.geometry?.version, screenAspect, socketConnected, assistanceEnabled) {
+        guideReady = false
+        pulse = null
+        if (assistanceEnabled && socketConnected && owner && assistanceAspectMatches(assistance?.geometry, screenAspect)) {
+            delay(500)
+            guideReady = true
+        }
+    }
+    LaunchedEffect(assistance?.id) { if (assistance != null) { annotating = false; draft = null } }
+    LaunchedEffect(pulse) { if (pulse != null) { delay(1_500); pulse = null } }
     LaunchedEffect(share.id, screenAspect) { if (share.type == "screen" && screenAspect != null && screenAspect in .05f..20f) aspect = screenAspect }
     // Remote stroke previews are transient and never treated as persisted annotations.
     var previews by remember(share.id, share.page) { mutableStateOf<Map<String, Pair<StrokePreview, Long>>>(emptyMap()) }
@@ -133,7 +151,18 @@ internal fun SharedStage(
                     strokes.map { CachedStroke(it.tool, hexColor(it.color), annotationPath(it.points, surfaceSize.width.toFloat(), surfaceSize.height.toFloat())) }
                 }
                 val currentStrokes by rememberUpdatedState(strokes)
-                val drawModifier = if (!annotating) Modifier else Modifier.pointerInput(share.id, share.page, tool, color) {
+                val guideModifier = if (!guideReady || assistance == null) Modifier else Modifier.pointerInput(assistance.id, assistance.geometry?.version) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        down.consume()
+                        val geometry = assistance.geometry ?: return@awaitEachGesture
+                        val point = AssistancePointer(snapshot.lessonId, assistance.id, share.id, geometry.version,
+                            (down.position.x / size.width).toDouble().coerceIn(0.0, 1.0), (down.position.y / size.height).toDouble().coerceIn(0.0, 1.0))
+                        pulse = point
+                        scope.launch { realtime.assistancePointer(point) }
+                    }
+                }
+                val drawModifier = if (!annotating || assistance != null) Modifier else Modifier.pointerInput(share.id, share.page, tool, color) {
                     fun pointAt(offset: Offset): Point = Point((offset.x / size.width).toDouble().coerceIn(0.0, 1.0), (offset.y / size.height).toDouble().coerceIn(0.0, 1.0))
                     fun erase(point: Point) {
                         val ids = currentStrokes.filter { stroke ->
@@ -177,11 +206,16 @@ internal fun SharedStage(
                         } finally { draft = null }
                     }
                 }
-                Canvas(Modifier.fillMaxSize().onSizeChanged { surfaceSize = it }.then(drawModifier).semantics { contentDescription = "수업 판서 영역" }) {
+                Canvas(Modifier.fillMaxSize().onSizeChanged { surfaceSize = it }.then(if (assistance != null) guideModifier else drawModifier).semantics { contentDescription = if (guideReady) DesignContent.RemoteAssistActive else "수업 판서 영역" }) {
                     cachedStrokes.forEach { drawAnnotationPath(it.tool, it.color, it.path) }
                     previews.values.forEach { (preview, _) -> drawAnnotation(preview.tool, preview.color, preview.points) }
                     optimistic.values.forEach { drawAnnotation(it.tool, it.color, it.points) }
                     draft?.let { drawAnnotation(it.tool, it.color, it.points) }
+                    if (guideReady) pulse?.let { point ->
+                        val center = Offset((point.x * size.width).toFloat(), (point.y * size.height).toFloat())
+                        drawCircle(Palette.Danger, (Component.RemotePointerSize - Component.RemotePointerRingWidth).toPx() / 2, center, style = DrawStroke(Component.RemotePointerRingWidth.toPx()))
+                        drawCircle(Palette.Danger, Component.RemotePointerCoreSize.toPx() / 2, center)
+                    }
                 }
                 }
                 }
@@ -200,7 +234,10 @@ internal fun SharedStage(
             if (share.type == "media") Surface(Modifier.align(Alignment.BottomCenter).padding(Space.S12).fillMaxWidth(), shape = RoundedCornerShape(Corner.R8), color = Palette.MeetingTile) {
                 MediaTransport(share, snapshot.serverTime, owner, pending) { command("media.update", it) }
             }
-            if (!annotating) Surface(onClick = { annotating = true }, modifier = Modifier.align(Alignment.TopStart).padding(Space.S12), color = Palette.Selection,
+            if (assistance != null) Surface(Modifier.align(Alignment.TopStart).padding(Space.S12), color = Palette.MeetingTile, shape = RoundedCornerShape(Corner.R8)) {
+                Text(if (guideReady) DesignContent.RemoteAssistActive else if (owner) DesignContent.RemoteAssistGeometryWaiting else DesignContent.RemoteAssistActiveStudent,
+                    Modifier.padding(Space.S10), style = MaterialTheme.typography.bodySmall, color = Palette.MeetingText)
+            } else if (!annotating) Surface(onClick = { annotating = true }, modifier = Modifier.align(Alignment.TopStart).padding(Space.S12), color = Palette.Selection,
                 contentColor = Palette.PrimaryPressed, shape = RoundedCornerShape(Corner.R8)) {
                 Row(Modifier.heightIn(min = Space.S44).padding(horizontal = Space.S12), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.S7)) {
                     DesignIcon("pen", Modifier.size(Space.S20), Palette.PrimaryPressed)

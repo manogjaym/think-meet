@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "engines": {"node": ">=22.22.0"},
   "scripts": {
+    "apk": "sh mobile/scripts/build-apk.sh",
     "shared:generate": "node scripts/generate-shared.mjs",
     "shared:check": "node scripts/check-shared.mjs",
     "test:shared": "node --test contracts/test/*.test.mjs",

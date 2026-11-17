@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import com.woongjin.thinkmeet.data.Share
 import com.woongjin.thinkmeet.data.ThinkMeetApi
+import com.woongjin.thinkmeet.config.ServerConfig
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.flow.StateFlow
 
@@ -58,7 +59,7 @@ object AppLinks {
     val code: StateFlow<String?> = pending
     fun receive(url: String) {
         val native = Regex("^thinkmeet://join/([A-Za-z0-9_-]{1,100})/?(?:[?#].*)?$", RegexOption.IGNORE_CASE).matchEntire(url)
-        val configured = readPreference("server.origin", "https://192.168.0.64").trimEnd('/')
+        val configured = ServerConfig.ORIGIN
         val web = Regex("^${Regex.escape(configured)}/join/([A-Za-z0-9_-]{1,100})/?(?:[?#].*)?$").matchEntire(url)
         val code = (native ?: web)?.groupValues?.get(1)
         if (code != null) pending.value = code

@@ -2,6 +2,70 @@
 
 실제 실행 결과를 확인한 뒤 갱신합니다. 구현 완료, 빌드 통과, 기기 실행은 구분해서 기록합니다.
 
+## APK 빌드 스크립트 · 2026-11-15 (Asia/Seoul)
+
+저장소 루트의 `npm run apk`로 `shared:check`와 `:composeApp:assembleDebug`가 순서대로 통과했고, `composeApp/build/outputs/apk/debug/composeApp-debug.apk` 생성과 절대 경로 출력을 확인했습니다. `sh -n mobile/scripts/build-apk.sh`도 통과했습니다. 기존 환경변수·`mobile/.env`를 유지하며 기기 설치·실행은 하지 않았습니다. Android 개발용 빌드 스크립트 추가이므로 서버·웹·iOS 제품 코드와 통신 계약은 변경하지 않았습니다.
+
+## 빌드 환경변수 서버 주소 · 2026-11-15 (Asia/Seoul)
+
+Android/iOS의 주소 입력 UI를 제거하고 `mobile/.env` 또는 빌드 환경변수의 `THINK_MEET_SERVER_ORIGIN`을 사용합니다. 앱·참여 링크·Android 계측 검사가 같은 생성 주소를 사용합니다. 기존 저장 주소는 읽지 않습니다. 서버·웹 동작과 계약은 변경하지 않았습니다.
+
+| 항목 | 이번 실행 결과 |
+|---|---|
+| 공통 검사·변경 기록 | `npm run shared:check` 및 `--changed-files /tmp/think-meet-mobile-server-origin-files.txt` 통과. 이번 앱 변경만 검사 |
+| 공통·웹·서버 검증 | `npm run verify` 통과 · 정책·디자인 테스트 27개, 웹·서버 타입 검사, 웹 빌드 |
+| Android | APK·기존 계측 테스트 소스 컴파일 통과, 핵심 테스트 19개 통과(참여 링크 3개 포함) |
+| 주소 설정 | `.env`, 따옴표·포트, 환경변수 우선순위·변경 반영, 누락·잘못된 HTTPS origin 거부 등 11개 사례 통과. 원래 `.env`와 생성 주소 복원 |
+| iOS | Kotlin arm64 시뮬레이터 프레임워크와 Swift 앱·Broadcast 확장 빌드 통과 · 서명 없음 |
+| Android 실행 | 기존 `emulator-5554` API 35, 1080×2400 / 420dpi에 업데이트 설치·실행 성공. `am start -W`: `Status: ok`, `COLD`, `TotalTime: 21041ms` |
+| 실제 화면 | UI 계층 조회가 90초 이상 응답하지 않고 캡처도 완료되지 않아 조회 프로세스만 종료. 주소 설정 제거의 실제 화면 확인과 휴대폰·태블릿 비교는 미완료 |
+| 미실행 | iOS 시뮬레이터·실기기 실행, 원격 CI, 실제 서버 로그인·수업 회귀. 이번 변경은 서버·미디어 동작을 바꾸지 않음 |
+
+네이티브 검증은 `mobile/`에서 `JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk-17.jdk/Contents/Home`, `ANDROID_HOME=/Users/pang/Library/Android/sdk`로 실행했습니다. 빌드 전 공통 생성물 검사를 통과했습니다.
+
+```sh
+./gradlew :composeApp:generateServerConfig :composeApp:testDebugUnitTest \
+  :composeApp:assembleDebug :composeApp:compileDebugAndroidTestKotlin \
+  :composeApp:linkDebugFrameworkIosSimulatorArm64 --console=plain
+xcodebuild -project iosApp/ThinkMeet.xcodeproj -scheme ThinkMeet \
+  -configuration Debug -sdk iphonesimulator \
+  -destination 'generic/platform=iOS Simulator' ARCHS=arm64 \
+  SKIP_KOTLIN_BUILD=YES CODE_SIGNING_ALLOWED=NO \
+  KMP_FRAMEWORK_DIR='$(SRCROOT)/../composeApp/build/bin/iosSimulatorArm64/debugFramework' \
+  -derivedDataPath iosApp/build build
+```
+
+로컬 증거: `artifacts/server-origin/config-checks.log`, `artifacts/server-origin/ios-build.log`, `composeApp/build/test-results/testDebugUnitTest/TEST-*.xml`. 에뮬레이터 설정·기존 계정·서버 데이터는 변경하지 않았습니다. 기기 임시 파일 `/data/local/tmp/thinkmeet-server-origin.xml`의 삭제도 5초 안에 응답하지 않아 생성·잔존 여부는 미확인입니다. 웹·Compose의 공통 UI 계약은 `design/system.json`에 기록했으며 새로운 기능의 ready 검증으로 집계하지 않습니다.
+
+### 서버 CA 불일치 후속 검증 · 2026-11-15
+
+`.env`와 생성 코드에는 `https://115.68.2.13`이 반영되어 있었으나 서버의 현재 CA와 앱의 기존 번들 CA가 달랐습니다. 기존 CA로 TLS 검증이 실패했고, 검증된 SSH 호스트 `aimos`를 통해 서버 컨테이너의 공개 루트 CA만 읽어 확인했습니다. 서버 설정·비밀키는 변경하지 않았습니다.
+
+| 항목 | 이번 실행 결과 |
+|---|---|
+| 서버 CA 신뢰 확인 | 공개 루트 DER SHA-256 `89:05:05:54:1F:D8:D9:5F:D6:0D:85:DD:D7:FF:20:57:4D:29:9D:95:B3:75:52:4B:BF:FC:04:CA:1C:91:82:A5`. 이 CA로 curl `/api/v1/health`: HTTP 200, TLS verify 0 |
+| Android 구성 | `THINK_MEET_SERVER_CA_FILE=certs/server-root.crt`로 공개 CA 선택. 앱·검사 APK 빌드 통과, APK에 정확한 CA 포함 |
+| 릴리스 범위 확인 | `:composeApp:mergeReleaseResources` 통과. 디버그 CA 리소스 없음, `androidMain`의 시스템 CA 설정 사용. 릴리스 전체 빌드는 미실행 |
+| 설정 경계 검사 | `.env` CA 선택, 빈 설정의 기본 CA, 누락 파일 거부, 개인키 포함 거부 4개 사례 통과. 현재 서버 CA로 생성물 복원 |
+| 실제 Android HTTPS | `ServerConnectionSmokeTest` 1개 통과. `healthStatus=200`, `authStatus=401`, `serverOrigin=https://115.68.2.13`. 인증 정보 없이 정상 응답 확인 |
+| 최종 Android 화면 | 동일 에뮬레이터 복구 후 앱 실행 `Status: ok`, `COLD`, 1,272ms. 로그인 화면 표시·서버 연결 오류 없음·로딩 종료를 UI XML과 실제 PNG로 확인. 계정 로그인과 태블릿 비교는 미실행 |
+| 공통 검사 | `npm run verify` 통과. 계약·정책·디자인 검사와 웹·서버 타입 검사·웹 빌드 |
+| 제외 범위 | Android 디버그 신뢰 설정 수정이므로 iOS 빌드·실행, 실기기·원격 CI·수업 회귀는 반복하지 않음. iOS는 해당 CA를 시스템에 설치해야 함 |
+
+`mobile/`에서 JDK 17로 실제 연결 검사를 실행했습니다.
+
+```sh
+./gradlew :composeApp:connectedDebugAndroidTest :composeApp:mergeReleaseResources \
+  -Pandroid.testInstrumentationRunnerArguments.class=com.woongjin.thinkmeet.ServerConnectionSmokeTest \
+  --console=plain
+```
+
+첫 실행의 Android 검사 도구가 `uninstall_after_test: true`로 앱·검사 APK를 자동 제거했습니다. 앱을 다시 설치했으며 이전 로컬 로그인·기기 설정이 초기화됐을 수 있습니다. 같은 문제가 반복되지 않도록 `mobile/gradle.properties`에 `android.injected.androidTest.leaveApksInstalledAfterRun=true`를 설정했습니다. 후속 실행도 검사 1개·빌드가 통과했고 `healthStatus=200`, `authStatus=401`, UTP 로그에 대상 앱 제거가 없음을 확인했습니다.
+
+이후 기기 패키지 조회가 시간 초과되어 기존 에뮬레이터를 복구했습니다. `adb reboot` 후에도 offline이 지속되어 동일 AVD를 정상 종료하고 원래 인자 `-avd TIF_Card_OCR_API35_12GB -port 5554 -no-snapshot-load`로 다시 열었습니다. 부팅 14.049초, `sys.boot_completed=1`, 앱 패키지 보존과 기존 1080×2400 / 420dpi를 확인했습니다. 데이터 초기화 옵션은 사용하지 않았으며 서버 계정·수업·파일은 변경하지 않았습니다. 로그는 `artifacts/server-origin/emulator-restart.log`입니다.
+
+로컬 증거는 `artifacts/server-origin/ca-instrumentation.log`, `artifacts/server-origin/ca-instrumentation-retained.log`, `artifacts/server-origin/ca-config-checks.log`, `artifacts/server-origin/ca-fixed-login-final.png`, `artifacts/server-origin/ca-fixed-login.xml`, `composeApp/build/outputs/androidTest-results/connected/debug/`의 XML·`test-result.textproto`입니다. 후속 실행을 감싼 Python 도구는 검사 통과 뒤의 패키지 조회 시간 초과로 종료 코드 1을 반환했으며, 이것을 Gradle·HTTPS 검사 실패로 집계하지 않습니다. 이전 검증 결과와 구분하며 휴대폰·태블릿 전체 화면 비교나 iOS 실행 완료로 집계하지 않습니다.
+
 ## 기본 수업 흐름 · 2026-11-13 (Asia/Seoul)
 
 | 항목 | 결과 |

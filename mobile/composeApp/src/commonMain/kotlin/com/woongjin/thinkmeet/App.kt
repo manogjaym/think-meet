@@ -1,4 +1,3 @@
-@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 package com.woongjin.thinkmeet
 
 import androidx.compose.foundation.*
@@ -14,8 +13,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.CustomAccessibilityAction
-import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -24,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import com.woongjin.thinkmeet.data.ThinkMeetApi
+import com.woongjin.thinkmeet.config.ServerConfig
 import com.woongjin.thinkmeet.design.*
 import com.woongjin.thinkmeet.design.generated.DesignContent
 import com.woongjin.thinkmeet.design.generated.DesignTokens.Colors as Palette
@@ -38,14 +36,12 @@ import com.woongjin.thinkmeet.ui.*
 @Composable
 fun App() {
     ThinkMeetTheme {
-        var origin by remember { mutableStateOf(readPreference("server.origin", "https://192.168.0.64")) }
-        val client = remember(origin) { createHttpClient() }
-        val api = remember(origin) { ThinkMeetApi(client, origin) }
+        val client = remember { createHttpClient() }
+        val api = remember { ThinkMeetApi(client, ServerConfig.ORIGIN) }
         val scope = rememberCoroutineScope()
         val controller = remember(api) { AppState(api, scope) }
         val state by controller.state.collectAsState()
         val deepLink by AppLinks.code.collectAsState()
-        var settings by remember { mutableStateOf(false) }
         val snackbar = remember { SnackbarHostState() }
         val savedScreens = rememberSaveableStateHolder()
         ConfigureSystemAppearance(state.route == Route.Meeting && state.user != null)
@@ -61,9 +57,6 @@ fun App() {
         BackHandler(state.user != null && state.route != Route.Home && state.route != Route.Meeting) {
             if (state.route in listOf(Route.Prejoin, Route.Form) && state.selected != null) controller.detail() else controller.home()
         }
-        if (settings) ServerSettings(origin, state.user != null, { settings = false }, { value ->
-            writePreference("server.origin", value); origin = value; settings = false
-        })
         Surface(Modifier.fillMaxSize(), color = Canvas) {
             when {
                 state.loading -> Box(Modifier.fillMaxSize().safeDrawingPadding(), contentAlignment = Alignment.Center) {
@@ -72,7 +65,7 @@ fun App() {
                         Text("수업을 준비하고 있어요", color = Muted)
                     }
                 }
-                state.user == null -> LoginScreen(state.busy, state.error, controller::login, { settings = true })
+                state.user == null -> LoginScreen(state.busy, state.error, controller::login)
                 state.route == Route.Meeting && state.selected != null && state.admission != null ->
                     MeetingScreen(api, state.selected!!, state.user!!, state.admission!!, state.camera, state.microphone, controller::meetingExit)
                 else -> BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -82,7 +75,7 @@ fun App() {
                     val rootTabs = rootRoute && mobile && state.user!!.isTeacher
                     Scaffold(containerColor = Canvas, contentWindowInsets = WindowInsets(0, 0, 0, 0),
                         snackbarHost = { SnackbarHost(snackbar) },
-                        topBar = { AppHeader(state, mobile, compact, maxWidth, controller::home, { controller.form() }, { settings = true }, controller::logout, controller::detail) },
+                        topBar = { AppHeader(state, mobile, compact, maxWidth, controller::home, { controller.form() }, controller::logout, controller::detail) },
                         bottomBar = { if (rootTabs) RootNavigation(state.route, true, controller::home, { controller.form() }) },
                     ) { padding ->
                         Box(Modifier.fillMaxSize().padding(padding).then(if (rootTabs) Modifier else Modifier.navigationBarsPadding())) {
@@ -115,7 +108,7 @@ fun BrandMark(compact: Boolean = false) {
 
 @Composable
 private fun AppHeader(state: AppUiState, mobile: Boolean, compact: Boolean, width: androidx.compose.ui.unit.Dp,
-    home: () -> Unit, form: () -> Unit, settings: () -> Unit, logout: () -> Unit, detail: () -> Unit,
+    home: () -> Unit, form: () -> Unit, logout: () -> Unit, detail: () -> Unit,
 ) {
     val rootRoute = state.route == Route.Home || (state.route == Route.Form && state.selected == null)
     val height = if (if (rootRoute) compact else mobile) LayoutToken.RootHeaderCompactHeight else LayoutToken.RootHeaderHeight
@@ -124,7 +117,7 @@ private fun AppHeader(state: AppUiState, mobile: Boolean, compact: Boolean, widt
             if (rootRoute) {
                 val gutter = when { compact -> 20.dp; width <= LayoutToken.DashboardFeatureWide -> 24.dp; width <= LayoutToken.DashboardIntermediate -> 28.dp; else -> 36.dp }
                 Row(Modifier.fillMaxWidth().height(height).padding(horizontal = gutter), verticalAlignment = Alignment.CenterVertically) {
-                    Row(Modifier.combinedClickable(onClick = home, onLongClick = settings).heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(Modifier.clickable(onClick = home).heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         BrandSymbol(Modifier.size(28.dp))
                         Text(DesignContent.BrandName, fontSize = if (mobile) 21.sp else 22.sp, lineHeight = 33.sp, letterSpacing = (-.03).em, fontWeight = DesignWeight.Bold)
                         if (width > LayoutToken.DashboardFeatureWide) {
@@ -138,7 +131,7 @@ private fun AppHeader(state: AppUiState, mobile: Boolean, compact: Boolean, widt
                         RootNavigation(state.route, false, home, form, state.user!!.isTeacher)
                     }
                     Spacer(Modifier.weight(1f))
-                    AccountMenu(state, width <= LayoutToken.HeaderProfileCompact, settings, logout)
+                    AccountMenu(state, width <= LayoutToken.HeaderProfileCompact, logout)
                 }
             } else {
                 val canBack = state.route in listOf(Route.Detail, Route.Prejoin) || (state.route == Route.Form && state.selected != null)
@@ -178,7 +171,7 @@ private fun RootNavigation(route: Route, mobile: Boolean, home: () -> Unit, form
 }
 
 @Composable
-private fun AccountMenu(state: AppUiState, mobile: Boolean, settings: () -> Unit, logout: () -> Unit) {
+private fun AccountMenu(state: AppUiState, mobile: Boolean, logout: () -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     Box {
         Row(Modifier.heightIn(min = 48.dp).semantics { contentDescription = "계정 메뉴" }.clickable { expanded = !expanded }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
@@ -191,13 +184,12 @@ private fun AccountMenu(state: AppUiState, mobile: Boolean, settings: () -> Unit
         DropdownMenu(expanded, { expanded = false }, modifier = Modifier.width(264.dp), shape = RoundedCornerShape(12.dp), containerColor = Palette.White, border = BorderStroke(1.dp, Palette.Line), tonalElevation = 0.dp) {
             Text(state.user!!.username, Modifier.padding(horizontal = 12.dp, vertical = 8.dp), fontSize = Type.Caption, lineHeight = 19.5.sp, color = Muted)
             DropdownMenuItem(text = { Text("로그아웃") }, onClick = { expanded = false; logout() }, enabled = !state.busy)
-            DropdownMenuItem(text = { Text("서버 연결 설정", color = Muted, fontSize = Type.Caption) }, onClick = { expanded = false; settings() })
         }
     }
 }
 
 @Composable
-private fun LoginScreen(busy: Boolean, error: String?, login: (String, String) -> Unit, settings: () -> Unit) {
+private fun LoginScreen(busy: Boolean, error: String?, login: (String, String) -> Unit) {
     var username by rememberSaveable { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     fun submit() { if (!busy && username.isNotBlank() && password.isNotEmpty()) login(username, password) }
@@ -207,7 +199,7 @@ private fun LoginScreen(busy: Boolean, error: String?, login: (String, String) -
         Box(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).heightIn(min = (maxHeight - reservedHeader).coerceAtLeast(0.dp)).padding(horizontal = if (phone) 18.dp else 24.dp, vertical = if (phone) 28.dp else 40.dp), contentAlignment = Alignment.Center) {
             Surface(Modifier.widthIn(max = LayoutToken.LoginCardMaxWidth).fillMaxWidth(), shape = RoundedCornerShape(Component.StatusCardRadius), color = Palette.White, border = BorderStroke(1.dp, Palette.Line)) {
                 Column(Modifier.padding(horizontal = if (phone) Component.LoginPhoneCardPadding else Component.LoginCardPadding, vertical = if (phone) 28.dp else Component.LoginCardPadding)) {
-                    Row(Modifier.combinedClickable(onClick = {}, onLongClick = settings).semantics { customActions = listOf(CustomAccessibilityAction("서버 연결 설정") { settings(); true }) }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         BrandSymbol(Modifier.size(Component.LoginBrandSize), Ink)
                         Text(DesignContent.LoginBrand, fontSize = Type.Body, lineHeight = 25.5.sp, fontWeight = DesignWeight.SemiBold)
                     }
@@ -238,17 +230,4 @@ fun ErrorCard(message: String) {
             Text(message, color = Palette.ServiceErrorText, fontSize = 14.sp, lineHeight = 21.sp)
         }
     }
-}
-
-@Composable
-private fun ServerSettings(origin: String, loggedIn: Boolean, onDismiss: () -> Unit, onSave: (String) -> Unit) {
-    var value by remember { mutableStateOf(origin) }
-    val valid = Regex("https://[A-Za-z0-9.:-]+/?").matches(value.trim())
-    AlertDialog(onDismissRequest = onDismiss, title = { Text("서버 연결 설정") }, text = {
-        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text("웹과 같은 HTTPS 서버 주소를 입력해 주세요. 개발 서버의 공개 CA 인증서를 기기에 신뢰 설치해야 합니다.", color = Muted)
-            DesignTextField(value, { value = it }, label = "서버 주소", isError = !valid, modifier = Modifier.fillMaxWidth())
-            if (loggedIn) Text("서버를 변경하면 해당 서버의 계정으로 로그인합니다.", fontSize = Type.Caption, color = Muted)
-        }
-    }, confirmButton = { TextButton({ onSave(value.trim().trimEnd('/')) }, enabled = valid) { Text("저장") } }, dismissButton = { TextButton(onDismiss) { Text("닫기") } })
 }

@@ -1,5 +1,5 @@
 // Generated from features/catalog.json and contracts/. Do not edit.
-export const CONTRACT_REVISION = 1 as const;
+export const CONTRACT_REVISION = 4 as const;
 export const CAPABILITY_HEADERS = {"platform":"X-ThinkMeet-Platform","revision":"X-ThinkMeet-Contract-Revision"} as const;
 export type ClientPlatform = "web" | "android" | "ios";
 export type FeatureDefinition = { readonly id: string; readonly stage: "baseline" | "planned" | "in-progress" | "ready"; readonly requiresRevision: number; readonly defaultEnabled: boolean; readonly platforms: readonly ClientPlatform[] };
@@ -21,6 +21,17 @@ export const FEATURE_DEFINITIONS = [
     "requiresRevision": 0,
     "defaultEnabled": true,
     "platforms": [
+      "android",
+      "ios"
+    ]
+  },
+  {
+    "id": "meeting.remote-assistance",
+    "stage": "in-progress",
+    "requiresRevision": 4,
+    "defaultEnabled": false,
+    "platforms": [
+      "web",
       "android",
       "ios"
     ]
@@ -167,8 +178,8 @@ export const HTTP_OPERATIONS: readonly { id: string; method: string; path: strin
     "path": "/api/v1/webhooks/livekit"
   }
 ];
-const COMMAND_FEATURES: Record<string, string | undefined> = {"chat.send":"classroom.core","hand.set":"classroom.core","share.start":"classroom.core","share.stop":undefined,"media.update":"classroom.core","document.page":"classroom.core","stroke.add":"classroom.core","stroke.erase":"classroom.core","annotation.undo":"classroom.core","annotation.redo":"classroom.core","annotation.clear":"classroom.core"};
-const EVENT_FEATURES: Record<string, string | undefined> = {"subscribe":"classroom.core","command":undefined,"stroke.preview":"classroom.core","snapshot":undefined,"lessons:changed":undefined,"room:error":undefined,"session:replaced":undefined};
+const COMMAND_FEATURES: Record<string, string | undefined> = {"chat.send":"classroom.core","hand.set":"classroom.core","share.start":"classroom.core","share.stop":undefined,"media.update":"classroom.core","document.page":"classroom.core","stroke.add":"classroom.core","stroke.erase":"classroom.core","annotation.undo":"classroom.core","annotation.redo":"classroom.core","annotation.clear":"classroom.core","assistance.request":"meeting.remote-assistance","assistance.respond":"meeting.remote-assistance","assistance.start":"meeting.remote-assistance","assistance.geometry":"meeting.remote-assistance","assistance.stop":undefined};
+const EVENT_FEATURES: Record<string, string | undefined> = {"subscribe":"classroom.core","command":undefined,"stroke.preview":"classroom.core","snapshot":undefined,"lessons:changed":undefined,"room:error":undefined,"session:replaced":undefined,"assistance.pointer":"meeting.remote-assistance"};
 
 function matchingOperation(method: string, input: string) {
   const route = input.split("?")[0].replace(/\/$/, "");

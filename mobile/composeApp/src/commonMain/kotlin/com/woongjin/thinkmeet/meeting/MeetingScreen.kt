@@ -80,6 +80,8 @@ fun MeetingScreen(
     val mediaState by media.state.collectAsState()
     val pip = rememberPictureInPictureController(media)
     val pipState by pip.state.collectAsState()
+    val remote = rememberRemoteAssistanceController(media)
+    val remoteState by remote.state.collectAsState()
     val capabilities by api.capabilities.collectAsState()
     val realtime = remember(api, lesson.id) { api.realtime(scope, lesson.id) }
     val liveSnapshot by realtime.snapshot.collectAsState()
@@ -87,6 +89,8 @@ fun MeetingScreen(
     val snapshot = liveSnapshot
     val currentLesson = snapshot?.lesson ?: lesson
     val owner = currentLesson.teacher.id == user.id
+    val assistance = snapshot?.assistance
+    val assistanceEnabled = capabilities.supports(ContractProtocol.FeatureIds.MeetingRemoteAssistance)
     val snackbar = remember { SnackbarHostState() }
     var panel by remember { mutableStateOf<Panel?>(null) }
     var confirmLeave by remember { mutableStateOf(false) }
@@ -101,16 +105,15 @@ fun MeetingScreen(
     var miniPreference by remember(lesson.id) { mutableStateOf<Boolean?>(null) }
     val miniPosition = remember(lesson.id) { MiniVideoPosition() }
     val chatDraft = remember(lesson.id) { MeetingChatDraft() }
-    val pipTarget = remember(mediaState.participants, currentLesson.teacher.id, snapshot?.share) {
-        selectPipTarget(mediaState.participants, user.id, currentLesson.teacher.id,
+    val pipTarget = remember(mediaState.participants, currentLesson.teacher.id, snapshot?.share, assistance) {
+        if (assistance?.let { it.studentId == user.id && it.status == "active" } == true) PipVideoTarget(currentLesson.teacher.id)
+        else selectPipTarget(mediaState.participants, user.id, currentLesson.teacher.id,
             sharedScreenOwner = snapshot?.share?.takeIf { it.type == "screen" }?.ownerId)
     }
     val miniTarget = remember(mediaState.participants, currentLesson.teacher.id) {
         selectMiniVideoTarget(mediaState.participants, user.id, currentLesson.teacher.id)
     }
     val miniVisible = miniPreference ?: false
-    val pipEnabled = capabilities.supports(ContractProtocol.FeatureIds.MeetingPip) && pipState.supported &&
-        mediaState.connected && !exited && !exiting && fatalError == null && currentLesson.canJoin && pipTarget != null
     val compactSystemPip = platformName() == "Android" && (pipState.active || pipState.transitioning) && !exited && fatalError == null
     val people = (snapshot?.participants.orEmpty().map { it.user } + currentLesson.students + currentLesson.teacher + user).distinctBy { it.id }
     fun videoName(target: PipVideoTarget?): String = people.firstOrNull { it.id == target?.identity }?.name
@@ -121,6 +124,15 @@ fun MeetingScreen(
         if (error is CancellationException) throw error
         scope.launch { snackbar.showSnackbar(error.message ?: "요청을 처리하지 못했어요.") }
     }
+    val latestReport by rememberUpdatedState(report)
+    val assistanceSession = remember(api, realtime, remote, pip, user.id) {
+        RemoteAssistanceSession(api, realtime, remote, pip, user.id, scope) { latestReport(it) }
+    }
+    val assistanceBusy by assistanceSession.busy.collectAsState()
+    val pipEnabled = capabilities.supports(ContractProtocol.FeatureIds.MeetingPip) && pipState.supported &&
+        mediaState.connected && !exited && !exiting && fatalError == null && currentLesson.canJoin && pipTarget != null &&
+        (!assistanceBusy || assistance?.status == "active")
+    DisposableEffect(assistanceSession) { onDispose { assistanceSession.close() } }
     fun execute(block: suspend () -> Unit) { scope.launch { try { block() } catch (e: Throwable) { report(e) } } }
     val command: (String, JsonObject) -> Unit = { type, payload -> execute { realtime.command(type, payload) } }
 
@@ -129,7 +141,10 @@ fun MeetingScreen(
         exiting = true
         busy = true
         pip.update(false, null)
+        remote.clearPointer()
         try {
+            // Stop the approved device capture before waiting for a leave/end network response.
+            runCatching { remote.stopScreenShare() }
             if (notifyServer) try {
                 if (endForAll) api.end(lesson.id) else api.leave(lesson.id)
             } catch (error: Throwable) {
@@ -287,6 +302,13 @@ fun MeetingScreen(
             CompositionLocalProvider(LocalMeetingCompact provides compact, LocalMeetingViewportWidth provides maxWidth, LocalMeetingShort provides (maxHeight <= LayoutToken.MeetingShortHeight && !compact)) {
             Column(Modifier.fillMaxSize()) {
                 MeetingHeader(currentLesson, mediaState, socketConnected, snapshot?.serverTime, grid, compact, windowWidth, onLayout = { grid = !grid })
+                if (assistanceEnabled && assistance != null && (owner || assistance.studentId == user.id)) {
+                    RemoteAssistanceControls(assistance, user, remoteState.supported && pipState.supported, assistanceBusy,
+                        Modifier.fillMaxWidth().padding(horizontal = bodyPadding, vertical = Space.S4),
+                        onApprove = { assistanceSession.approve(assistance.id) },
+                        onDecline = { execute { realtime.command("assistance.respond", ThinkMeetJson.encodeToJsonElement(AssistanceRespondPayload(assistance.id, false)).jsonObject) } },
+                        onStop = { execute { assistanceSession.stop(assistance.id) } })
+                }
                 if (!socketConnected && snapshot != null) {
                     Text("실시간 상태를 다시 연결하고 있어요. 연결 후 자동으로 복원됩니다.",
                         Modifier.fillMaxWidth().padding(horizontal = bodyPadding).background(Palette.WarningSurface, RoundedCornerShape(Corner.R8)).padding(Space.S10),
@@ -332,7 +354,10 @@ fun MeetingScreen(
                     onHand = { command("hand.set", buildJsonObject { put("raised", snapshot?.participants?.find { it.user.id == user.id }?.raised != true) }) },
                     onPanel = { next -> panel = if (panel == next) null else next },
                     onShare = { execute {
-                        if (mediaState.screenSharing) {
+                        if (assistance?.studentId == user.id) {
+                            if (mediaState.screenSharing) assistanceSession.stop(assistance.id)
+                            else error(DesignContent.RemoteAssistUseApproval)
+                        } else if (mediaState.screenSharing) {
                             media.setScreenShare(false)
                             if (snapshot?.share?.ownerId == user.id && snapshot?.share?.type == "screen") realtime.command("share.stop")
                         } else media.setScreenShare(true)
@@ -352,7 +377,7 @@ fun MeetingScreen(
     }
     }
     LaunchedEffect(mediaState.screenSharing) {
-        if (mediaState.screenSharing) {
+        if (mediaState.screenSharing && !assistanceBusy && !remoteState.capturing) {
             try { realtime.command("share.start", buildJsonObject { put("type", "screen") }) }
             catch (error: Throwable) { report(error); media.setScreenShare(false) }
         }
@@ -392,6 +417,8 @@ private fun ParticipantGallery(snapshot: MeetingSnapshot?, lesson: Lesson, user:
     BoxWithConstraints(modifier) {
         val narrow = maxWidth < LayoutToken.MeetingCompactBreakpoint
         val gap = if (narrow) Space.S8 else Space.S12
+        val tileAreaHeight = (maxHeight.value - 52).coerceAtLeast(1f)
+        val stacked = maxWidth.value <= tileAreaHeight
         val columns = kotlin.math.floor((maxWidth.value + gap.value) / ((if (narrow) 160 else 240) + gap.value)).toInt().coerceIn(1, if (narrow) 2 else 3)
         val rows = kotlin.math.floor((maxHeight.value - 52 + gap.value) / (170 + gap.value)).toInt().coerceIn(1, if (narrow) 2 else 3)
         val featuredId = mediaState.participants.firstOrNull { it.speaking && it.identity != user.id }?.identity
@@ -404,10 +431,13 @@ private fun ParticipantGallery(snapshot: MeetingSnapshot?, lesson: Lesson, user:
         val safePage = page.coerceIn(0, pages - 1)
         LaunchedEffect(pageSize, pages) { page = safePage }
         val displayed = paginated.drop(safePage * pageSize).take(pageSize)
+        val preferredColumns = kotlin.math.floor(kotlin.math.sqrt(displayed.size.toDouble() * maxWidth.value / tileAreaHeight) + .5).toInt()
+        val visibleColumns = if (grid) preferredColumns.coerceIn(
+            kotlin.math.ceil(displayed.size.toDouble() / rows).toInt().coerceAtLeast(1), minOf(columns, displayed.size.coerceAtLeast(1)),
+        ) else 1
         fun raised(person: User) = snapshot?.participants?.find { it.user.id == person.id }?.raised == true
         Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(gap)) {
             if (grid) {
-                val visibleColumns = kotlin.math.min(columns, kotlin.math.max(kotlin.math.ceil(displayed.size.toDouble() / rows).toInt(), kotlin.math.ceil(kotlin.math.sqrt(displayed.size.toDouble())).toInt())).coerceAtLeast(1)
                 Column(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(gap)) {
                     displayed.chunked(visibleColumns).forEach { row ->
                         Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
@@ -418,7 +448,7 @@ private fun ParticipantGallery(snapshot: MeetingSnapshot?, lesson: Lesson, user:
                 }
             } else if (displayed.isEmpty()) {
                 ParticipantTile(featured, featured.id == lesson.teacher.id, raised(featured), media, mediaState, Modifier.weight(1f).fillMaxWidth())
-            } else if (LocalMeetingCompact.current) {
+            } else if (stacked) {
                 Column(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(gap)) {
                     ParticipantTile(featured, featured.id == lesson.teacher.id, raised(featured), media, mediaState, Modifier.weight(3f).fillMaxWidth())
                     Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
@@ -548,7 +578,7 @@ private fun MeetingPanel(
         }
         when (panel) {
             Panel.Chat -> ChatPanel(snapshot, user, realtime, report, chatDraft)
-            Panel.People -> PeoplePanel(api, lesson, user, snapshot, mediaState, report)
+            Panel.People -> PeoplePanel(api, lesson, user, snapshot, mediaState, realtime, report)
             Panel.Materials -> MaterialsPanel(api, lesson, snapshot, realtime, report, onClose)
             Panel.Settings -> DevicePanel(media, mediaState, report)
             Panel.Invite -> InvitePanel(api, lesson, report)
@@ -686,9 +716,12 @@ private fun MeetingPersonAvatar(person: User, size: androidx.compose.ui.unit.Dp)
 }
 
 @Composable
-private fun ColumnScope.PeoplePanel(api: ThinkMeetApi, lesson: Lesson, user: User, snapshot: MeetingSnapshot?, media: MediaState, report: (Throwable) -> Unit) {
+private fun ColumnScope.PeoplePanel(api: ThinkMeetApi, lesson: Lesson, user: User, snapshot: MeetingSnapshot?, media: MediaState, realtime: MeetingRealtime, report: (Throwable) -> Unit) {
     val owner = lesson.teacher.id == user.id
     val scope = rememberCoroutineScope()
+    val capabilities by api.capabilities.collectAsState()
+    val socketConnected by realtime.connected.collectAsState()
+    val assistanceEnabled = capabilities.supports(ContractProtocol.FeatureIds.MeetingRemoteAssistance)
     var search by remember { mutableStateOf("") }
     var kickPerson by remember { mutableStateOf<User?>(null) }
     var pending by remember { mutableStateOf(false) }
@@ -713,6 +746,14 @@ private fun ColumnScope.PeoplePanel(api: ThinkMeetApi, lesson: Lesson, user: Use
                     if (person.id in connected) {
                         DesignIcon(if (participant?.microphone == true) "mic" else "micOff", Modifier.size(Space.S15), if (participant?.microphone == true) Palette.MeetingWeak else Palette.MeetingDeviceOff)
                         DesignIcon(if (participant?.camera == true) "video" else "videoOff", Modifier.size(Space.S15), if (participant?.camera == true) Palette.MeetingWeak else Palette.MeetingDeviceOff)
+                    }
+                    if (owner && assistanceEnabled && person.role == "student" && person.id in connected) IconButton(
+                        enabled = socketConnected && !pending && snapshot?.assistance == null && snapshot?.share == null,
+                        onClick = { pending = true; scope.launch {
+                            try { realtime.command("assistance.request", ThinkMeetJson.encodeToJsonElement(AssistanceRequestPayload(person.id)).jsonObject) }
+                            catch (error: Throwable) { report(error) } finally { pending = false }
+                        } }, modifier = Modifier.size(Space.S44)) {
+                        DesignIcon("screen", Modifier.size(Space.S20), Palette.Primary, "${person.name} ${DesignContent.RemoteAssistRequest}")
                     }
                     if (owner && person.id != lesson.teacher.id) IconButton(onClick = { kickPerson = person }, modifier = Modifier.width(Space.S30).height(Space.S44)) { DesignIcon("more", Modifier.size(Space.S20), Palette.MeetingSecondary, "${person.name} 퇴장") }
                 }

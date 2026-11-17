@@ -31,7 +31,15 @@ Android·iPhone·iPad용 Kotlin Multiplatform 앱입니다. 웹과 같은 NestJS
 
 ## Android 실행
 
-JDK 17 이상과 Android SDK 35를 준비하고, Android Studio에서 `mobile/`을 엽니다. 아래 명령도 `mobile/`에서 실행합니다.
+JDK 17 이상, Node.js, Android SDK 35를 준비하고 [서버 주소](#서버-연결)를 설정합니다. **저장소 루트**에서 다음 명령 하나로 공통 검사와 테스트용 APK 빌드를 실행합니다. APK 빌드에는 에뮬레이터가 필요 없습니다.
+
+```sh
+npm run apk
+```
+
+완료되면 APK의 절대 경로를 출력합니다. 기존 `mobile/.env`와 환경변수를 사용하며, macOS에서는 설정되지 않은 JDK 17·기본 Android SDK 경로를 자동으로 찾습니다. 다른 설치 경로는 `JAVA_HOME`·`ANDROID_HOME` 또는 `mobile/local.properties`의 `sdk.dir`로 지정합니다. 스크립트는 기기에 설치하지 않습니다.
+
+직접 빌드하거나 연결한 기기에 설치하려면 저장소 루트에서 `npm run shared:check`를 먼저 실행한 뒤 **`mobile/`**에서 아래 명령을 사용합니다. Android Studio에서 `mobile/`을 열어 Device Manager로 에뮬레이터를 실행할 수 있습니다.
 
 ```sh
 ./gradlew :composeApp:assembleDebug
@@ -44,7 +52,7 @@ adb shell am start -n com.woongjin.thinkmeet/.MainActivity
 
 ## iOS 실행
 
-Xcode에서 `iosApp/ThinkMeet.xcodeproj`를 열고 `ThinkMeet` 스킴과 iPhone/iPad를 선택합니다. Swift Package Manager가 LiveKit을 가져오고, Xcode가 공통 Kotlin 프레임워크를 생성합니다. 실기기 설치에는 Apple Development Team과 앱·Broadcast 확장의 App Group 설정이 필요합니다. 자세한 절차는 [iOS 설정 안내](iosApp/README.md)를 따릅니다.
+[서버 주소](#서버-연결)를 설정한 뒤 Xcode에서 `iosApp/ThinkMeet.xcodeproj`를 열고 `ThinkMeet` 스킴과 iPhone/iPad를 선택합니다. Swift Package Manager가 LiveKit을 가져오고, Xcode가 공통 Kotlin 프레임워크를 생성합니다. 실기기 설치에는 Apple Development Team과 앱·Broadcast 확장의 App Group 설정이 필요합니다. 자세한 절차는 [iOS 설정 안내](iosApp/README.md)를 따릅니다.
 
 서명 없는 시뮬레이터용 빌드:
 
@@ -57,7 +65,25 @@ xcodebuild -project iosApp/ThinkMeet.xcodeproj -scheme ThinkMeet \
 
 ## 서버 연결
 
-로그인 화면의 브랜드를 길게 누르거나 계정 메뉴의 **서버 연결 설정**에서 웹과 같은 HTTPS origin을 입력합니다. 기본값은 `https://192.168.0.64`입니다. 비밀번호·LiveKit API secret·서버 `.env`는 앱에 넣지 않습니다.
+Android/iOS 앱은 **빌드할 때** `mobile/.env`의 공개 서버 주소를 읽습니다. 앱 안에는 주소 입력 화면이 없습니다. 처음에는 `mobile/`에서 예제를 복사하고, `.env`의 주소를 웹과 같은 HTTPS 주소로 수정합니다. 기존 `.env`가 있으면 복사하지 않습니다.
+
+```sh
+cp .env.example .env
+```
+
+```dotenv
+THINK_MEET_SERVER_ORIGIN=https://192.168.0.64
+```
+
+주소에는 `/api` 등 경로·계정·쿼리를 붙이지 않습니다. 값은 따옴표 없이 쓰거나 작은따옴표·큰따옴표로 감쌀 수 있습니다. 셸 변수 치환과 값 뒤 주석은 지원하지 않습니다. 값이 없거나 HTTPS origin 형식이 아니면 빌드를 중단합니다.
+
+셸의 `THINK_MEET_SERVER_ORIGIN` 환경변수가 `.env`보다 우선합니다. CI와 일회성 Android 빌드는 다음처럼 지정할 수 있습니다.
+
+```sh
+THINK_MEET_SERVER_ORIGIN=https://meet.example.com ./gradlew :composeApp:installDebug
+```
+
+주소를 바꾸면 Android는 다시 빌드·설치하고, iOS는 Xcode에서 다시 빌드·실행합니다. `SKIP_KOTLIN_BUILD=YES`를 쓰는 iOS 빌드는 먼저 Kotlin 프레임워크를 다시 생성해야 합니다. 기존 앱에 저장된 주소는 사용하지 않으며, 참여 링크도 빌드에 설정된 서버 주소를 기준으로 확인합니다. `.env`는 Git에서 제외되고 공개 주소만 앱에 포함됩니다. 비밀번호·LiveKit API secret·서버 `.env`는 앱에 넣지 않습니다.
 
 Mac IP가 서버 `.env`의 주소와 다르면 다음 명령을 사용합니다. `.env`의 공개 주소는 유지하고 실행 시 현재 LAN 주소를 적용합니다.
 
@@ -69,10 +95,16 @@ THINK_MEET_LAN_IP=192.168.0.64 ./scripts/start-local-server.sh
 
 `infra/local/`의 공통 시작 스크립트로 PostgreSQL·MinIO부터 자동 준비하고 API·웹·LiveKit을 빌드·실행합니다. 기존 계정·볼륨을 재사용하며 첫 스토리지 이전 절차는 [로컬 실행 안내](../infra/local/README.md#서비스-실행접속)를 따릅니다. 모든 컨테이너는 `think-meet` 그룹에서 관리합니다. Mac 방화벽에서 443/TCP·7881/TCP·7882/UDP를 허용합니다.
 
-자체 서명 개발 서버는 공개 CA `../infra/local/certs/think-meet-root.crt`를 신뢰해야 합니다.
+자체 서명 개발 서버는 해당 서버의 공개 루트 CA를 신뢰해야 합니다. 로컬 서버의 공개 CA는 `../infra/local/certs/think-meet-root.crt`입니다.
 
-- Android: 디버그 앱에만 개발 CA를 포함합니다. 릴리스 앱은 시스템 CA를 사용합니다.
+- Android: 디버그 앱에만 개발 CA를 포함합니다. 서버가 다른 CA를 사용하면 검증된 서버 관리자·SSH 경로로 공개 루트 인증서만 받아 `mobile/certs/server-root.crt`에 저장하고 `.env`에 아래 설정을 추가한 뒤 다시 빌드·설치합니다. 상대 경로는 `mobile/` 기준이며 셸 환경변수가 우선합니다. 설정이 없으면 기존 번들 개발 CA를 사용합니다. 릴리스 앱은 시스템 CA를 사용합니다.
 - iOS: 프로파일 설치 후 **설정 → 일반 → 정보 → 인증서 신뢰 설정**에서 전체 신뢰를 켭니다.
+
+```dotenv
+THINK_MEET_SERVER_CA_FILE=certs/server-root.crt
+```
+
+CA가 바뀌면 주소가 같아도 기존 앱이 연결되지 않을 수 있습니다. 주소 반영 여부는 `composeApp/build/generated/serverConfig/commonMain/kotlin/com/woongjin/thinkmeet/config/ServerConfig.kt`에서 확인하고, Android 디버그 빌드가 선택한 공개 CA는 `composeApp/build/generated/serverTrust/debug/res/raw/think_meet_server_root.crt`에서 확인합니다. `certs/`는 Git에서 제외됩니다. CA 파일에는 개인키를 넣지 않습니다. 공인 인증서 서버에는 별도 CA 설정이 필요 없습니다.
 
 TLS 검증은 끄지 않습니다.
 

@@ -1,0 +1,26 @@
+{
+  "id": "mobile-server-origin",
+  "summary": "Android/iOS의 서버 주소 입력 UI를 제거하고 빌드 환경변수 또는 mobile/.env의 공개 HTTPS origin을 REST·Socket·참여 링크와 네이티브 검사에 함께 적용합니다.",
+  "scope": "platform-only",
+  "featureIds": ["classroom.core"],
+  "platforms": {
+    "server": {"status": "unchanged", "reason": "사용자가 요청한 앱 설정 변경이며 서버 API·인증·권한·배포 주소는 바꾸지 않습니다."},
+    "web": {"status": "unchanged", "reason": "웹에는 서버 주소 입력 UI가 없으며 기존 같은 origin 통신과 화면을 유지합니다."},
+    "android": {"status": "implemented", "reason": "공통 Compose에서 입력 UI를 제거하고 Gradle 생성 주소를 사용합니다. 후속 수정으로 환경변수의 공개 CA를 디버그 빌드에만 포함하고 실제 HTTPS 연결을 검사합니다."},
+    "ios": {"status": "implemented", "reason": "Xcode가 빌드하는 공통 Kotlin 프레임워크도 같은 Gradle 주소와 Compose UI를 사용합니다. 후속 CA 수정은 Android 디버그 전용이며 iOS는 해당 CA의 기기 신뢰 설치 절차만 보완합니다."}
+  },
+  "verification": [
+    "2026-11-15 Asia/Seoul: npm run shared:check 및 npm run shared:check -- --changed-files /tmp/think-meet-mobile-server-origin-files.txt 통과. 기존 다른 작업의 infra/local 변경은 이번 파일 목록에서 제외했습니다.",
+    "npm run verify 통과: 공통·디자인·서버·웹 정책 테스트 27개, 웹·서버 타입 검사와 웹 빌드.",
+    "mobile/에서 JAVA_HOME을 JDK 17, ANDROID_HOME을 기존 SDK 경로로 지정해 ./gradlew :composeApp:generateServerConfig :composeApp:testDebugUnitTest :composeApp:assembleDebug :composeApp:compileDebugAndroidTestKotlin :composeApp:linkDebugFrameworkIosSimulatorArm64 --console=plain 통과. 핵심 테스트 19개 중 AppLinksTest 3개는 빌드 origin과 다른 origin 거부·네이티브 링크를 확인합니다.",
+    "generateServerConfig로 .env 읽기, 따옴표·포트·정규화, 환경변수 우선순위, 환경변수 변경 시 재생성, 누락·HTTP·경로·계정·쿼리·fragment·잘못된 포트 거부 등 11개 사례 통과. 원래 .env와 생성 주소를 복원했습니다. 로컬 증거: mobile/artifacts/server-origin/config-checks.log.",
+    "arm64 iOS 시뮬레이터용 xcodebuild 전체 앱·Broadcast 확장 빌드 통과. 서명 없이 새 Kotlin 프레임워크를 사용했습니다. 정확한 명령과 로컬 로그는 mobile/docs/VERIFICATION.md의 2026-11-15 항목을 참고합니다.",
+    "기존 Android emulator-5554(API 35, 1080×2400, 420dpi)에 adb install -r 및 am start -W 성공(Status: ok, COLD, TotalTime 21041ms). 앱 데이터·해상도·밀도는 유지했습니다. UI 계층 조회와 캡처가 응답하지 않아 조회 명령만 종료했으며 실제 화면 확인은 미완료입니다.",
+    "휴대폰·태블릿의 같은 계정·데이터 화면 비교, iOS 시뮬레이터 실행·실기기 실행·원격 CI는 미실행입니다. 신규 공개 기능·계약·기능 플래그가 없는 앱 빌드 설정 변경이며 baseline 및 ready 상태는 변경하지 않았습니다.",
+    "2026-11-15 CA 후속 수정: mobile/.env의 https://115.68.2.13이 생성 설정에 반영됨을 확인했습니다. 기존 번들 CA로 curl 검증 실패(verify 20), 검증된 SSH 호스트를 통해 서버 공개 루트 CA를 읽어 검증하면 /api/v1/health HTTP 200, TLS verify 0입니다. 공개 CA와 경로는 Git 제외 mobile/certs/server-root.crt 및 mobile/.env에 설정했습니다.",
+    "Android 디버그 APK·검사 APK 빌드와 mergeReleaseResources 통과. APK의 선택된 CA가 로컬 서버 CA 파일과 동일하며 릴리스 리소스에는 포함되지 않고 시스템 CA 설정만 사용함을 확인했습니다. .env 선택·기본 CA·누락 파일 거부·개인키 포함 거부 4개 사례와 설정 복원 통과: mobile/artifacts/server-origin/ca-config-checks.log.",
+    "기존 emulator-5554에서 ServerConnectionSmokeTest 1개 통과(실패·오류·건너뜀 0). 앱의 실제 OkHttp·Android TLS 설정으로 healthStatus 200, authStatus 401을 확인했습니다. 인증되지 않은 정상 응답이며 계정·수업 데이터는 변경하지 않습니다. 로컬 결과: mobile/composeApp/build/outputs/androidTest-results/connected/debug/ 및 mobile/artifacts/server-origin/ca-instrumentation.log.",
+    "CA 후속 수정에서도 npm run verify 및 변경 파일 목록의 shared:check 통과. 연결 검사 후 앱을 남기도록 Gradle 설정을 추가한 후속 검사도 1개 통과했고 대상 앱 자동 제거가 없었습니다. 멈춘 기존 에뮬레이터는 동일 AVD·원래 실행 인자로 다시 열어 앱 패키지와 1080×2400 / 420dpi 보존을 확인했습니다. 최종 실행 Status: ok, 1272ms이며 로그인 화면의 서버 연결 오류가 없고 로딩이 끝난 상태를 실제 PNG·UI XML로 확인했습니다(mobile/artifacts/server-origin/ca-fixed-login-final.png, ca-fixed-login.xml).",
+    "iOS 앱·릴리스 앱 전체 빌드·실기기·원격 CI·수업 회귀는 이 Android 디버그 신뢰 설정 수정의 범위에서 제외했습니다. 자세한 결과와 첫 검증 도구의 앱 자동 제거·재설치 영향은 mobile/docs/VERIFICATION.md의 CA 후속 검증을 참고합니다."
+  ]
+}

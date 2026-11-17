@@ -1,5 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { CONTRACT_REVISION } from '../src/generated/contracts.ts'
 
 let serial = 0
 const freshStore = () => import(`../src/lib/features.ts?test=${serial++}`)
@@ -12,7 +13,7 @@ test('an explicit legacy 404 caches only the supported baseline and rejects unre
     requests++
     const headers = new Headers(options.headers)
     assert.equal(headers.get('X-ThinkMeet-Platform'), 'web')
-    assert.equal(headers.get('X-ThinkMeet-Contract-Revision'), '1')
+    assert.equal(headers.get('X-ThinkMeet-Contract-Revision'), String(CONTRACT_REVISION))
     return new Response('', { status: 404 })
   }
   try {

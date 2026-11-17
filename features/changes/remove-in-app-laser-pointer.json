@@ -1,0 +1,18 @@
+{
+  "id": "remove-in-app-laser-pointer",
+  "summary": "학생이 다른 앱을 보는 상황을 해결하지 못하는 기존 앱 내부 레이저 포인터와 계약·기능 등록·전용 검사를 제거합니다. 기존 판서·화면 공유·PiP는 유지합니다.",
+  "scope": "shared",
+  "featureIds": ["classroom.core"],
+  "platforms": {
+    "server": {"status": "implemented"},
+    "web": {"status": "implemented"},
+    "android": {"status": "implemented"},
+    "ios": {"status": "implemented"}
+  },
+  "verification": [
+    "npm run shared:generate·npm run shared:check·npm run verify 통과. 계약/디자인 12개·서버 정책 11개·웹 기능 지원 4개와 서버/웹 TypeScript·웹 빌드 성공",
+    "mobile/: ./gradlew :composeApp:testDebugUnitTest :composeApp:assembleDebug :composeApp:linkDebugFrameworkIosSimulatorArm64 성공. 단위 검사 19개(실패/생략 0). Android/iOS 실제 실행·Swift 호스트 재빌드·원격 CI는 이번 제거 작업에서 미실행",
+    "기존 미배포 meeting.laser-pointer 기능만 제거하며 contracts/compatibility/v1.json과 baseline을 보존",
+    "이 제거 작업 당시 새 구현은 플랫폼 범위 확인 전 시작하지 않았으며, 이후 사용자가 선택한 Android 우선 구현은 remote-assistance-android.json에 별도 기록"
+  ]
+}

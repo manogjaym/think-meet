@@ -10,6 +10,7 @@ import { Confirm, Icon } from "../components/ui"
 import { BrandSymbol } from "../components/BrandSymbol"
 import { ScreenShareDialog } from "../components/ScreenShareDialog"
 import { CallControls } from "../components/meeting/CallControls"
+import { RemoteAssistanceStatus } from "../components/meeting/RemoteAssistanceStatus"
 import { SharedStage } from "../components/meeting/SharedStage"
 import { SidePanel } from "../components/meeting/SidePanel"
 import { VideoTile } from "../components/meeting/VideoTile"
@@ -33,6 +34,7 @@ export function Meeting(props: { lesson: ApiLesson; user: User; initialDevices: 
   const [now, setNow] = useState(Date.now())
   const [outputDevice, setOutputDevice] = useState(() => props.initialDevices.speakerId || readDevicePreferences().speakerId || "default")
   const [audioUnlock, setAudioUnlock] = useState(false)
+  const [assistanceReady, setAssistanceReady] = useState(false)
   const panelRef = useRef<HTMLDivElement>(null)
   const { gridRef, captureLayout } = useMeetingLayout()
   const { room, snapshot, command, setError, revision } = live
@@ -68,9 +70,10 @@ export function Meeting(props: { lesson: ApiLesson; user: User; initialDevices: 
     {live.error && <div className="live-error" role="alert"><span>{live.error}</span><button aria-label="알림 닫기" onClick={() => setError("")}>닫기</button></div>}
     {(live.audioBlocked || audioUnlock) && <button className="audio-unlock" onClick={() => { void room?.startAudio().then(() => setAudioUnlock(false)).catch(e => setError(friendlyError(e))) }}>수업 소리 켜기</button>}
     <div className="meeting-body"><div className="meeting-main">
+      <RemoteAssistanceStatus pointingReady={assistanceReady} snapshot={snapshot} userId={user.id} command={command} onError={setError} />
       {share && <div className="share-status-bar"><Icon name="screen" size={17} /><span>{share.type === "screen" ? `${roster.find(person => person.id === share.ownerId)?.name || "참여자"} 님의 화면 공유 중` : `${share.material?.name || "수업 자료"} 공유 중`}</span>{(isHost || share.ownerId === user.id) && <button onClick={() => void live.stopShare()}>공유 중지</button>}</div>}
       <section className={`stage ${share ? "is-sharing" : ""}`} aria-label="수업 화면">
-        {share && snapshot ? <div className="stage-view" key={share.id}><SharedStage user={user} snapshot={snapshot} room={room} command={command} previews={live.previews} sendPreview={live.sendPreview} serverOffset={live.serverOffset} outputDevice={outputDevice} revision={revision} onError={setError} /></div> : <ParticipantGallery participants={ordered} layout={layout} gridRef={gridRef} renderParticipant={participant => { const person = roster.find(item => item.id === participant.identity); const entry = snapshot?.participants.find(item => item.user.id === participant.identity); return <VideoTile key={participant.identity} person={person?.name || participant.name || "참여자"} participant={participant} teacher={participant.identity === activeLesson.teacher.id} self={participant.identity === user.id} cameraOn={participant.isCameraEnabled} muted={!participant.isMicrophoneEnabled} hand={entry?.raised} speaking={participant.isSpeaking} /> }} />}
+        {share && snapshot ? <div className="stage-view" key={share.id}><SharedStage user={user} snapshot={snapshot} room={room} command={command} previews={live.previews} sendPreview={live.sendPreview} remotePointer={live.remotePointer} sendAssistancePointer={live.sendAssistancePointer} assistanceConnected={live.appConnected && live.connection === ConnectionState.Connected} onAssistanceReady={setAssistanceReady} serverOffset={live.serverOffset} outputDevice={outputDevice} revision={revision} onError={setError} /></div> : <ParticipantGallery participants={ordered} layout={layout} gridRef={gridRef} renderParticipant={participant => { const person = roster.find(item => item.id === participant.identity); const entry = snapshot?.participants.find(item => item.user.id === participant.identity); return <VideoTile key={participant.identity} person={person?.name || participant.name || "참여자"} participant={participant} teacher={participant.identity === activeLesson.teacher.id} self={participant.identity === user.id} cameraOn={participant.isCameraEnabled} muted={!participant.isMicrophoneEnabled} hand={entry?.raised} speaking={participant.isSpeaking} /> }} />}
       </section>
     </div><button className="panel-backdrop" aria-hidden={!panel} tabIndex={panel ? 0 : -1} aria-label="패널 닫기" onClick={() => changePanel(null)} /><div ref={panelRef} id="meeting-side-panel" className="meeting-panel-container" inert={!panel} aria-hidden={!panel}><SidePanel panel={panel || lastPanel} setPanel={changePanel} user={user} lesson={activeLesson} room={room} snapshot={snapshot} command={command} onOutputChange={setOutputDevice} revision={revision} unreadChatCount={unreadCount} /></div></div>
     {notification && <ChatNotification message={notification} onOpen={() => changePanel("chat")} onDismiss={dismissNotification} />}

@@ -23,6 +23,8 @@ export function ParticipantGallery({
   const { areaRef, width, height } = useParticipantArea()
   const narrow = width > 0 && width < designLayout.meetingCompactBreakpoint
   const gap = narrow ? 8 : 12
+  const tileAreaHeight = Math.max(1, height - 52)
+  const stacked = width > 0 && width <= tileAreaHeight
   const columns = width
     ? Math.max(
         1,
@@ -51,9 +53,10 @@ export function ParticipantGallery({
     1,
     Math.min(
       columns,
+      Math.max(1, visible.length),
       Math.max(
         Math.ceil(visible.length / rows),
-        Math.ceil(Math.sqrt(visible.length)),
+        Math.round(Math.sqrt(visible.length * width / tileAreaHeight)),
       ),
     ),
   )
@@ -72,7 +75,7 @@ export function ParticipantGallery({
       <div
         ref={gridRef}
         id="meeting-video-grid"
-        className={`video-grid stage-view count-${visible.length} layout-${layout}`}
+        className={`video-grid stage-view count-${visible.length} layout-${layout}${stacked ? " is-stacked" : ""}`}
         style={style}
       >
         {visible.map(renderParticipant)}

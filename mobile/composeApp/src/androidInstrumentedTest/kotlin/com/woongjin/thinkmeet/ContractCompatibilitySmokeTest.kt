@@ -1,5 +1,7 @@
 package com.woongjin.thinkmeet
 
+import com.woongjin.thinkmeet.config.ServerConfig
+
 import android.os.Bundle
 import android.os.SystemClock
 import androidx.test.core.app.ActivityScenario
@@ -14,7 +16,6 @@ import com.woongjin.thinkmeet.data.ThinkMeetApi
 import com.woongjin.thinkmeet.design.generated.DesignContent
 import com.woongjin.thinkmeet.platform.createHttpClient
 import com.woongjin.thinkmeet.platform.configureThinkMeet
-import com.woongjin.thinkmeet.platform.readPreference
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.http.Url
@@ -41,7 +42,7 @@ class ContractCompatibilitySmokeTest {
     fun currentSessionDecodesGeneratedModelsAndNegotiatesCapabilities() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val scenario = ActivityScenario.launch(MainActivity::class.java)
-        val origin = readPreference("server.origin", "https://192.168.0.64")
+        val origin = ServerConfig.ORIGIN
         val routeAddress = InstrumentationRegistry.getArguments().getString("contractRouteAddress")?.takeIf { it.isNotBlank() }
         val client = smokeClient(origin, routeAddress)
         try {

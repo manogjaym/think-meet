@@ -1,5 +1,7 @@
 package com.woongjin.thinkmeet
 
+import com.woongjin.thinkmeet.config.ServerConfig
+
 import android.Manifest
 import android.graphics.Bitmap
 import android.graphics.Rect
@@ -48,7 +50,7 @@ class DesignParityCaptureTest {
         // MainActivity initializes protected preference/cookie storage before the test API uses it.
         val scenario = ActivityScenario.launch(MainActivity::class.java)
         val client = createHttpClient()
-        val api = ThinkMeetApi(client, readPreference("server.origin", "https://192.168.0.64"))
+        val api = ThinkMeetApi(client, ServerConfig.ORIGIN)
         val originalCamera = readPreference("devices.camera", "true")
         val originalMicrophone = readPreference("devices.microphone", "false")
         val lessonCode = arguments.getString("lessonCode")?.takeIf { it.isNotBlank() }

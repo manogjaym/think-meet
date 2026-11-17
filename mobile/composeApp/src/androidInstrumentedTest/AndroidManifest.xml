@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- A separate test APK/UID, so touch-through is tested against another app. -->
+        <activity android:name="com.woongjin.thinkmeet.RemoteAssistanceTouchActivity"
+            android:exported="true" android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar"
+            android:label="원격 안내 터치 표적" />
+    </application>
+</manifest>

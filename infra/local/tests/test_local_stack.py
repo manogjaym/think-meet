@@ -137,6 +137,16 @@ class LocalStackTest(unittest.TestCase):
         self.assertEqual(data['volumes']['postgres_data']['name'], 'think-meet_postgres_data')
         self.assertEqual(data['volumes']['minio_data']['name'], 'think-meet_minio_data')
 
+    def test_livekit_advertised_address_follows_environment_override(self):
+        address = '203.0.113.7'
+        data = json.loads(subprocess.check_output(['docker', 'compose', '--env-file', str(LOCAL / '.env.example'), '-f', str(LOCAL / 'compose.yaml'), 'config', '--format', 'json'], env=dict(os.environ, LAN_IP=address), text=True))
+        command = data['services']['livekit']['command']
+        self.assertEqual(command[command.index('--rtc.node_ip.ipv4') + 1], address)
+        lan_address = '192.0.2.9'
+        data = json.loads(subprocess.check_output(['docker', 'compose', '--env-file', str(LOCAL / '.env.example'), '-f', str(LOCAL / 'compose.yaml'), '-f', str(LOCAL / 'compose.lan.yaml'), 'config', '--format', 'json'], env=dict(os.environ, LAN_IP=address, THINK_MEET_LAN_IP=lan_address), text=True))
+        command = data['services']['livekit']['command']
+        self.assertEqual(command[command.index('--rtc.node_ip.ipv4') + 1], lan_address)
+
     def test_runtime_relocation_preserves_private_files_and_rebases_workers(self):
         old = self.root / 'old-server'
         new = self.root / 'local'

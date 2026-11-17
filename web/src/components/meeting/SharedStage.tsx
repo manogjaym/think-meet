@@ -9,12 +9,15 @@ import { AnimatedPresence } from "../AnimatedPresence"
 import { VideoTile } from "./VideoTile"
 import { ParticipantPagination, useParticipantArea, useParticipantPagination } from "./ParticipantPagination"
 import designLayout from "../../generated/design-layout.json"
+import { designContent } from "../../generated/design-content"
+import { useFeature } from "../../lib/useFeature"
+import { activeAssistance, assistancePoint, geometryMatchesVideo, matchesAssistancePointer, REMOTE_POINTER_TTL_MS, type RemotePointer } from "../../lib/remoteAssistance"
 
 GlobalWorkerOptions.workerSrc = pdfWorker
 const colors = ["#1f2937", "#ef6461", "#f2b84b", "#4f9d76", "#4386d8", "#8b6bc1"]
 const pathFor = (points: Point[]) => points.map((point, index) => `${index ? "L" : "M"}${point.x * 1000},${point.y * 1000}`).join(" ")
-type Props = { user: User; snapshot: MeetingSnapshot; room: Room | null; command: Command; previews: Record<string, PreviewStroke>; sendPreview: (stroke: PreviewStroke) => void; serverOffset: number; outputDevice: string; revision: number; onError: (message: string) => void }
-export function SharedStage({ user, snapshot, room, command, previews, sendPreview, serverOffset, outputDevice, revision, onError }: Props) {
+type Props = { user: User; snapshot: MeetingSnapshot; room: Room | null; command: Command; previews: Record<string, PreviewStroke>; sendPreview: (stroke: PreviewStroke) => void; remotePointer?: RemotePointer | null; sendAssistancePointer?: (x: number, y: number) => void; assistanceConnected?: boolean; onAssistanceReady?: (ready: boolean) => void; serverOffset: number; outputDevice: string; revision: number; onError: (message: string) => void }
+export function SharedStage({ user, snapshot, room, command, previews, sendPreview, remotePointer, sendAssistancePointer, assistanceConnected = false, onAssistanceReady, serverOffset, outputDevice, revision, onError }: Props) {
   const share = snapshot.share!
   const [tool, setTool] = useState<"pen" | "highlighter" | "eraser">("pen")
   const [annotating, setAnnotating] = useState(false)
@@ -22,6 +25,9 @@ export function SharedStage({ user, snapshot, room, command, previews, sendPrevi
   const [zoom, setZoom] = useState(1)
   const [pages, setPages] = useState(share.material?.pages || 1)
   const [natural, setNatural] = useState({ w: 1280, h: 720 })
+  const [screenDimensions, setScreenDimensions] = useState({ w: 0, h: 0 })
+  const [settledGeometryKey, setSettledGeometryKey] = useState("")
+  const assistanceEnabled = useFeature("meeting.remote-assistance")
   const [available, setAvailable] = useState({ w: 800, h: 500 })
   const [loading, setLoading] = useState(false)
   const [autoplayBlocked, setAutoplayBlocked] = useState(false)
@@ -43,6 +49,10 @@ export function SharedStage({ user, snapshot, room, command, previews, sendPrevi
   const erasePending = useRef(new Set<string>())
   const strokes = snapshot.strokes.filter(stroke => stroke.shareId === share.id && stroke.page === share.page && !stroke.deleted)
   const canControl = snapshot.lesson.teacher.id === user.id
+  const assistance = activeAssistance(snapshot)
+  const remoteActive = Boolean(assistance)
+  const geometryKey = assistance ? `${assistance.id}:${assistance.geometry?.version}` : ""
+  const canPoint = Boolean(assistanceEnabled && canControl && assistanceConnected && sendAssistancePointer && assistance && settledGeometryKey === geometryKey && geometryMatchesVideo(assistance.geometry, screenDimensions.w, screenDimensions.h))
   const scale = Math.min(available.w / natural.w, available.h / natural.h) * (share.type === "document" ? zoom : 1)
   const width = Math.max(1, natural.w * scale), height = Math.max(1, natural.h * scale)
   const owner = share.ownerId === user.id ? room?.localParticipant : room?.remoteParticipants.get(share.ownerId)
@@ -51,6 +61,26 @@ export function SharedStage({ user, snapshot, room, command, previews, sendPrevi
     setControlPending(true)
     try { await command(type, payload) } catch(e) { onError(friendlyError(e)) } finally { setControlPending(false) }
   }
+  const measureVideo = (video: HTMLVideoElement) => {
+    if (share.type !== "screen" || !video.videoWidth || !video.videoHeight) return
+    setScreenDimensions({ w: video.videoWidth, h: video.videoHeight })
+    setNatural({ w: video.videoWidth, h: video.videoHeight })
+  }
+  useEffect(() => {
+    if (!remoteActive) return
+    setAnnotating(false); setDraft(null); drawing.current = null
+  }, [remoteActive])
+  useEffect(() => {
+    setSettledGeometryKey("")
+    if (!assistance) return
+    // Same-aspect rotations need a grace period too; dimensions alone cannot identify their frame.
+    const timer = window.setTimeout(() => setSettledGeometryKey(geometryKey), 500)
+    return () => window.clearTimeout(timer)
+  }, [geometryKey])
+  useEffect(() => {
+    onAssistanceReady?.(canPoint)
+    return () => onAssistanceReady?.(false)
+  }, [canPoint, onAssistanceReady])
   useEffect(() => {
     const mobile = window.matchMedia(`(max-width:${designLayout.meetingCompactBreakpoint}px)`)
     const narrow = window.matchMedia(`(max-width:${designLayout.meetingMediumBreakpoint}px)`)
@@ -66,12 +96,13 @@ export function SharedStage({ user, snapshot, room, command, previews, sendPrevi
     const resize = () => { const style = getComputedStyle(element); setAvailable({ w: Math.max(100, element.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)), h: Math.max(100, element.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom)) }) }
     resize(); const observer = new ResizeObserver(resize); observer.observe(element); return () => observer.disconnect()
   }, [])
-  useEffect(() => { setDraft(null); drawing.current = null; setZoom(1); setAutoplayBlocked(false) }, [share.id])
+  useEffect(() => { setDraft(null); drawing.current = null; setZoom(1); setAutoplayBlocked(false); setScreenDimensions({ w: 0, h: 0 }) }, [share.id])
   useEffect(() => {
     if (share.type !== "screen") return
     const video = videoRef.current
     if (!video || !screenTrack) return
     screenTrack.attach(video)
+    measureVideo(video)
     return () => { screenTrack.detach(video) }
   }, [share.type, screenTrack, revision])
   useEffect(() => {
@@ -131,6 +162,13 @@ export function SharedStage({ user, snapshot, room, command, previews, sendPrevi
     void command("stroke.erase", { ids }).catch(e => onError(friendlyError(e))).finally(() => ids.forEach(id => erasePending.current.delete(id)))
   }
   const begin = (event: ReactPointerEvent<SVGSVGElement>) => {
+    if (remoteActive) {
+      if (!canPoint || event.button !== 0) return
+      event.preventDefault()
+      const point = assistancePoint(event.clientX, event.clientY, event.currentTarget.getBoundingClientRect())
+      if (point) sendAssistancePointer?.(point.x, point.y)
+      return
+    }
     if (!annotating || event.button !== 0) return
     event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId)
     const point = pointAt(event)
@@ -139,6 +177,7 @@ export function SharedStage({ user, snapshot, room, command, previews, sendPrevi
     setDraft({ ...drawing.current })
   }
   const move = (event: ReactPointerEvent<SVGSVGElement>) => {
+    if (remoteActive) return
     if (!annotating || !(event.buttons & 1)) return
     const point = pointAt(event)
     if (tool === "eraser") { eraseAt(point); return }
@@ -170,12 +209,13 @@ export function SharedStage({ user, snapshot, room, command, previews, sendPrevi
       {loading && <p className="live-stage-message">문서를 불러오는 중이에요.</p>}
       {share.type === "screen" && !screenTrack && <p className="live-stage-message">공유 화면 연결을 기다리고 있어요.</p>}
       <div ref={surfaceRef} className="content-surface" style={{ width, height, maxWidth: "none", display: loading || share.type === "screen" && !screenTrack ? "none" : undefined }}>
-        {share.type === "document" ? <canvas ref={canvasRef} aria-label={`${share.material?.name || "PDF"} ${share.page}페이지`} /> : <video ref={videoRef} data-testid={share.type === "screen" ? "shared-screen" : "shared-media"} src={share.type === "media" && share.materialId ? materialContentUrl(share.materialId, snapshot.lessonId) : undefined} autoPlay={share.type === "screen"} muted={share.type === "screen" || outputDevice === "muted"} playsInline preload="metadata" onLoadedMetadata={event => { const video = event.currentTarget; setNatural({ w: video.videoWidth || 1280, h: video.videoHeight || 720 }); if (share.type === "media") { setDuration(video.duration); syncVideo() } }} onResize={event => { const video = event.currentTarget; if (video.videoWidth && video.videoHeight) setNatural({ w: video.videoWidth, h: video.videoHeight }) }} onTimeUpdate={event => setPosition(event.currentTarget.currentTime)} onEnded={() => { if (canControl && share.type === "media" && share.playing) void execute("media.update", { playing: false, position: duration }) }} onError={() => onError("공유 영상을 재생하지 못했어요. 파일 형식과 연결 상태를 확인해 주세요.")} />}
-        <svg ref={svgRef} className={`annotation-overlay live-annotation ${annotating ? "is-drawing" : ""}`} viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-label="수업 판서 영역" onPointerDown={begin} onPointerMove={move} onPointerUp={end} onPointerCancel={end}>
+        {share.type === "document" ? <canvas ref={canvasRef} aria-label={`${share.material?.name || "PDF"} ${share.page}페이지`} /> : <video ref={videoRef} data-testid={share.type === "screen" ? "shared-screen" : "shared-media"} src={share.type === "media" && share.materialId ? materialContentUrl(share.materialId, snapshot.lessonId) : undefined} autoPlay={share.type === "screen"} muted={share.type === "screen" || outputDevice === "muted"} playsInline preload="metadata" onLoadedMetadata={event => { const video = event.currentTarget; setNatural({ w: video.videoWidth || 1280, h: video.videoHeight || 720 }); measureVideo(video); if (share.type === "media") { setDuration(video.duration); syncVideo() } }} onResize={event => { const video = event.currentTarget; if (video.videoWidth && video.videoHeight) setNatural({ w: video.videoWidth, h: video.videoHeight }); measureVideo(video) }} onTimeUpdate={event => setPosition(event.currentTarget.currentTime)} onEnded={() => { if (canControl && share.type === "media" && share.playing) void execute("media.update", { playing: false, position: duration }) }} onError={() => onError("공유 영상을 재생하지 못했어요. 파일 형식과 연결 상태를 확인해 주세요.")} />}
+        <svg ref={svgRef} className={`annotation-overlay live-annotation ${!remoteActive && annotating || canPoint ? "is-drawing" : ""}`} viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-label={remoteActive && canControl ? designContent.remoteAssistActive : "수업 판서 영역"} onPointerDown={begin} onPointerMove={move} onPointerUp={end} onPointerCancel={end}>
           {strokes.map(stroke => draw(stroke, stroke.id))}
           {Object.entries(previews).filter(([, stroke]) => stroke.shareId === share.id && stroke.page === share.page).map(([id, stroke]) => draw(stroke, `preview-${id}`))}
           {draft && draft.shareId === share.id && draft.page === share.page && draw(draft, "draft")}
         </svg>
+        {assistanceEnabled && remotePointer && matchesAssistancePointer(remotePointer, snapshot) && Date.now() - remotePointer.receivedAt < REMOTE_POINTER_TTL_MS && <span className="remote-pointer-mark" data-testid="remote-pointer" style={{ left: `${remotePointer.x * 100}%`, top: `${remotePointer.y * 100}%` }} aria-hidden="true"><i /></span>}
         {autoplayBlocked && share.playing && <button className="media-audio-prompt" onClick={() => { void videoRef.current?.play().then(() => setAutoplayBlocked(false)).catch(e => onError(friendlyError(e))) }}>영상과 소리 켜기</button>}
       </div>
     </div>
@@ -185,7 +225,7 @@ export function SharedStage({ user, snapshot, room, command, previews, sendPrevi
     </div>
     {share.type === "document" && <div className="document-controls"><button aria-label="PDF 축소" onClick={() => setZoom(value => Math.max(.5, value - .25))}>− 축소</button><span>{Math.round(zoom * 100)}%</span><button aria-label="PDF 확대" onClick={() => setZoom(value => Math.min(4, value + .25))}>＋ 확대</button><button onClick={() => setZoom(1)}>화면에 맞추기</button><button aria-label="PDF 이전 페이지" disabled={!canControl || share.page <= 1 || controlPending} onClick={() => void execute("document.page", { page: share.page - 1 })}>이전</button><span>{share.page} / {pages}쪽</span><button aria-label="PDF 다음 페이지" disabled={!canControl || share.page >= pages || controlPending} onClick={() => void execute("document.page", { page: share.page + 1 })}>다음</button></div>}
     {share.type === "media" && <div className="media-controls"><button aria-label="영상 재생" className={share.playing ? "active" : ""} disabled={!canControl || controlPending} onClick={() => void execute("media.update", { playing: true, position: videoRef.current?.currentTime || 0 })}><Icon name="play" size={17} />재생</button><button aria-label="영상 정지" className={!share.playing ? "active" : ""} disabled={!canControl || controlPending} onClick={() => void execute("media.update", { playing: false, position: videoRef.current?.currentTime || 0 })}><Icon name="pause" size={17} />정지</button><input aria-label="영상 재생 위치" type="range" min={0} max={Number.isFinite(duration) ? duration : 0} step={.1} value={Math.min(position, Number.isFinite(duration) ? duration : 0)} disabled={!canControl || controlPending} onChange={event => void execute("media.update", { playing: share.playing, position: Number(event.target.value) })} /><span>{formatDuration(position)} / {formatDuration(duration)}</span></div>}
-    {annotating ? <div className="annotation-bar"><div className="annotation-tools">{(["pen", "highlighter", "eraser"] as const).map(item => <button key={item} className={`annotation-tool ${tool === item ? "active" : ""}`} onClick={() => setTool(item)} aria-label={item === "pen" ? "펜" : item === "highlighter" ? "형광펜" : "지우개"}><Icon name={item} size={20} /><span>{item === "pen" ? "펜" : item === "highlighter" ? "형광펜" : "지우개"}</span></button>)}</div><div className="annotation-colors" aria-label="판서 색상"><div className="color-grid">{colors.map(item => <button key={item} className={color === item ? "selected" : ""} style={{ backgroundColor: item }} onClick={() => setColor(item)} aria-label={`색상 ${item}`}>{color === item && <Icon name="check" size={12} />}</button>)}</div></div><div className="annotation-history"><button aria-label="실행 취소" disabled={controlPending} onClick={() => void execute("annotation.undo")}><Icon name="undo" size={20} /><span>실행 취소</span></button><button aria-label="다시 실행" disabled={controlPending} onClick={() => void execute("annotation.redo")}><Icon name="redo" size={20} /><span>다시 실행</span></button></div><button className="annotation-clear" disabled={!strokes.some(stroke => canControl || stroke.authorId === user.id)} onClick={() => setClearConfirm(true)}><Icon name="trash" size={18} />{canControl ? "전체 지우기" : "내 판서 지우기"}</button><button className="annotation-exit" onClick={() => setAnnotating(false)}><Icon name="close" size={18} />판서 종료</button></div> : <button className="annotate-entry" onClick={() => setAnnotating(true)}><Icon name="pen" />판서 시작</button>}
+    {!remoteActive && (annotating ? <div className="annotation-bar"><div className="annotation-tools">{(["pen", "highlighter", "eraser"] as const).map(item => <button key={item} className={`annotation-tool ${tool === item ? "active" : ""}`} onClick={() => setTool(item)} aria-label={item === "pen" ? "펜" : item === "highlighter" ? "형광펜" : "지우개"}><Icon name={item} size={20} /><span>{item === "pen" ? "펜" : item === "highlighter" ? "형광펜" : "지우개"}</span></button>)}</div><div className="annotation-colors" aria-label="판서 색상"><div className="color-grid">{colors.map(item => <button key={item} className={color === item ? "selected" : ""} style={{ backgroundColor: item }} onClick={() => setColor(item)} aria-label={`색상 ${item}`}>{color === item && <Icon name="check" size={12} />}</button>)}</div></div><div className="annotation-history"><button aria-label="실행 취소" disabled={controlPending} onClick={() => void execute("annotation.undo")}><Icon name="undo" size={20} /><span>실행 취소</span></button><button aria-label="다시 실행" disabled={controlPending} onClick={() => void execute("annotation.redo")}><Icon name="redo" size={20} /><span>다시 실행</span></button></div><button className="annotation-clear" disabled={!strokes.some(stroke => canControl || stroke.authorId === user.id)} onClick={() => setClearConfirm(true)}><Icon name="trash" size={18} />{canControl ? "전체 지우기" : "내 판서 지우기"}</button><button className="annotation-exit" onClick={() => setAnnotating(false)}><Icon name="close" size={18} />판서 종료</button></div> : <button className="annotate-entry" onClick={() => setAnnotating(true)}><Icon name="pen" />판서 시작</button>)}
     <AnimatedPresence show={clearConfirm}><Confirm title={canControl ? "판서를 모두 지울까요?" : "내 판서를 지울까요?"} copy="현재 페이지의 판서를 삭제합니다. 이 작업은 되돌릴 수 없습니다." cancel={() => setClearConfirm(false)} confirm={() => { setClearConfirm(false); void execute("annotation.clear") }} confirmText="지우기" /></AnimatedPresence>
   </div>
 }

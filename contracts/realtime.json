@@ -33,6 +33,11 @@
     "session:replaced": {
       "direction": "server",
       "schema": "SubscribeInput"
+    },
+    "assistance.pointer": {
+      "direction": "bidirectional",
+      "schema": "AssistancePointer",
+      "feature": "meeting.remote-assistance"
     }
   },
   "commands": {
@@ -80,6 +85,27 @@
     "annotation.clear": {
       "payload": "EmptyPayload",
       "feature": "classroom.core"
+    },
+    "assistance.request": {
+      "payload": "AssistanceRequestPayload",
+      "feature": "meeting.remote-assistance"
+    },
+    "assistance.respond": {
+      "payload": "AssistanceRespondPayload",
+      "feature": "meeting.remote-assistance"
+    },
+    "assistance.start": {
+      "payload": "AssistanceStartPayload",
+      "feature": "meeting.remote-assistance"
+    },
+    "assistance.geometry": {
+      "payload": "AssistanceGeometryPayload",
+      "feature": "meeting.remote-assistance"
+    },
+    "assistance.stop": {
+      "payload": "AssistanceStopPayload",
+      "feature": "meeting.remote-assistance",
+      "cleanup": true
     }
   },
   "handshake": {

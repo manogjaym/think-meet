@@ -21,7 +21,20 @@
     "meetingConnected": "연결됨",
     "meetingPeopleControl": "참가자",
     "meetingChatPanel": "수업 채팅",
-    "meetingPeoplePanel": "참석자"
+    "meetingPeoplePanel": "참석자",
+    "remoteAssistRequest": "화면 보기 요청",
+    "remoteAssistApprove": "승인하고 화면 공유",
+    "remoteAssistDecline": "거절",
+    "remoteAssistStop": "화면 안내 중지",
+    "remoteAssistWaiting": "학생의 승인을 기다리고 있어요",
+    "remoteAssistPreparing": "전체 화면 공유를 준비하고 있어요",
+    "remoteAssistActive": "학생 화면을 눌러 위치를 알려주세요",
+    "remoteAssistUnsupported": "다른 앱 위 안내는 Android 학생 기기에서만 지원해요",
+    "remoteAssistConsent": "전체 화면이 수업 참여자에게 공유돼요. 다른 앱 위에 선생님의 포인터가 표시되며 언제든 중지할 수 있어요.",
+    "remoteAssistTitle": "선생님의 화면 보기 요청",
+    "remoteAssistActiveStudent": "다른 앱에서도 선생님의 위치 안내를 받을 수 있어요.",
+    "remoteAssistGeometryWaiting": "화면 방향을 맞추고 있어요. 잠시 기다려 주세요.",
+    "remoteAssistUseApproval": "화면 보기 요청의 승인 버튼으로 공유를 시작해 주세요."
   },
   "screens": {
     "login": {
@@ -106,7 +119,34 @@
         "layout.meetingOverlayBreakpoint",
         "layout.meetingCompactBreakpoint",
         "layout.meetingPanelWidth"
-      ]
+      ],
+      "participantLayout": {
+        "basis": "실제 영상 영역의 폭·높이에서 페이지 탐색 공간 52px/dp를 제외합니다.",
+        "grid": "표시 인원 × 폭 / 사용 가능 높이의 제곱근을 반올림하되 기존 열·행 수용 범위를 지킵니다.",
+        "speaker": "폭이 사용 가능 높이 이하면 상하, 더 넓으면 좌우로 배치합니다.",
+        "resize": "웹·Android·iOS에서 회전·창 크기·옆 패널 변경 시 다시 계산합니다."
+      },
+      "remoteAssistance": {
+        "web": "web/src/screens/Meeting.tsx",
+        "native": "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/meeting/MeetingScreen.kt",
+        "sections": [
+          "participant-request",
+          "student-consent",
+          "android-overlay-permission",
+          "full-display-capture-consent",
+          "shared-screen-and-pip",
+          "pointer-pulse",
+          "stop-and-cleanup"
+        ],
+        "interaction": "수업 선생님이 Android 학생에게 요청하고 학생이 승인합니다. OS 권한과 전체 화면 캡처가 성공한 세션만 PiP로 전환하며, 선생님이 영상을 누르면 학생의 원래 화면 위에 1.5초 동안 점을 표시합니다.",
+        "scope": "선생님 웹·Android·iOS 지원. 학생 수신은 Android만 지원하며 보호 앱·시스템 UI는 오버레이 표시를 제한할 수 있습니다.",
+        "tokens": [
+          "component.remotePointerSize",
+          "component.remotePointerCoreSize",
+          "component.remotePointerRingWidth",
+          "color.danger"
+        ]
+      }
     }
   },
   "nativeAdaptations": [
@@ -115,5 +155,14 @@
     "Touch hit-slop without changing visual geometry",
     "System PiP, ReplayKit and native media renderers",
     "Font rasterization differences between OS renderers"
-  ]
+  ],
+  "nativeConfiguration": {
+    "serverOrigin": "Build-time THINK_MEET_SERVER_ORIGIN from environment or mobile/.env",
+    "loginBrand": "Static branding without a long-press settings action",
+    "accountMenu": [
+      "username",
+      "logout"
+    ],
+    "runtimeServerSettings": false
+  }
 }

@@ -99,6 +99,8 @@ data class Share(
     val playing: Boolean = false,
     val position: Double = 0.0,
     val updatedAt: String,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val assistanceId: String? = null,
 )
 
 @Serializable
@@ -169,6 +171,7 @@ data class MeetingSnapshot(
     val strokes: List<Stroke> = emptyList(),
     val seq: Long = 0L,
     val serverTime: String,
+    val assistance: AssistanceSession? = null,
 )
 
 @Serializable
@@ -278,4 +281,65 @@ data class StrokeAddPayload(
 @Serializable
 data class StrokeErasePayload(
     val ids: List<String>,
+)
+
+@Serializable
+data class AssistanceGeometry(
+    val width: Int,
+    val height: Int,
+    val rotation: Int,
+    val version: Int,
+)
+
+@Serializable
+data class AssistanceSession(
+    val id: String,
+    val teacherId: String,
+    val studentId: String,
+    val status: String,
+    val expiresAt: String?,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val shareId: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val geometry: AssistanceGeometry? = null,
+)
+
+@Serializable
+data class AssistancePointer(
+    val lessonId: String,
+    val sessionId: String,
+    val shareId: String,
+    val geometryVersion: Int,
+    val x: Double,
+    val y: Double,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val authorId: String? = null,
+)
+
+@Serializable
+data class AssistanceRequestPayload(
+    val studentId: String,
+)
+
+@Serializable
+data class AssistanceRespondPayload(
+    val sessionId: String,
+    val approved: Boolean,
+)
+
+@Serializable
+data class AssistanceStartPayload(
+    val sessionId: String,
+    val geometry: AssistanceGeometry,
+)
+
+@Serializable
+data class AssistanceGeometryPayload(
+    val sessionId: String,
+    val geometry: AssistanceGeometry,
+)
+
+@Serializable
+data class AssistanceStopPayload(
+    val sessionId: String,
 )

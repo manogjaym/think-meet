@@ -1,5 +1,7 @@
 package com.woongjin.thinkmeet
 
+import com.woongjin.thinkmeet.config.ServerConfig
+
 import android.Manifest
 import android.graphics.Bitmap
 import android.graphics.Rect
@@ -17,7 +19,6 @@ import androidx.test.uiautomator.UiObject2
 import com.woongjin.thinkmeet.data.ThinkMeetApi
 import com.woongjin.thinkmeet.platform.AppLinks
 import com.woongjin.thinkmeet.platform.createHttpClient
-import com.woongjin.thinkmeet.platform.readPreference
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
@@ -51,7 +52,7 @@ class PictureInPictureSmokeTest {
         val scenario = ActivityScenario.launch(MainActivity::class.java)
         scenario.onActivity { activity = it }
         val client = createHttpClient()
-        val api = ThinkMeetApi(client, readPreference("server.origin", "https://192.168.0.64"))
+        val api = ThinkMeetApi(client, ServerConfig.ORIGIN)
         try {
             eventually("login screen or dashboard", 90_000) {
                 visible(By.text("오늘도 함께 배우는 시간")) != null || device.findObjects(By.clazz("android.widget.EditText")).size >= 2

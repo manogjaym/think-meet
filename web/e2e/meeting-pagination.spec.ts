@@ -243,7 +243,7 @@ test("screen sharing paginates students and remains usable on mobile", async ({
   await page.screenshot({ path: testInfo.outputPath("mobile-sharing.png") })
 })
 
-test("two participants use a single page in both layouts", async ({ page }) => {
+test("two participants follow the gallery aspect ratio in both layouts", async ({ page }, testInfo) => {
   await page.getByRole("button", { name: "참가자 2명", exact: true }).click()
   const tiles = page.locator(".video-grid .video-tile")
   const pager = page.getByRole("navigation", {
@@ -252,11 +252,38 @@ test("two participants use a single page in both layouts", async ({ page }) => {
   })
   await expect(tiles).toHaveCount(2)
   await expect(pager).toHaveCount(0)
-  await expectInsideContainer(page.locator(".participant-gallery"), tiles)
-  await page.getByRole("button", { name: "보기 전환", exact: true }).click()
-  await expect(tiles).toHaveCount(2)
-  await expect(pager).toHaveCount(0)
-  await expectInsideContainer(page.locator(".participant-gallery"), tiles)
+  for (const layout of ["grid", "speaker"]) {
+    for (const viewport of [
+      { width: 390, height: 844 },
+      { width: 844, height: 390 },
+      { width: 768, height: 1024 },
+      { width: 1024, height: 768 },
+      { width: 600, height: 1000 },
+      { width: 600, height: 400 },
+    ]) {
+      await page.setViewportSize(viewport)
+      await expect(tiles).toHaveCount(2)
+      await expect(pager).toHaveCount(0)
+      await expect.poll(async () => {
+        const gallery = await page.locator(".participant-gallery").boundingBox()
+        const first = await tiles.nth(0).boundingBox()
+        const second = await tiles.nth(1).boundingBox()
+        const grid = await page.locator(".video-grid").boundingBox()
+        if (!gallery || !first || !second || !grid) return false
+        const stacked = gallery.width <= Math.max(1, gallery.height - 52)
+        return stacked
+          ? Math.abs(first.x - second.x) < 1 &&
+              second.y >= first.y + first.height &&
+              Math.abs(second.y + second.height - grid.y - grid.height) < 1
+          : Math.abs(first.y - second.y) < 1 &&
+              second.x >= first.x + first.width &&
+              Math.abs(second.x + second.width - grid.x - grid.width) < 1
+      }).toBe(true)
+      await expectInsideContainer(page.locator(".participant-gallery"), tiles)
+      await page.screenshot({ path: testInfo.outputPath(`${layout}-${viewport.width}x${viewport.height}.png`) })
+    }
+    await page.getByRole("button", { name: "보기 전환", exact: true }).click()
+  }
 })
 
 test("the attendee sidebar still lists and searches the full roster", async ({

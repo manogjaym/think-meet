@@ -51,7 +51,7 @@ services:
         condition: service_started
   livekit:
     image: livekit/livekit-server:v1.13.11
-    command: ["--config", "/etc/livekit.yaml"]
+    command: ["--config", "/etc/livekit.yaml", "--rtc.node_ip.ipv4", "${LAN_IP:?Set LAN_IP in .env}"]
     volumes:
       - ./livekit.yaml:/etc/livekit.yaml:ro
     ports:

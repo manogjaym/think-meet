@@ -9,7 +9,7 @@
         "s3:ListBucketMultipartUploads"
       ],
       "Resource": [
-        "arn:aws:s3:::gurumi"
+        "arn:aws:s3:::think-meet"
       ]
     },
     {
@@ -22,7 +22,7 @@
         "s3:ListMultipartUploadParts"
       ],
       "Resource": [
-        "arn:aws:s3:::gurumi/*"
+        "arn:aws:s3:::think-meet/*"
       ]
     }
   ]

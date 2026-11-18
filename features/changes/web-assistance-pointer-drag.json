@@ -1,0 +1,17 @@
+{
+  "id": "web-assistance-pointer-drag",
+  "summary": "웹 선생님이 마우스를 누르는 동안 이동 좌표를 보내고 정지 중에도 250ms마다 갱신해 Android 학생 포인터 표시를 유지합니다. 입력 종료·포커스 상실·연결/화면 방향 변경에서는 연속 전송을 중단합니다.",
+  "scope": "platform-only",
+  "featureIds": ["meeting.remote-assistance"],
+  "platforms": {
+    "server": {"status": "unchanged", "reason": "기존 assistance.pointer 이벤트·권한·좌표 검사·전송률 제한을 그대로 사용합니다. 계약 변경이 없습니다."},
+    "web": {"status": "implemented"},
+    "android": {"status": "unchanged", "reason": "웹 선생님 입력 수정입니다. 학생 앱은 연속 좌표 수신 시 위치와 1.5초 만료 시간을 이미 갱신하므로 재빌드 없이 기존 수신 코드를 사용합니다."},
+    "ios": {"status": "unchanged", "reason": "웹 선생님 입력으로 범위를 한정합니다. 네이티브 선생님 입력은 기존 동작을 유지하며 iOS 학생의 외부 앱 포인터 수신은 지원하지 않습니다."}
+  },
+  "verification": [
+    "2026-11-18: npm run shared:check 및 git diff --check 통과. web/에서 npm run typecheck, npm run test:features 5개, npm run build 통과.",
+    "web/에서 ASSISTANCE_BASE_URL=http://127.0.0.1:8443 npx playwright test e2e/remote-assistance.spec.ts --grep 'teacher click|teacher drag|held pointer' 3개 통과. 실제 SharedStage와 가상 수신 상태로 기존 클릭, 누르는 동안 이동 좌표 갱신·2초 정지 유지, 해제 후 전송 중단·만료, 연결 해제/복구 후 자동 재개 방지를 확인했습니다.",
+    "실제 Android 단말 송수신·휴대폰/태블릿 화면 비교는 이번 웹 입력 수정에서 추가 검증하지 않았습니다. 계약·정책·네이티브 코드 변경이 없어 전체 테스트와 앱 빌드는 반복하지 않았으며, 기능의 기존 in-progress와 pending 검증 기록을 유지합니다."
+  ]
+}

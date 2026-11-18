@@ -1,6 +1,6 @@
 # Android 학생 원격 화면 안내
 
-선생님이 Android 학생에게 화면 보기를 요청하고 학생이 직접 승인하면 전체 화면을 공유합니다. 운영체제 권한과 캡처 시작을 확인한 뒤 수업 앱이 화면 속 화면(PiP)으로 전환됩니다. 선생님이 공유 영상을 누르면 학생이 보고 있는 다른 앱의 원래 위치 위에 1.5초 동안 포인터를 표시합니다. 학생의 터치를 대신 실행하지 않습니다.
+선생님이 Android 학생에게 화면 보기를 요청하고 학생이 직접 승인하면 전체 화면을 공유합니다. 운영체제 권한과 캡처 시작을 확인한 뒤 수업 앱이 화면 속 화면(PiP)으로 전환됩니다. 웹 선생님이 공유 영상을 누른 채 마우스를 움직이면 학생이 보고 있는 다른 앱의 원래 위치 위에 포인터가 따라갑니다. 누른 채 멈춰 있어도 표시를 유지하며, 놓으면 마지막 좌표 수신 후 1.5초 뒤 숨깁니다. 학생의 터치를 대신 실행하지 않습니다.
 
 학생 수신은 Android부터 지원합니다. 선생님 요청·클릭 화면은 웹·Android·iOS에 구현하며, iOS·웹 학생에게 승인 버튼을 제공하지 않습니다. 기능 ID는 `meeting.remote-assistance`, 계약 revision은 4, 검증 단계는 `in-progress`이며 구현된 기능은 환경변수 없이 기본 사용합니다. `THINK_MEET_FEATURE_FLAGS`는 읽지 않습니다.
 
@@ -10,7 +10,7 @@
 2. 학생에게 승인·거절 버튼을 표시합니다. 승인창은 **전체 화면이 수업 참여자에게 공유**되며 다른 앱 위에 선생님의 포인터가 표시된다고 안내합니다. 교사 전용 비공개 영상 채널은 아닙니다.
 3. 학생이 승인하면 Android의 **다른 앱 위에 표시** 설정과 **전체 화면 공유** 동의를 확인합니다. 앱의 승인 버튼만으로 운영체제 권한을 생략하지 않습니다.
 4. 실제 화면 영상과 서버의 승인 세션 연결을 확인한 뒤 PiP로 전환합니다. PiP에는 선생님 영상 또는 음성 수업 표시를 보여 주고 자신의 공유 화면을 반복 표시하지 않습니다.
-5. 선생님은 공유 영상을 눌러 위치를 알려줍니다. 학생이 다른 앱을 쓰고 있어도 해당 화면 좌표 위에 점이 나타나며, 학생은 직접 누릅니다.
+5. 웹 선생님은 공유 영상을 누른 채 마우스를 움직여 위치를 알려줍니다. 이동 중에는 기존 최대 20회/초 전송 제한을 사용하고, 정지 중에는 250ms마다 좌표를 갱신합니다. 손을 떼거나 입력 취소·창 포커스 상실·탭 숨김·연결/화면 방향 변경·공유 종료가 발생하면 연속 전송을 중단합니다. 학생 앱은 기존 수신 코드를 사용하며 마지막 좌표 수신 후 1.5초 뒤 포인터가 사라집니다. 학생은 직접 누릅니다.
 6. 학생·선생님의 **화면 안내 중지**, 일반 공유 중지, OS 캡처 중지, 수업 퇴장·종료, 강퇴, 연결 끊김, 기능 미지원 전환에서 공유와 포인터를 정리합니다. 재접속하면 새 요청과 승인이 필요합니다.
 
 ## 권한·상태·통신
@@ -40,6 +40,8 @@
 근거: [Android MediaProjection](https://developer.android.com/media/grow/media-projection), [오버레이 계층](https://developer.android.com/reference/android/view/WindowManager.LayoutParams#TYPE_APPLICATION_OVERLAY), [터치 통과 조건](https://developer.android.com/reference/android/view/WindowManager.LayoutParams#FLAG_NOT_TOUCHABLE), [보호 앱 오버레이 차단](https://developer.android.com/security/fraud-prevention/activities#hide_overlay_windows), [Apple 비디오콜 PiP](https://developer.apple.com/documentation/avkit/adopting-picture-in-picture-for-video-calls).
 
 ## 검증·공개
+
+2026-11-18 웹 드래그 입력의 변경 범위와 실행 결과는 [변경 기록](changes/web-assistance-pointer-drag.json)에 남깁니다. 기존 학생 수신 코드를 사용하며 실제 Android 단말 송수신 재검증과 구분합니다.
 
 서버의 동의·연결·권한 검사, 웹·앱 선생님 화면, Android 학생의 승인·실제 전체 화면 캡처·PiP·외부 앱 터치와 포인터·종료 처리를 검증합니다. 휴대폰/태블릿, 회전, 글자 확대, 실제 계정·동일 화면으로의 비교를 구분해 기록합니다. 검사·빌드만으로 실제 교차 단말 검증을 통과 처리하지 않습니다.
 

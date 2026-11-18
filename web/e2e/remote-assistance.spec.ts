@@ -56,6 +56,47 @@ test("teacher click sends one normalized pulse that stays after release and neve
   await expect(page.getByTestId("remote-pointer")).toHaveCount(0)
 })
 
+test("teacher drag follows the held mouse, stays visible while stationary and expires after release", async ({ page }) => {
+  await activate(page)
+  await page.clock.install()
+  const rect = (await page.locator(".content-surface").boundingBox())!
+  await page.mouse.move(rect.x + rect.width * .25, rect.y + rect.height * .25)
+  expect(JSON.parse((await page.getByTestId("frames").textContent())!)).toHaveLength(0)
+  await page.mouse.down()
+  await page.mouse.move(rect.x + rect.width * .75, rect.y + rect.height * .6, { steps: 4 })
+  const moved = JSON.parse((await page.getByTestId("frames").textContent())!)
+  expect(moved.length).toBeGreaterThan(1)
+  expect(moved.at(-1).x).toBeCloseTo(.75, 2)
+  expect(moved.at(-1).y).toBeCloseTo(.6, 2)
+  await page.clock.runFor(2000) // Longer than the student's existing 1.5-second expiry.
+  await expect(page.getByTestId("remote-pointer")).toBeVisible()
+  const sent = JSON.parse((await page.getByTestId("frames").textContent())!).length
+  expect(sent).toBeGreaterThan(moved.length)
+  await page.mouse.up()
+  await page.mouse.move(rect.x + rect.width * .5, rect.y + rect.height * .5)
+  await page.clock.runFor(2000)
+  await expect(page.getByTestId("remote-pointer")).toHaveCount(0)
+  expect(JSON.parse((await page.getByTestId("frames").textContent())!)).toHaveLength(sent)
+  expect(await page.getByTestId("commands").textContent()).toBe('["assistance.request"]')
+})
+
+test("held pointer stops on disconnect and does not resume without a new press", async ({ page }) => {
+  await activate(page)
+  await page.clock.install()
+  const rect = (await page.locator(".content-surface").boundingBox())!
+  await page.mouse.move(rect.x + rect.width * .5, rect.y + rect.height * .5)
+  await page.mouse.down()
+  const connection = page.getByRole("button", { name: "연결 전환", exact: true })
+  await connection.evaluate(button => button.click())
+  await expect(page.locator(".annotation-overlay")).not.toHaveClass(/is-drawing/)
+  const sent = JSON.parse((await page.getByTestId("frames").textContent())!).length
+  await connection.evaluate(button => button.click())
+  await expect(page.locator(".annotation-overlay")).toHaveClass(/is-drawing/)
+  await page.clock.runFor(2000)
+  expect(JSON.parse((await page.getByTestId("frames").textContent())!)).toHaveLength(sent)
+  await page.mouse.up()
+})
+
 test("rotation disables coordinates until video dimensions match and rejects the old version", async ({ page }) => {
   await activate(page)
   await page.locator(".content-surface").click()

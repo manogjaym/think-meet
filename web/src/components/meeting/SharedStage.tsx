@@ -47,12 +47,31 @@ export function SharedStage({ user, snapshot, room, command, previews, sendPrevi
   const drawing = useRef<PreviewStroke | null>(null)
   const previewAt = useRef(0)
   const erasePending = useRef(new Set<string>())
+  const pointing = useRef<{ pointerId: number; point: Point | null } | null>(null)
+  const pointingTimer = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
+  const pointerSender = useRef(sendAssistancePointer)
+  pointerSender.current = sendAssistancePointer
+  const stopPointing = useCallback(() => {
+    clearInterval(pointingTimer.current)
+    pointingTimer.current = undefined
+    pointing.current = null
+  }, [])
   const strokes = snapshot.strokes.filter(stroke => stroke.shareId === share.id && stroke.page === share.page && !stroke.deleted)
   const canControl = snapshot.lesson.teacher.id === user.id
   const assistance = activeAssistance(snapshot)
   const remoteActive = Boolean(assistance)
   const geometryKey = assistance ? `${assistance.id}:${assistance.geometry?.version}` : ""
   const canPoint = Boolean(assistanceEnabled && canControl && assistanceConnected && sendAssistancePointer && assistance && settledGeometryKey === geometryKey && geometryMatchesVideo(assistance.geometry, screenDimensions.w, screenDimensions.h))
+  useEffect(() => {
+    stopPointing()
+    window.addEventListener("blur", stopPointing)
+    document.addEventListener("visibilitychange", stopPointing)
+    return () => {
+      stopPointing()
+      window.removeEventListener("blur", stopPointing)
+      document.removeEventListener("visibilitychange", stopPointing)
+    }
+  }, [canPoint, geometryKey, stopPointing])
   const scale = Math.min(available.w / natural.w, available.h / natural.h) * (share.type === "document" ? zoom : 1)
   const width = Math.max(1, natural.w * scale), height = Math.max(1, natural.h * scale)
   const owner = share.ownerId === user.id ? room?.localParticipant : room?.remoteParticipants.get(share.ownerId)
@@ -163,10 +182,18 @@ export function SharedStage({ user, snapshot, room, command, previews, sendPrevi
   }
   const begin = (event: ReactPointerEvent<SVGSVGElement>) => {
     if (remoteActive) {
-      if (!canPoint || event.button !== 0) return
+      if (!canPoint || event.button !== 0 || pointing.current) return
       event.preventDefault()
       const point = assistancePoint(event.clientX, event.clientY, event.currentTarget.getBoundingClientRect())
-      if (point) sendAssistancePointer?.(point.x, point.y)
+      if (!point) return
+      event.currentTarget.setPointerCapture(event.pointerId)
+      pointing.current = { pointerId: event.pointerId, point }
+      pointerSender.current?.(point.x, point.y)
+      // Refresh the student's existing expiry even while the held pointer is stationary.
+      pointingTimer.current = setInterval(() => {
+        const point = pointing.current?.point
+        if (point) pointerSender.current?.(point.x, point.y)
+      }, 250)
       return
     }
     if (!annotating || event.button !== 0) return
@@ -177,7 +204,15 @@ export function SharedStage({ user, snapshot, room, command, previews, sendPrevi
     setDraft({ ...drawing.current })
   }
   const move = (event: ReactPointerEvent<SVGSVGElement>) => {
-    if (remoteActive) return
+    if (remoteActive) {
+      const current = pointing.current
+      if (!current || current.pointerId !== event.pointerId) return
+      if (!canPoint || !(event.buttons & 1)) { stopPointing(); return }
+      event.preventDefault()
+      current.point = assistancePoint(event.clientX, event.clientY, event.currentTarget.getBoundingClientRect())
+      if (current.point) pointerSender.current?.(current.point.x, current.point.y)
+      return
+    }
     if (!annotating || !(event.buttons & 1)) return
     const point = pointAt(event)
     if (tool === "eraser") { eraseAt(point); return }
@@ -188,7 +223,8 @@ export function SharedStage({ user, snapshot, room, command, previews, sendPrevi
     current.points.push(point); setDraft({ ...current, points: [...current.points] })
     if (Date.now() - previewAt.current > 80) { sendPreview({ ...current, points: current.points.slice(-256) }); previewAt.current = Date.now() }
   }
-  const end = () => {
+  const end = (event: ReactPointerEvent<SVGSVGElement>) => {
+    if (pointing.current?.pointerId === event.pointerId) stopPointing()
     const current = drawing.current
     drawing.current = null
     if (!current) return
@@ -210,7 +246,7 @@ export function SharedStage({ user, snapshot, room, command, previews, sendPrevi
       {share.type === "screen" && !screenTrack && <p className="live-stage-message">공유 화면 연결을 기다리고 있어요.</p>}
       <div ref={surfaceRef} className="content-surface" style={{ width, height, maxWidth: "none", display: loading || share.type === "screen" && !screenTrack ? "none" : undefined }}>
         {share.type === "document" ? <canvas ref={canvasRef} aria-label={`${share.material?.name || "PDF"} ${share.page}페이지`} /> : <video ref={videoRef} data-testid={share.type === "screen" ? "shared-screen" : "shared-media"} src={share.type === "media" && share.materialId ? materialContentUrl(share.materialId, snapshot.lessonId) : undefined} autoPlay={share.type === "screen"} muted={share.type === "screen" || outputDevice === "muted"} playsInline preload="metadata" onLoadedMetadata={event => { const video = event.currentTarget; setNatural({ w: video.videoWidth || 1280, h: video.videoHeight || 720 }); measureVideo(video); if (share.type === "media") { setDuration(video.duration); syncVideo() } }} onResize={event => { const video = event.currentTarget; if (video.videoWidth && video.videoHeight) setNatural({ w: video.videoWidth, h: video.videoHeight }); measureVideo(video) }} onTimeUpdate={event => setPosition(event.currentTarget.currentTime)} onEnded={() => { if (canControl && share.type === "media" && share.playing) void execute("media.update", { playing: false, position: duration }) }} onError={() => onError("공유 영상을 재생하지 못했어요. 파일 형식과 연결 상태를 확인해 주세요.")} />}
-        <svg ref={svgRef} className={`annotation-overlay live-annotation ${!remoteActive && annotating || canPoint ? "is-drawing" : ""}`} viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-label={remoteActive && canControl ? designContent.remoteAssistActive : "수업 판서 영역"} onPointerDown={begin} onPointerMove={move} onPointerUp={end} onPointerCancel={end}>
+        <svg ref={svgRef} className={`annotation-overlay live-annotation ${!remoteActive && annotating || canPoint ? "is-drawing" : ""}`} viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-label={remoteActive && canControl ? designContent.remoteAssistActive : "수업 판서 영역"} onPointerDown={begin} onPointerMove={move} onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end}>
           {strokes.map(stroke => draw(stroke, stroke.id))}
           {Object.entries(previews).filter(([, stroke]) => stroke.shareId === share.id && stroke.page === share.page).map(([id, stroke]) => draw(stroke, `preview-${id}`))}
           {draft && draft.shareId === share.id && draft.page === share.page && draw(draft, "draft")}

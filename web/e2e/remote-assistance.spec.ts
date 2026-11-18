@@ -32,7 +32,10 @@ async function activate(page: Page) {
 }
 
 test("teacher requests a student's screen, waits for consent and can cancel", async ({ page }) => {
+  await page.getByRole("button", { name: "더보기 열기", exact: true }).click()
+  await page.getByRole("button", { name: "학생 화면 보기", exact: false }).click()
   const request = page.getByRole("button", { name: "김학생 화면 보기 요청", exact: true })
+  await expect(request).toHaveText("화면 보기 요청")
   await request.click()
   await expect(request).toBeDisabled()
   await expect(page.locator(".remote-assistance-status")).toContainText("학생의 승인을 기다리고 있어요")

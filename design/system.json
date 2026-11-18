@@ -23,6 +23,9 @@
     "meetingChatPanel": "수업 채팅",
     "meetingPeoplePanel": "참석자",
     "remoteAssistRequest": "화면 보기 요청",
+    "remoteAssistStudentScreen": "학생 화면 보기",
+    "remoteAssistRequestHelp": "참여 중인 Android 학생의 화면 보기를 요청하세요. 학생이 승인하면 전체 화면을 볼 수 있어요.",
+    "remoteAssistStopShareFirst": "현재 공유를 중지한 뒤 학생 화면 보기를 요청해 주세요.",
     "remoteAssistApprove": "승인하고 화면 공유",
     "remoteAssistDecline": "거절",
     "remoteAssistStop": "화면 안내 중지",
@@ -138,7 +141,7 @@
           "pointer-pulse",
           "stop-and-cleanup"
         ],
-        "interaction": "수업 선생님이 Android 학생에게 요청하고 학생이 승인합니다. OS 권한과 전체 화면 캡처가 성공한 세션만 PiP로 전환하며, 선생님이 영상을 누르면 학생의 원래 화면 위에 1.5초 동안 점을 표시합니다.",
+        "interaction": "수업 선생님이 Android 학생에게 요청하고 학생이 승인합니다. 웹은 더보기 → 학생 화면 보기 또는 참석자 패널에서 학생별 화면 보기 요청 버튼을 사용합니다. 기존 공유·승인 대기·캡처 준비·안내 진행 중에는 새 요청을 막습니다. OS 권한과 전체 화면 캡처가 성공한 세션만 PiP로 전환하며, 선생님이 영상을 누르면 학생의 원래 화면 위에 1.5초 동안 점을 표시합니다.",
         "scope": "선생님 웹·Android·iOS 지원. 학생 수신은 Android만 지원하며 보호 앱·시스템 UI는 오버레이 표시를 제한할 수 있습니다.",
         "tokens": [
           "component.remotePointerSize",

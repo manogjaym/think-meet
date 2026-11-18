@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react"
 import { createRoot } from "react-dom/client"
 import { Track, type Room } from "livekit-client"
 import type { AssistanceGeometry, AssistancePointer, MeetingSnapshot, User } from "../../src/generated/contracts"
+import type { Panel } from "../../src/models"
 import { SharedStage } from "../../src/components/meeting/SharedStage"
 import { SidePanel } from "../../src/components/meeting/SidePanel"
 import { RemoteAssistanceStatus } from "../../src/components/meeting/RemoteAssistanceStatus"
@@ -32,7 +33,7 @@ const participant = (user: User, landscape = false) => ({ identity: user.id, nam
 function Harness() {
   const [snapshot, setSnapshot] = useState(base)
   const [user, setUser] = useState(teacher)
-  const [panel, setPanel] = useState<"people" | null>("people")
+  const [panel, setPanel] = useState<Panel>("people")
   const [pointer, setPointer] = useState<RemotePointer | null>(null)
   const [landscape, setLandscape] = useState(false)
   const [connected, setConnected] = useState(true)
@@ -68,6 +69,7 @@ function Harness() {
       <button onClick={() => setSnapshot(value => ({ ...value, assistance: value.assistance ? { ...value.assistance, status: "approved", expiresAt: null } : null }))}>학생 승인</button>
       <button onClick={() => setSnapshot(value => ({ ...value, share: { id: "student-screen", type: "screen", ownerId: student.id, page: 1, playing: false, position: 0, updatedAt: now, assistanceId: "session" }, assistance: { id: "session", teacherId: teacher.id, studentId: student.id, status: "active", expiresAt: null, shareId: "student-screen", geometry: portrait } }))}>학생 공유 시작</button>
       <button onClick={() => setPanel(value => value ? null : "people")}>참석자 전환</button>
+      <button onClick={() => setPanel("more")}>더보기 열기</button>
       <button onClick={() => setUser(value => value.id === teacher.id ? student : teacher)}>역할 전환</button>
       <button onClick={() => setSnapshot(value => ({ ...value, assistance: value.assistance ? { ...value.assistance, geometry: { width: 2400, height: 1080, rotation: 90, version: 2 } } : null }))}>회전</button>
       <button onClick={() => setSnapshot(value => ({ ...value, assistance: value.assistance ? { ...value.assistance, geometry: { ...portrait, rotation: 180, version: 3 } } : null }))}>같은 비율 회전</button>
@@ -76,7 +78,7 @@ function Harness() {
       <button onClick={() => { void loadCapabilities({ force: true }) }}>지원 새로고침</button>
     </div></header>
     {error && <p role="alert">{error}</p>}
-    <div className="meeting-body"><div className="meeting-main"><RemoteAssistanceStatus pointingReady={pointingReady} snapshot={snapshot} userId={user.id} command={command} onError={setError} />{snapshot.share && <><div className="share-status-bar">김학생 님의 화면 공유 중</div><section className="stage is-sharing"><SharedStage user={user} snapshot={snapshot} room={room} command={command} previews={{}} sendPreview={() => {}} remotePointer={pointer} sendAssistancePointer={sendPointer} assistanceConnected={connected} onAssistanceReady={setPointingReady} serverOffset={0} outputDevice="muted" revision={landscape ? 1 : 0} onError={setError} /></section></>}</div>{panel && <div className="meeting-panel-container"><SidePanel panel="people" setPanel={() => setPanel(null)} user={user} lesson={snapshot.lesson} room={room} snapshot={snapshot} command={command} onOutputChange={() => {}} revision={0} /></div>}</div>
+    <div className="meeting-body"><div className="meeting-main"><RemoteAssistanceStatus pointingReady={pointingReady} snapshot={snapshot} userId={user.id} command={command} onError={setError} />{snapshot.share && <><div className="share-status-bar">김학생 님의 화면 공유 중</div><section className="stage is-sharing"><SharedStage user={user} snapshot={snapshot} room={room} command={command} previews={{}} sendPreview={() => {}} remotePointer={pointer} sendAssistancePointer={sendPointer} assistanceConnected={connected} onAssistanceReady={setPointingReady} serverOffset={0} outputDevice="muted" revision={landscape ? 1 : 0} onError={setError} /></section></>}</div>{panel && <div className="meeting-panel-container"><SidePanel panel={panel} setPanel={setPanel} user={user} lesson={snapshot.lesson} room={room} snapshot={snapshot} command={command} onOutputChange={() => {}} revision={0} /></div>}</div>
     <output hidden data-testid="commands">{JSON.stringify(commands)}</output><output hidden data-testid="frames">{JSON.stringify(frames)}</output>
   </main>
 }

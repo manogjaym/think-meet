@@ -16,6 +16,9 @@ export function SidePanel({ panel, setPanel, user, lesson, room, snapshot, comma
   const isHost = lesson.teacher.id === user.id
   const remoteAssistanceEnabled = useFeature("meeting.remote-assistance")
   const [requestingAssistance, setRequestingAssistance] = useState(false)
+  const assistanceRequestPending = useRef(false)
+  const assistanceSession = currentAssistance(snapshot?.assistance) ? snapshot.assistance : null
+  const assistanceRequestBlocked = requestingAssistance || Boolean(assistanceSession || snapshot?.share) || snapshot?.lesson.status !== "LIVE"
   const isOpen = lesson.accessMode === "OPEN"
   const [search, setSearch] = useState("")
   const [draft, setDraft] = useState("")
@@ -50,6 +53,15 @@ export function SidePanel({ panel, setPanel, user, lesson, room, snapshot, comma
   const run = async (action: () => Promise<unknown>, success?: string) => {
     setError("")
     try { await action(); if (success) setNotice(success) } catch(e) { setError(friendlyError(e)) }
+  }
+  const requestAssistance = (studentId: string) => {
+    if (!isHost || !remoteAssistanceEnabled || assistanceRequestBlocked || assistanceRequestPending.current) return
+    assistanceRequestPending.current = true
+    setRequestingAssistance(true)
+    void run(() => command("assistance.request", { studentId })).finally(() => {
+      assistanceRequestPending.current = false
+      setRequestingAssistance(false)
+    })
   }
   const cancelUpload = () => { uploadGateRef.current?.abort(); uploadRef.current?.abort() }
   const uploadFile = async (file: File) => {
@@ -93,13 +105,11 @@ export function SidePanel({ panel, setPanel, user, lesson, room, snapshot, comma
     const participant = person.id === user.id ? room?.localParticipant : room?.remoteParticipants.get(person.id)
     return <div className="person-row" key={person.id}>
       <Avatar name={person.name} color={colorFor(person.id)} small />
-      <div><strong>{person.name}{person.id === user.id ? " (나)" : ""}</strong><span>{person.id === lesson.teacher.id ? "선생님 · 호스트" : `${person.role === "teacher" ? "선생님" : "학생"} · ${joined ? "참여 중" : "아직 입장하지 않음"}`}</span></div>
+      <div><strong>{person.name}{person.id === user.id ? " (나)" : ""}</strong><span>{person.id === lesson.teacher.id ? "선생님 · 호스트" : `${person.role === "teacher" ? "선생님" : "학생"} · ${joined ? "참여 중" : "아직 입장하지 않음"}`}</span>
+        {isHost && joined && person.role === "student" && remoteAssistanceEnabled && <button className="assistance-request" aria-label={`${person.name} ${designContent.remoteAssistRequest}`} disabled={assistanceRequestBlocked} onClick={() => requestAssistance(person.id)}><Icon name="screen" size={17} />{designContent.remoteAssistRequest}</button>}
+      </div>
       {entry.raised && <span className="raised" aria-label="손들기"><Icon name="hand" size={16} /></span>}
       {joined && <div className="participant-devices"><span className={`device-state ${participant?.isMicrophoneEnabled ? "" : "off"}`} title={participant?.isMicrophoneEnabled ? "마이크 켜짐" : "음소거"}><Icon name={participant?.isMicrophoneEnabled ? "mic" : "micOff"} size={15} /></span><span className={`device-state ${participant?.isCameraEnabled ? "" : "off"}`}><Icon name={participant?.isCameraEnabled ? "video" : "videoOff"} size={15} /></span></div>}
-      {isHost && joined && person.role === "student" && remoteAssistanceEnabled && <button aria-label={`${person.name} ${designContent.remoteAssistRequest}`} title={`${designContent.remoteAssistRequest} · ${designContent.remoteAssistUnsupported}`} disabled={requestingAssistance || currentAssistance(snapshot?.assistance)} onClick={() => {
-        setRequestingAssistance(true)
-        void run(() => command("assistance.request", { studentId: person.id })).finally(() => setRequestingAssistance(false))
-      }}><Icon name="screen" size={20} /></button>}
       {isHost && person.id !== lesson.teacher.id && <button aria-label={`${person.name} 퇴장`} onClick={() => setKick(person)}><Icon name="more" size={20} /></button>}
     </div>
   }
@@ -108,8 +118,11 @@ export function SidePanel({ panel, setPanel, user, lesson, room, snapshot, comma
     {(panel === "people" || panel === "chat") && <nav className="participant-tabs" aria-label="참석자 패널 보기"><button className={panel === "people" ? "active" : ""} onClick={() => setPanel("people")}><Icon name="users" size={17} />참석자<span>{online.length}</span></button><button className={panel === "chat" ? "active" : ""} onClick={() => setPanel("chat")} aria-label={unreadChatCount ? `채팅, 읽지 않은 메시지 ${unreadChatCount}개` : "채팅"}><Icon name="chat" size={17} />채팅{unreadChatCount > 0 && <span className="chat-unread-badge" aria-hidden="true">{unreadChatCount > 99 ? "99+" : unreadChatCount}</span>}</button></nav>}
     <div className="panel-view">
       {error && <p className="panel-error" role="alert">{error}</p>}{notice && <p className="panel-notice" role="status">{notice}</p>}
-      {panel === "people" && <div className="panel-body"><label className="search compact"><Icon name="search" size={17} /><input value={search} onChange={e => setSearch(e.target.value)} placeholder="참석자 찾기" aria-label="참석자 찾기" /></label>{isHost && remoteAssistanceEnabled && <p className="chat-notice">{designContent.remoteAssistUnsupported}</p>}{isHost && currentAssistance(snapshot?.assistance) && snapshot.assistance.status !== "active" && <p className="panel-notice" role="status">{snapshot.assistance.status === "pending" ? designContent.remoteAssistWaiting : designContent.remoteAssistPreparing}</p>}<p className="panel-label">통화 중 · {online.length}</p>{online.filter(entry => entry.user.name.includes(search.trim())).map(entry => participantRow(entry, true))}<p className="panel-label">입장 대기 · {offline.length}</p>{offline.filter(entry => entry.user.name.includes(search.trim())).map(entry => participantRow(entry, false))}</div>}
-      {panel === "more" && <div className="panel-body menu-grid"><button onClick={() => setPanel("chat")} aria-label={unreadChatCount ? `수업 채팅, 읽지 않은 메시지 ${unreadChatCount}개` : "수업 채팅"}><span><Icon name="chat" /></span><div><strong>{designContent.meetingChatPanel}</strong><small>함께 이야기 나누기</small></div>{unreadChatCount > 0 && <span className="chat-unread-badge" aria-hidden="true">{unreadChatCount > 99 ? "99+" : unreadChatCount}</span>}</button>{isHost && <><button onClick={() => setPanel("invite")}><span><Icon name={isOpen ? "link" : "users"} /></span><div><strong>{isOpen ? "참여 링크 공유" : "다른 참석자 추가"}</strong><small>{isOpen ? "누구나 참여할 수 있는 공개 수업" : "초대 학생과 참여 링크 관리"}</small></div></button><button onClick={() => setPanel("content")}><span><Icon name="folder" /></span><div><strong>수업 자료</strong><small>영상과 PDF를 함께 보기</small></div></button></>}<button onClick={() => setPanel("settings")}><span><Icon name="settings" /></span><div><strong>카메라·마이크 설정</strong><small>입력·출력 장치 및 노이즈 캔슬링</small></div></button></div>}
+      {panel === "people" && <div className="panel-body"><label className="search compact"><Icon name="search" size={17} /><input value={search} onChange={e => setSearch(e.target.value)} placeholder="참석자 찾기" aria-label="참석자 찾기" /></label>{isHost && remoteAssistanceEnabled && <p className="chat-notice">{designContent.remoteAssistRequestHelp}</p>}
+        {isHost && remoteAssistanceEnabled && snapshot?.share && !assistanceSession && <p className="panel-notice" role="status">{designContent.remoteAssistStopShareFirst}</p>}
+        {isHost && assistanceSession && assistanceSession.status !== "active" && <p className="panel-notice" role="status">{assistanceSession.status === "pending" ? designContent.remoteAssistWaiting : designContent.remoteAssistPreparing}</p>}<p className="panel-label">통화 중 · {online.length}</p>{online.filter(entry => entry.user.name.includes(search.trim())).map(entry => participantRow(entry, true))}<p className="panel-label">입장 대기 · {offline.length}</p>{offline.filter(entry => entry.user.name.includes(search.trim())).map(entry => participantRow(entry, false))}</div>}
+      {panel === "more" && <div className="panel-body menu-grid">
+        {isHost && remoteAssistanceEnabled && <button onClick={() => setPanel("people")}><span><Icon name="screen" /></span><div><strong>{designContent.remoteAssistStudentScreen}</strong><small>{designContent.remoteAssistRequestHelp}</small></div></button>}<button onClick={() => setPanel("chat")} aria-label={unreadChatCount ? `수업 채팅, 읽지 않은 메시지 ${unreadChatCount}개` : "수업 채팅"}><span><Icon name="chat" /></span><div><strong>{designContent.meetingChatPanel}</strong><small>함께 이야기 나누기</small></div>{unreadChatCount > 0 && <span className="chat-unread-badge" aria-hidden="true">{unreadChatCount > 99 ? "99+" : unreadChatCount}</span>}</button>{isHost && <><button onClick={() => setPanel("invite")}><span><Icon name={isOpen ? "link" : "users"} /></span><div><strong>{isOpen ? "참여 링크 공유" : "다른 참석자 추가"}</strong><small>{isOpen ? "누구나 참여할 수 있는 공개 수업" : "초대 학생과 참여 링크 관리"}</small></div></button><button onClick={() => setPanel("content")}><span><Icon name="folder" /></span><div><strong>수업 자료</strong><small>영상과 PDF를 함께 보기</small></div></button></>}<button onClick={() => setPanel("settings")}><span><Icon name="settings" /></span><div><strong>카메라·마이크 설정</strong><small>입력·출력 장치 및 노이즈 캔슬링</small></div></button></div>}
       {panel === "chat" && <div className="panel-body chat-body"><div className="chat-notice">이 수업의 참여자 모두에게 메시지가 전달됩니다.</div><div className="messages" aria-live="polite">{messages.map(message => <div className="message" key={message.id}><Avatar name={message.userName} color={colorFor(message.userId)} small /><div><span><strong>{message.userName}{message.userId === user.id ? " (나)" : ""}</strong><small>{new Intl.DateTimeFormat("ko-KR", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Seoul" }).format(new Date(message.createdAt))}</small></span><p>{message.text}</p></div></div>)}<div ref={endMessages} /></div><form className="chat-input" onSubmit={e => { e.preventDefault(); if (!draft.trim() || sending) return; setSending(true); void run(async () => { await command("chat.send", { text: draft.trim(), clientId: clientMessageId.current }); setDraft(""); clientMessageId.current = crypto.randomUUID() }).finally(() => setSending(false)) }}><input aria-label="채팅 메시지" maxLength={2000} placeholder="메시지 보내기" value={draft} onChange={e => setDraft(e.target.value)} disabled={sending} /><button type="submit" disabled={sending || !draft.trim()} aria-label="메시지 전송"><Icon name="send" size={21} /></button></form></div>}
       {panel === "invite" && isHost && <div className="panel-body">
         {isOpen ? <div className="chat-notice"><strong>누구나 함께할 수 있는 공개 수업이에요.</strong><p>학생을 따로 초대할 필요 없이, 로그인한 누구나 수업 목록이나 참여 링크로 입장할 수 있어요.</p></div> : <>

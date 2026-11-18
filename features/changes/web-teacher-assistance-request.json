@@ -1,0 +1,18 @@
+{
+  "id": "web-teacher-assistance-request",
+  "summary": "웹 선생님이 더보기의 학생 화면 보기에서 참석자 패널을 열고, 학생 이름 아래의 화면 보기 요청 버튼으로 승인 요청을 보냅니다. 기존 공유와 진행 중인 요청은 중복 요청을 막습니다.",
+  "scope": "platform-only",
+  "featureIds": ["meeting.remote-assistance"],
+  "platforms": {
+    "server": {"status": "unchanged", "reason": "기존 assistance.request 명령과 선생님 권한·Android 학생 동의 검사를 재사용합니다. 계약과 공개 설정은 변경하지 않습니다."},
+    "web": {"status": "implemented"},
+    "android": {"status": "unchanged", "reason": "사용자가 웹 선생님 요청 화면으로 범위를 한정했습니다. 기존 학생 승인·전체 화면 공유·PiP·포인터 수신을 유지하며 디자인 문구 생성물만 동기화합니다."},
+    "ios": {"status": "unchanged", "reason": "웹 선생님 요청 UI 변경으로 iOS 화면과 동작은 변경하지 않습니다. 공통 디자인 문구 생성물만 동기화하며 iOS 학생 수신은 기존처럼 지원하지 않습니다."}
+  },
+  "verification": [
+    "2026-11-18: npm run shared:check와 git diff --check 통과. web/에서 npm run typecheck 및 npm run test:features 4개 통과.",
+    "web/에서 ASSISTANCE_BASE_URL=http://127.0.0.1:8443 npx playwright test e2e/remote-assistance.spec.ts --grep 'teacher requests' 1개 통과. 더보기 → 학생 화면 보기 → 학생별 요청, 승인 대기 중 재요청 차단, 취소 후 재요청 가능을 확인했습니다. 테스트 화면에서만 기능을 활성화하며 실제 단말 승인·영상 수신과 구분합니다.",
+    "실제 Android 단말 송수신·휴대폰/태블릿 화면 비교·네이티브 빌드·전체 테스트·원격 배포는 이번 웹 요청 UI 작업에서 반복하지 않았습니다.",
+    "기능은 in-progress·기본 OFF를 유지합니다. 이번 웹 요청 UI 수정만으로 전체 기능의 실제 단말 검증 완료나 공개 준비를 선언하지 않습니다."
+  ]
+}

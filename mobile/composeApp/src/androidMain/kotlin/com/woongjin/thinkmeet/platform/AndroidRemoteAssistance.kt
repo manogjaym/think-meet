@@ -30,6 +30,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.view.doOnPreDraw
 import com.woongjin.thinkmeet.data.AssistanceGeometry
 import com.woongjin.thinkmeet.data.AssistancePointer
 import com.woongjin.thinkmeet.design.generated.DesignTokens
@@ -83,7 +84,7 @@ internal class AndroidRemoteAssistanceController(
     private var resizePending = false
     private var marker: RemotePointerView? = null
     private var markerParams: WindowManager.LayoutParams? = null
-    private var markerGeneration = 0L
+    private val markerOrigin = Point()
     internal var permissionRequest: ((CompletableDeferred<Unit>) -> Unit)? = null
     private val hideMarker = Runnable { removeMarker() }
     private val displayListener = object : DisplayManager.DisplayListener {
@@ -217,7 +218,8 @@ internal class AndroidRemoteAssistanceController(
         if (closed || !ownsCapture || !mutable.value.capturing || pointer.geometryVersion != geometry.version ||
             !pointer.x.isFinite() || !pointer.y.isFinite() || pointer.x !in 0.0..1.0 || pointer.y !in 0.0..1.0) return
         if (!Settings.canDrawOverlays(context)) { failCapture("다른 앱 위 표시 권한이 해제됐어요."); return }
-        val view = marker ?: RemotePointerView(context).also { marker = it }
+        val existing = marker
+        val view = existing ?: RemotePointerView(context).also { marker = it }
         val diameter = (DesignTokens.Component.RemotePointerSize.value * context.resources.displayMetrics.density).roundToInt().coerceAtLeast(1)
         val desiredX = (pointer.x * (geometry.width - 1) - diameter / 2.0).roundToInt()
         val desiredY = (pointer.y * (geometry.height - 1) - diameter / 2.0).roundToInt()
@@ -231,17 +233,23 @@ internal class AndroidRemoteAssistanceController(
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) { setFitInsetsTypes(0); layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS }
             else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
         }.also { markerParams = it }
-        params.x = desiredX; params.y = desiredY
-        val generation = ++markerGeneration
+        val x = desiredX - markerOrigin.x; val y = desiredY - markerOrigin.y
+        val moved = params.x != x || params.y != y
+        params.x = x; params.y = y
         try {
-            if (view.isAttachedToWindow) windows.updateViewLayout(view, params) else windows.addView(view, params)
-            view.post {
-                if (generation != markerGeneration || marker !== view || !view.isAttachedToWindow) return@post
-                // OEM insets can shift application-overlay origins; correct using actual display pixels.
-                val actual = IntArray(2); view.getLocationOnScreen(actual)
-                val dx = desiredX - actual[0]; val dy = desiredY - actual[1]
-                if (dx != 0 || dy != 0) { params.x += dx; params.y += dy; runCatching { windows.updateViewLayout(view, params) } }
-            }
+            if (existing == null) {
+                windows.addView(view, params)
+                view.doOnPreDraw {
+                    if (marker !== view || !view.isAttachedToWindow) return@doOnPreDraw
+                    // Measure the OS origin once after layout, never against the previous packet's position.
+                    val actual = IntArray(2); view.getLocationOnScreen(actual)
+                    markerOrigin.set(actual[0] - params.x, actual[1] - params.y)
+                    if (markerOrigin.x != 0 || markerOrigin.y != 0) {
+                        params.x -= markerOrigin.x; params.y -= markerOrigin.y
+                        runCatching { windows.updateViewLayout(view, params) }
+                    }
+                }
+            } else if (moved) windows.updateViewLayout(view, params)
             handler.removeCallbacks(hideMarker)
             handler.postDelayed(hideMarker, RemotePointerTtlMillis)
         } catch (_: RuntimeException) { failCapture("다른 앱 위에 안내 표시를 띄우지 못했어요.") }
@@ -252,10 +260,9 @@ internal class AndroidRemoteAssistanceController(
     }
 
     private fun removeMarker() {
-        markerGeneration++
         handler.removeCallbacks(hideMarker)
-        marker?.let { if (it.isAttachedToWindow) runCatching { windows.removeViewImmediate(it) } }
-        marker = null; markerParams = null
+        marker?.let { runCatching { windows.removeViewImmediate(it) } }
+        marker = null; markerParams = null; markerOrigin.set(0, 0)
     }
 
     private fun detachCaptureObservers() {

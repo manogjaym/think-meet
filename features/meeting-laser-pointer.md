@@ -32,6 +32,7 @@
 ## 플랫폼 조건과 한계
 
 - Android 오버레이는 `SYSTEM_ALERT_WINDOW` 허가와 전체 화면 캡처 동의가 필요합니다. 작은 `TYPE_APPLICATION_OVERLAY` 창에 터치 불가·포커스 불가·허용 투명도를 적용해 아래 앱의 터치를 통과시킵니다.
+- 화면 원점 차이는 최초 레이아웃 뒤 한 번 보정해 재사용합니다. 같은 좌표의 연속 수신은 창을 다시 배치하지 않고 표시 만료 시간만 갱신합니다. [Android 위치 안정화 변경·검증](changes/android-pointer-stability.json)을 참고합니다.
 - 보호된 앱은 오버레이나 화면 캡처를 숨길 수 있습니다. 이번 Android 15 실행에서 설정 앱 홈이 외부 포인터를 숨기는 동작을 확인했습니다. [AOSP 구현](https://android.googlesource.com/platform/packages/apps/Settings/+/refs/tags/android-15.0.0_r5/src/com/android/settings/homepage/SettingsHomepageActivity.java)은 `HideNonSystemOverlayMixin`을 사용합니다. 상태 표시줄·키보드·권한 창 등 모든 시스템 UI 위 표시도 보장하지 않습니다.
 - Android 14 이상은 전체 디스플레이 캡처 설정을 요청합니다. 기기가 앱 단위 공유로 바꾸거나 캡처 크기와 실제 화면이 계속 다르면 안내 세션을 중단합니다.
 - 회전 버전과 영상 비율을 검사하지만 서로 다른 미디어·Socket 전송 경로의 모든 프레임을 완전히 동기화하는 것은 아닙니다. 같은 비율의 180도 회전은 500ms 유예 후에도 실제 기기·망 조건에서 확인해야 합니다.

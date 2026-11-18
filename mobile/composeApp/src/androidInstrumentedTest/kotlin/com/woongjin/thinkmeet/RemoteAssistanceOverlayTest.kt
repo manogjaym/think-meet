@@ -2,14 +2,21 @@ package com.woongjin.thinkmeet
 
 import android.app.PictureInPictureParams
 import android.content.ComponentName
+import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.provider.Settings
 import android.util.Rational
+import android.view.View
+import android.view.ViewGroup
+import android.view.WindowManager
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -32,11 +39,14 @@ import com.woongjin.thinkmeet.platform.RemoteAssistanceState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
+import java.util.concurrent.atomic.AtomicInteger
 
 /** Actual OS overlay/touch/PiP, with test-only geometry injection; no live lesson or capture claim. */
 @RunWith(AndroidJUnit4::class)
@@ -44,6 +54,77 @@ class RemoteAssistanceOverlayTest {
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
     private val context get() = instrumentation.targetContext
     private val device by lazy { UiDevice.getInstance(instrumentation) }
+
+    @Test
+    fun continuousPacketsKeepOneOverlayAtTheRequestedPositionWithAnOffsetOrigin() = withOverlayPermission {
+        val windows = context.getSystemService(WindowManager::class.java)
+        // Exercise OEM-style window origins on the real compositor, independent of this AVD's insets.
+        val shiftedWindows = object : WindowManager by windows {
+            private fun shifted(params: ViewGroup.LayoutParams) = WindowManager.LayoutParams().apply {
+                copyFrom(params as WindowManager.LayoutParams); x += 80; y += 96
+            }
+            override fun addView(view: View, params: ViewGroup.LayoutParams) = windows.addView(view, shifted(params))
+            override fun updateViewLayout(view: View, params: ViewGroup.LayoutParams) = windows.updateViewLayout(view, shifted(params))
+        }
+        val shiftedContext = object : ContextWrapper(context) {
+            override fun getSystemService(name: String): Any? =
+                if (name == Context.WINDOW_SERVICE) shiftedWindows else super.getSystemService(name)
+        }
+        val scenario = ActivityScenario.launch(MainActivity::class.java)
+        val controller = AndroidRemoteAssistanceController(shiftedContext, null)
+        val x = device.displayWidth / 2; val y = device.displayHeight / 2
+        val target = AtomicInteger(x)
+        val handler = Handler(Looper.getMainLooper())
+        val sender = object : Runnable {
+            override fun run() {
+                controller.showPointer(pointer(target.get(), y))
+                handler.postDelayed(this, 250)
+            }
+        }
+        try {
+            renderFixture(scenario, "연속 포인터 위치 검증")
+            assertTrue(device.wait(Until.hasObject(By.text("연속 포인터 위치 검증")), 15_000))
+            setGeometry(controller)
+            instrumentation.runOnMainSync { sender.run() }
+            val field = controller.javaClass.getDeclaredField("marker").apply { isAccessible = true }
+            fun awaitPosition(targetX: Int): Boolean {
+                val deadline = SystemClock.uptimeMillis() + 5_000
+                do {
+                    var positioned = false
+                    instrumentation.runOnMainSync {
+                        val view = field.get(controller) as? View
+                        if (view?.isAttachedToWindow == true) {
+                            val location = IntArray(2); view.getLocationOnScreen(location)
+                            positioned = kotlin.math.abs(location[0] + view.width / 2 - targetX) <= 2 &&
+                                kotlin.math.abs(location[1] + view.height / 2 - y) <= 2
+                        }
+                    }
+                    if (positioned) return true
+                    SystemClock.sleep(25)
+                } while (SystemClock.uptimeMillis() < deadline)
+                return false
+            }
+            val positioned = awaitPosition(x)
+            assertTrue("Initial position: ${controller.state.value}", positioned)
+            val marker = field.get(controller)
+            repeat(12) { index ->
+                val targetX = x + if (index < 8) 0 else (index - 7) * 12
+                target.set(targetX)
+                show(controller, pointer(targetX, y))
+                SystemClock.sleep(60)
+                assertSame("Continuous updates must reuse the overlay", marker, field.get(controller))
+                assertTrue("Packet $index must stay at the requested position", awaitPosition(targetX))
+                SystemClock.sleep(140)
+            }
+            assertTrue("The continuously refreshed window must actually be drawn", isRedAt(x + 48, y))
+            instrumentation.runOnMainSync { handler.removeCallbacks(sender) }
+            SystemClock.sleep(1_600)
+            instrumentation.runOnMainSync { assertNull("Packets stopped: the window must expire", field.get(controller)) }
+        } finally {
+            instrumentation.runOnMainSync { handler.removeCallbacks(sender); controller.close() }
+            scenario.close()
+        }
+    }
 
     @Test
     fun otherAppReceivesTouchesUnderPointerWhilePipRemainsVisibleThenPointerExpires() = withOverlayPermission {

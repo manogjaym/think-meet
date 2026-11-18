@@ -11,18 +11,7 @@ import { ApiError } from '../src/errors'
 import type { AssistanceGeometry, CommandEnvelope, User } from '../src/generated/contracts'
 
 const geometry: AssistanceGeometry = { width: 1080, height: 2400, rotation: 0, version: 1 }
-function readyPolicy() {
-  const previous = process.env.THINK_MEET_FEATURE_FLAGS
-  delete process.env.THINK_MEET_FEATURE_FLAGS
-  let policy: FeaturePolicy
-  try { policy = new FeaturePolicy() } finally { if (previous !== undefined) process.env.THINK_MEET_FEATURE_FLAGS = previous }
-  // Exercise the real negotiated policy without enabling an unverified feature in production.
-  const state = policy as any
-  state.definitions.set('meeting.remote-assistance', { ...state.definitions.get('meeting.remote-assistance'), stage: 'ready' })
-  state.flags = { 'meeting.remote-assistance': true }
-  return policy
-}
-async function fixture(features = readyPolicy()) {
+async function fixture(features = new FeaturePolicy()) {
   const id = randomUUID(), clock = { now: Date.now() }
   const teacher: User = { id: randomUUID(), role: 'teacher', name: 'Teacher', username: 'teacher' }
   const student: User = { id: randomUUID(), role: 'student', name: 'Student', username: 'student' }
@@ -114,7 +103,7 @@ test('only the requested student can consent, and published screen plus approval
   assert.equal(f.lesson.share.assistanceId, session.id); assert.equal(f.lesson.share.ownerId, f.student.id)
 })
 
-test('teacher ownership, Android/revision support and default OFF cannot be bypassed by payloads', async () => {
+test('teacher ownership, Android/revision support and unavailable features cannot be bypassed by payloads', async () => {
   const f = await fixture()
   assert.equal(code(await f.command(f.studentSocket, 'assistance.request', { studentId: f.other.id, role: 'teacher' })), 'FORBIDDEN')
   f.studentSocket.handshake.auth.platform = 'ios'
@@ -122,12 +111,13 @@ test('teacher ownership, Android/revision support and default OFF cannot be bypa
   f.studentSocket.handshake.auth.platform = 'android'; f.studentSocket.handshake.auth.contractRevision = 3
   assert.equal(code(await f.command(f.teacherSocket, 'assistance.request', { studentId: f.student.id })), 'CLIENT_UPDATE_REQUIRED')
   f.studentSocket.handshake.auth.contractRevision = 4
-  const originalFlags = (f.features as any).flags
-  ;(f.features as any).flags = {}
+  const definitions = (f.features as any).definitions
+  const original = definitions.get('meeting.remote-assistance')
+  definitions.set('meeting.remote-assistance', { ...original, stage: 'planned', defaultEnabled: false })
   assert.equal(code(await f.command(f.teacherSocket, 'assistance.request', { studentId: f.student.id })), 'FEATURE_UNAVAILABLE')
-  ;(f.features as any).flags = originalFlags
+  definitions.set('meeting.remote-assistance', original)
   const session = await f.activate()
-  ;(f.features as any).flags = {}
+  definitions.set('meeting.remote-assistance', { ...original, stage: 'planned', defaultEnabled: false })
   assert.equal((await f.command(f.studentSocket, 'assistance.stop', { sessionId: session.id })).ok, true)
   assert.equal(f.lesson.share, null); assert.equal(f.lessons.assistance.current(f.id), undefined)
 })

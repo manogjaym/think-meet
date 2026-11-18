@@ -6,11 +6,11 @@
 
 1. **명세 작성:** `templates/feature.json`을 참고해 `catalog.json`에 고유 ID를 등록하고 `<id>.md`를 작성합니다. 동작·권한·상태·오류·휴대폰/태블릿 화면·완료 조건을 정합니다.
 2. **계약 연결:** `contracts/openapi.json`의 `x-contract-revision`을 올립니다. 새 API/모델이나 `realtime.json` 명령을 정의하고, `x-feature`·`feature`·catalog의 참조를 같은 기능 ID로 연결합니다.
-3. **생성:** `npm run shared:generate`를 실행합니다. 새 기능은 `planned` 또는 `in-progress`, `defaultEnabled:false`로 등록합니다. 기존 baseline에 새 endpoint를 붙여 자동 공개하면 검사가 실패합니다.
+3. **생성:** `npm run shared:generate`를 실행합니다. 미구현 기능은 `planned` 또는 `in-progress`, `defaultEnabled:false`로 등록합니다. 서버와 지원 플랫폼의 구현이 끝나면 `defaultEnabled:true`로 맞추며, 별도 런타임 토글 없이 사용합니다. 기존 baseline에 새 endpoint를 붙이면 검사가 실패합니다.
 4. **함께 구현:** 서버 로직과 React·KMP Compose 화면을 구현합니다. 웹은 `useFeature(id)`, 앱은 `supportsFeature(id)`, API/Socket은 생성 정책으로 사용 가능 여부를 확인합니다. 플랫폼 전용 동작에는 OS 지원 조건도 적용합니다.
 5. **변경 기록:** `features/changes/<작업>.json`에 플랫폼별 상태·제외 사유·검사 명령을 적습니다. shared 작업에서 웹·Android·iOS 중 일부만 완료하면 검사가 실패합니다.
 6. **검증 후 ready:** 핵심 검사와 영향 화면 비교를 마친 뒤 `stage:ready`로 바꿉니다. 구현한 각 플랫폼에 아래 검증 기록이 필요합니다. iOS 빌드만으로 실제 화면 검증을 passed로 쓰지 않습니다.
-7. **서버에서 공개:** 웹·앱 배포 준비 후 ready 기능을 명시적으로 켭니다. 준비 전 true 설정은 서버 시작 시 거부됩니다.
+7. **배포:** 웹·앱을 배포하면 구현된 기능을 기본 사용할 수 있습니다. `ready`는 실제 검증 완료 기록이며, 별도의 공개 스위치가 아닙니다.
 
 | 항목 | 값·조건 |
 |---|---|
@@ -37,23 +37,21 @@
 
 ## 공개 설정
 
-기존 `classroom.core`와 네이티브 `meeting.pip`는 기본 사용 가능한 baseline입니다. **새 기능은 ready여도 기본 OFF**입니다. 등록·준비를 마친 기능만 서버 환경 변수에서 켭니다.
+구현된 기능은 환경변수 없이 기본 사용합니다. `THINK_MEET_FEATURE_FLAGS`는 읽지 않으며, 기존 환경에 값이 남아 있어도 적용하지 않습니다.
 
-```sh
-THINK_MEET_FEATURE_FLAGS='{"meeting.example":true}'
-```
+카탈로그의 `defaultEnabled`는 런타임 토글이 아닌 구현 상태를 나타냅니다. 서버가 `done` 또는 `not-applicable`이고 모든 지원 플랫폼이 `done`인 기능은 `true`, `planned` 또는 미구현 기능은 `false`여야 합니다. 생성기가 불일치를 검사합니다. `in-progress`라도 구현이 완료되면 사용할 수 있지만, 실제 검증을 마치기 전에는 `ready`나 검증 `passed`로 바꾸지 않습니다.
 
-알 수 없는 ID, 잘못된 JSON/boolean, 준비 전 true는 서버 시작을 중단시킵니다. 설정 변경은 API 재시작·재배포 후 적용됩니다. 이 기반 작업에서 실행 중인 서비스를 임의로 재시작하지 않습니다.
+웹·앱의 플랫폼 지원, 서버·클라이언트 계약 revision, 인증·수업 권한·학생 승인·OS 권한은 계속 검사합니다. 변경된 정책은 서버·웹 재빌드와 앱 재설치 후 반영됩니다.
 
 ## 클라이언트 지원·권한
 
 클라이언트는 공개 `GET /api/v1/capabilities`로 사용 가능 여부를 확인합니다.
 
-- 새 기능은 서버 true, 로컬 구현, 대상 플랫폼, 양쪽 계약 revision이 모두 맞아야 켜집니다. 조회 실패·미등록·미지원이면 꺼집니다.
+- 기능은 서버 지원 응답, 로컬 구현, 대상 플랫폼, 양쪽 계약 revision이 모두 맞아야 사용할 수 있습니다. 조회 실패·미등록·미지원이면 꺼집니다.
 - 구 서버의 명시적 404 응답에서는 현재 baseline만 허용합니다.
 - 성공 응답은 120초 캐시하고 재조회합니다. 서버가 명시한 false는 캐시 만료·일시 장애로 해제하지 않습니다. 해당 키의 명시적 true 또는 구 서버 404 전환에서만 해제합니다.
 - 서버는 UI를 우회한 HTTP/Socket 요청도 검사합니다. 기능 설정은 권한을 부여하지 않습니다.
-- 기능을 꺼도 정리 요청은 기존 인증·owner 권한에 따라 허용합니다. OFF 설정이나 완료 표시가 실제 구현을 대신하지 않습니다.
+- 기능 미지원 상태에서도 정리 요청은 기존 인증·owner 권한에 따라 허용합니다. 완료 표시는 실제 구현을 대신하지 않습니다.
 
 ## 자동 검사
 

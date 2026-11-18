@@ -1,0 +1,18 @@
+{
+  "id": "implemented-features-always-enabled",
+  "summary": "사용자 요청에 따라 THINK_MEET_FEATURE_FLAGS 환경변수를 제거하고, 구현된 기능을 서버·웹·Android·iOS에서 기본 사용합니다. 검증 단계와 활성화를 분리하며 계약·플랫폼·권한 검사는 유지합니다.",
+  "scope": "shared",
+  "featureIds": ["classroom.core", "meeting.pip", "meeting.remote-assistance"],
+  "platforms": {
+    "server": {"status": "implemented"},
+    "web": {"status": "implemented"},
+    "android": {"status": "implemented"},
+    "ios": {"status": "implemented", "reason": "공통 capabilities 정책 변경. iOS 학생의 외부 앱 포인터 수신은 기존처럼 지원하지 않습니다."}
+  },
+  "verification": [
+    "2026-11-18: npm run shared:check 및 npm run verify 통과. 공통·디자인 12개, 서버 20개, 웹 9개와 서버·웹 타입 검사·웹 production 빌드 성공. 상세: features/VERIFICATION.md#구현-기능-기본-사용-정책-2026-11-18",
+    "mobile/에서 :composeApp:testDebugUnitTest :composeApp:assembleDebug :composeApp:linkDebugFrameworkIosSimulatorArm64 성공. 단위 검사 27개, 실패·오류·생략 0개. iOS는 공통 프레임워크 빌드이며 Swift 호스트·실제 실행과 구분합니다.",
+    "웹의 기존 요청 흐름 1건 통과. 테스트 전용 ready 치환 없이 실제 생성 정책으로 더보기 → 학생 화면 보기 → 요청·승인 대기·취소를 확인했습니다.",
+    "정책 변경은 원격 안내 전체 흐름의 실제 단말 검증 완료를 의미하지 않습니다. 기존 in-progress·pending 기록과 배포 호환성 기준은 보존합니다."
+  ]
+}

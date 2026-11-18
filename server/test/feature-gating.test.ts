@@ -10,20 +10,18 @@ import { Gateway } from '../src/gateway'
 import { CONTRACT_REVISION } from '../src/generated/contracts'
 import { FEATURE_DEFINITIONS } from '../src/generated/feature-policy'
 
-function policy(flags?: string) {
-  const previous = process.env.THINK_MEET_FEATURE_FLAGS
-  if (flags === undefined) delete process.env.THINK_MEET_FEATURE_FLAGS
-  else process.env.THINK_MEET_FEATURE_FLAGS = flags
-  try { return new FeaturePolicy() } finally {
-    if (previous === undefined) delete process.env.THINK_MEET_FEATURE_FLAGS
-    else process.env.THINK_MEET_FEATURE_FLAGS = previous
-  }
+function policy(unavailable: string[] = []) {
+  const policy = new FeaturePolicy()
+  // Model an unimplemented feature to exercise compatibility and cleanup rejection paths.
+  const definitions = (policy as any).definitions
+  for (const id of unavailable) definitions.set(id, { ...definitions.get(id), stage: 'planned', defaultEnabled: false })
+  return policy
 }
 const errorCode = (code: string) => (error: unknown) => error instanceof ApiError && (error.getResponse() as { code: string }).code === code
 const student = { id: randomUUID(), username: 'student', name: 'Student', role: 'student' as const }
 const lessonId = randomUUID()
 
-test('capabilities is public, contains only contract availability and respects native-only flags', () => {
+test('capabilities is public, contains only contract availability and respects platform support', () => {
   const controller = new ApiController({ user: () => assert.fail('capabilities must not require a session') } as any, {} as any, {} as any, {} as any, policy())
   const legacy = controller.capabilities({ headers: {} } as Request)
   assert.deepEqual(Object.keys(legacy).sort(), ['contractRevision', 'features'])
@@ -33,11 +31,30 @@ test('capabilities is public, contains only contract availability and respects n
   assert.equal(legacy.features['meeting.pip'], false)
   const headers = { 'x-thinkmeet-platform': 'android', 'x-thinkmeet-contract-revision': '1' }
   assert.equal(controller.capabilities({ headers } as Request).features['meeting.pip'], true)
-  assert.equal(policy('{"meeting.pip":false}').capabilities(headers).features['meeting.pip'], false)
+  assert.equal(policy(['meeting.pip']).capabilities(headers).features['meeting.pip'], false)
+})
+
+test('obsolete environment flags cannot disable implemented features or prevent startup', () => {
+  const previous = process.env.THINK_MEET_FEATURE_FLAGS
+  try {
+    for (const raw of ['{"meeting.remote-assistance":false,"classroom.core":false}', 'invalid JSON']) {
+      process.env.THINK_MEET_FEATURE_FLAGS = raw
+      const features = new FeaturePolicy()
+      for (const platform of ['web', 'android', 'ios']) {
+        const headers = { 'x-thinkmeet-platform': platform, 'x-thinkmeet-contract-revision': String(CONTRACT_REVISION) }
+        assert.equal(features.capabilities(headers).features['meeting.remote-assistance'], true)
+        assert.equal(features.capabilities(headers).features['classroom.core'], true)
+        assert.doesNotThrow(() => features.assertEvent('command', { type: 'assistance.request' }, headers))
+      }
+    }
+  } finally {
+    if (previous === undefined) delete process.env.THINK_MEET_FEATURE_FLAGS
+    else process.env.THINK_MEET_FEATURE_FLAGS = previous
+  }
 })
 
 test('HTTP gate blocks disabled or unregistered operations while exempt routes and legacy baseline remain usable', () => {
-  const disabled = policy('{"classroom.core":false}')
+  const disabled = policy(['classroom.core'])
   const guard = new HttpFeatureGuard(disabled)
   const context = (method: string, path: string) => ({ switchToHttp: () => ({ getRequest: () => ({ method, path, headers: {} }) }) }) as any
   assert.throws(() => guard.canActivate(context('POST', `/api/v1/lessons/${lessonId}/join`)), errorCode('FEATURE_UNAVAILABLE'))
@@ -47,7 +64,6 @@ test('HTTP gate blocks disabled or unregistered operations while exempt routes a
   }
   assert.throws(() => policy().assertHttp('POST', '/api/v1/unregistered-feature', {}), errorCode('FEATURE_UNAVAILABLE'))
   assert.doesNotThrow(() => policy().assertHttp('GET', `/api/v1/lessons/${lessonId}/snapshot`, {}))
-  assert.throws(() => policy('{"unknown.feature":true}'), /unknown feature/)
 })
 
 test('Socket gates reject bypassed UI commands, subscribe and previews before lesson mutations', async () => {
@@ -57,7 +73,7 @@ test('Socket gates reject bypassed UI commands, subscribe and previews before le
     command: () => assert.fail('disabled command must not mutate a lesson'),
     snapshot: () => assert.fail('disabled subscription must not disclose a snapshot'),
     access: () => assert.fail('disabled preview must not broadcast'),
-  } as any, policy('{"classroom.core":false}'))
+  } as any, policy(['classroom.core']))
   const socket = { id: 'socket', handshake: { headers: { cookie: 'valid' }, auth: { platform: 'web', contractRevision: 1, role: 'teacher' } }, emit: (event: string, payload: any) => emitted.push({ event, payload }) } as any
   assert.deepEqual(await gateway.command(socket, { lessonId, type: 'chat.send', payload: { text: 'Hello', clientId: 'one' } }), { ok: false, error: { code: 'FEATURE_UNAVAILABLE', message: '현재 사용할 수 없는 기능입니다.' } })
   assert.equal((await gateway.subscribe(socket, { lessonId })).ok, false)
@@ -87,7 +103,7 @@ test('baseline Socket compatibility never replaces session or teacher authorizat
 })
 
 test('disabled classroom keeps cleanup available without bypassing authentication or ownership', async () => {
-  const features = policy('{"classroom.core":false}')
+  const features = policy(['classroom.core'])
   const guard = new HttpFeatureGuard(features)
   const context = (action: string) => ({ switchToHttp: () => ({ getRequest: () => ({ method: 'POST', path: `/api/v1/lessons/${lessonId}/${action}`, headers: {} }) }) }) as any
   for (const action of ['leave', 'end']) assert.equal(guard.canActivate(context(action)), true)

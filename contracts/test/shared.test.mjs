@@ -66,7 +66,7 @@ test('ready requires all advertised implementations and real verification refere
   bypass.api.paths['/lessons/{id}/reaction'] = { post: clone(bypass.api.paths['/lessons/{id}/leave'].post) }
   bypass.api.paths['/lessons/{id}/reaction'].post.operationId = 'sendReaction'
   bypass.catalog.features[0].contracts.operations.push('sendReaction')
-  await assert.rejects(validateCatalog(bypass, { verifyFiles: false, baseline: prior }), /must belong to a new, default-off feature/)
+  await assert.rejects(validateCatalog(bypass, { verifyFiles: false, baseline: prior }), /must belong to a separately registered feature/)
 })
 
 test('shared change records reject one-sided completion and permit explicit server-only unchanged reasons', () => {

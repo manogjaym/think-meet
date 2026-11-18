@@ -59,12 +59,12 @@ export async function validateCatalog(sources, { verifyFiles = true, baseline } 
   for (const op of operations) {
     const source = Object.values(api.paths).flatMap(Object.values).find(o => o.operationId === op.id)
     if (source['x-feature'] && !featureById.get(source['x-feature']).contracts.operations.includes(op.id)) throw new Error(`Feature catalog is missing operation ${op.id}`)
-    if (!priorOperationIds.has(op.id) && featureById.get(source['x-feature'])?.stage === 'baseline') throw new Error(`New operation ${op.id} must belong to a new, default-off feature; baseline cannot auto-enable it`)
+    if (!priorOperationIds.has(op.id) && featureById.get(source['x-feature'])?.stage === 'baseline') throw new Error(`New operation ${op.id} must belong to a separately registered feature; baseline cannot absorb new operations`)
     if (!priorOperationIds.has(op.id) && !source['x-feature']) throw new Error(`New operation ${op.id} must declare its feature`)
   }
   for (const category of ['events', 'commands']) for (const [id, spec] of Object.entries(realtime[category])) {
     if (spec.feature && !featureById.get(spec.feature).contracts[category].includes(id)) throw new Error(`Feature catalog is missing ${category}.${id}`)
-    if (!Object.hasOwn(prior.realtime[category], id) && (!spec.feature || featureById.get(spec.feature)?.stage === 'baseline')) throw new Error(`New ${category}.${id} needs a new, default-off feature`)
+    if (!Object.hasOwn(prior.realtime[category], id) && (!spec.feature || featureById.get(spec.feature)?.stage === 'baseline')) throw new Error(`New ${category}.${id} needs a separately registered feature`)
   }
 }
 

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { configuredFeatureFlags, featureClient, featureDecision, parseFeatureFlags, socketFeatureClient, type FeatureDefinition } from '../src/feature-policy'
+import { featureClient, featureDecision, socketFeatureClient, type FeatureDefinition } from '../src/feature-policy'
 
 test('missing, unknown or ambiguous client metadata remains legacy revision zero', () => {
   assert.deepEqual(featureClient(), { platform: null, contractRevision: 0 })
@@ -18,39 +18,20 @@ test('all supported clients negotiate an integer contract revision from HTTP or 
   }
 })
 
-test('runtime flags accept only known feature IDs with explicit boolean values', () => {
-  assert.deepEqual(parseFeatureFlags(undefined, ['baseline', 'future']), {})
-  assert.deepEqual(parseFeatureFlags('{"baseline":false,"future":true}', ['baseline', 'future']), { baseline: false, future: true })
-  assert.equal(Object.isFrozen(parseFeatureFlags('{}', [])), true)
-  for (const raw of ['', 'true', 'null', '[]', '{invalid', '{"unknown":true}', '{"baseline":"false"}', '{"baseline":1}', '{"baseline":null}']) {
-    assert.throws(() => parseFeatureFlags(raw, ['baseline', 'future']), /THINK_MEET_FEATURE_FLAGS/)
-  }
-})
-
 const baseline: FeatureDefinition = { id: 'baseline', stage: 'baseline', requiresRevision: 0, defaultEnabled: true, platforms: ['web', 'android', 'ios'] }
-const future: FeatureDefinition = { id: 'future', stage: 'ready', requiresRevision: 2, defaultEnabled: false, platforms: ['web', 'android', 'ios'] }
+const implemented: FeatureDefinition = { id: 'new-feature', stage: 'in-progress', requiresRevision: 4, defaultEnabled: true, platforms: ['web', 'android', 'ios'] }
 
-test('baseline features remain available to legacy and current clients unless explicitly disabled', () => {
-  for (const client of [featureClient(), featureClient({ 'x-thinkmeet-platform': 'ios', 'x-thinkmeet-contract-revision': '1' })]) {
-    assert.deepEqual(featureDecision(baseline, client, {}), { available: true })
-    assert.deepEqual(featureDecision(baseline, client, { baseline: false }), { available: false, code: 'FEATURE_UNAVAILABLE' })
+test('implemented features are enabled without rollout overrides and keep platform and revision checks', () => {
+  assert.deepEqual(featureDecision(baseline, featureClient()), { available: true })
+  for (const platform of ['web', 'android', 'ios'] as const) {
+    const current = { platform, contractRevision: 4 }
+    assert.deepEqual(featureDecision(implemented, current), { available: true })
+    assert.deepEqual(featureDecision({ ...implemented, stage: 'ready' }, current), { available: true })
+    assert.deepEqual(featureDecision(implemented, { ...current, contractRevision: 3 }), { available: false, code: 'CLIENT_UPDATE_REQUIRED' })
+    assert.deepEqual(featureDecision({ ...implemented, platforms: [] }, current), { available: false, code: 'FEATURE_UNAVAILABLE' })
+    assert.deepEqual(featureDecision({ ...implemented, stage: 'planned', defaultEnabled: false }, current), { available: false, code: 'FEATURE_UNAVAILABLE' })
   }
-})
-
-test('future features require explicit enablement, readiness, platform support and a compatible revision', () => {
-  const current = { platform: 'android', contractRevision: 2 } as const
-  assert.deepEqual(featureDecision(future, current, {}), { available: false, code: 'FEATURE_UNAVAILABLE' })
-  assert.deepEqual(featureDecision({ ...future, defaultEnabled: true }, current, {}), { available: false, code: 'FEATURE_UNAVAILABLE' })
-  assert.deepEqual(featureDecision(future, current, { future: true }), { available: true })
-  assert.deepEqual(featureDecision(future, featureClient(), { future: true }), { available: false, code: 'CLIENT_UPDATE_REQUIRED' })
-  assert.deepEqual(featureDecision(future, { ...current, contractRevision: 1 }, { future: true }), { available: false, code: 'CLIENT_UPDATE_REQUIRED' })
-  assert.deepEqual(featureDecision({ ...future, platforms: ['ios'] }, current, { future: true }), { available: false, code: 'FEATURE_UNAVAILABLE' })
-  for (const stage of ['planned', 'in-progress'] as const) {
-    const unfinished = { ...future, stage }
-    assert.deepEqual(featureDecision(unfinished, current, { future: true }), { available: false, code: 'FEATURE_UNAVAILABLE' })
-    assert.throws(() => configuredFeatureFlags('{"future":true}', [unfinished]), /before it is ready/)
-    assert.deepEqual(configuredFeatureFlags('{"future":false}', [unfinished]), { future: false })
-  }
+  assert.deepEqual(featureDecision(implemented, featureClient()), { available: false, code: 'CLIENT_UPDATE_REQUIRED' })
 })
 
 test('browser handshake metadata is a fallback and cannot override supplied HTTP capability headers', () => {

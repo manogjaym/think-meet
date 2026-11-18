@@ -57,7 +57,7 @@ data class FeatureCapabilities internal constructor(
                         feature.id == id && platform in feature.platforms &&
                             feature.requiresRevision <= ContractProtocol.Revision &&
                             feature.requiresRevision <= response.contractRevision &&
-                            (feature.stage == "baseline" || feature.stage == "ready")
+                            feature.defaultEnabled && feature.stage != "planned"
                     } }
                     .map { it.key }.toSet(),
                 baselineFeatures = baseline - blocked,

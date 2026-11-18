@@ -3,21 +3,20 @@ import type { Request } from 'express'
 import { ApiError } from './errors'
 import { CONTRACT_REVISION, type CapabilitiesResponse } from './generated/contracts'
 import { FEATURE_DEFINITIONS, featureForEvent, featureForHttp, isKnownEvent, isKnownHttpOperation } from './generated/feature-policy'
-import { configuredFeatureFlags, featureClient, featureDecision, socketFeatureClient, type ClientHeaders, type FeatureClient, type FeatureDefinition } from './feature-policy'
+import { featureClient, featureDecision, socketFeatureClient, type ClientHeaders, type FeatureClient, type FeatureDefinition } from './feature-policy'
 
 @Injectable()
 export class FeaturePolicy {
   private readonly definitions = new Map<string, FeatureDefinition>(FEATURE_DEFINITIONS.map(feature => [feature.id, feature]))
-  private readonly flags = configuredFeatureFlags(process.env.THINK_MEET_FEATURE_FLAGS, FEATURE_DEFINITIONS)
 
   capabilities(headers: ClientHeaders): CapabilitiesResponse {
     const client = featureClient(headers)
-    return { contractRevision: CONTRACT_REVISION, features: Object.fromEntries(FEATURE_DEFINITIONS.map(feature => [feature.id, featureDecision(feature, client, this.flags).available])) }
+    return { contractRevision: CONTRACT_REVISION, features: Object.fromEntries([...this.definitions.values()].map(feature => [feature.id, featureDecision(feature, client).available])) }
   }
 
   private assertFeature(id: string, client: FeatureClient) {
     const feature = this.definitions.get(id)
-    const decision = feature ? featureDecision(feature, client, this.flags) : { available: false, code: 'FEATURE_UNAVAILABLE' } as const
+    const decision = feature ? featureDecision(feature, client) : { available: false, code: 'FEATURE_UNAVAILABLE' } as const
     if (decision.available) return
     if (decision.code === 'CLIENT_UPDATE_REQUIRED') throw new ApiError(decision.code, '이 기능을 사용하려면 최신 버전으로 업데이트해 주세요.', 426)
     throw new ApiError(decision.code, '현재 사용할 수 없는 기능입니다.', 409)

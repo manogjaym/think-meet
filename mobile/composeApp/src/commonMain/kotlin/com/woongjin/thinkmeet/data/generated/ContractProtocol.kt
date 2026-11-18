@@ -54,7 +54,7 @@ object ContractProtocol {
     val Features = listOf(
         ContractFeature("classroom.core", "baseline", 0, true, setOf("web", "android", "ios")),
         ContractFeature("meeting.pip", "baseline", 0, true, setOf("android", "ios")),
-        ContractFeature("meeting.remote-assistance", "in-progress", 4, false, setOf("web", "android", "ios")),
+        ContractFeature("meeting.remote-assistance", "in-progress", 4, true, setOf("web", "android", "ios")),
     )
     private val commandFeatures: Map<String, String?> = mapOf(
         "chat.send" to "classroom.core",

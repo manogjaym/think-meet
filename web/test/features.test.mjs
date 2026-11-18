@@ -6,6 +6,20 @@ let serial = 0
 const freshStore = () => import(`../src/lib/features.ts?test=${serial++}`)
 const capabilities = features => new Response(JSON.stringify({ contractRevision: 1, features }), { headers: { 'Content-Type': 'application/json' } })
 
+test('implemented remote assistance works before verification is marked ready, with compatible server support', async () => {
+  const original = globalThis.fetch
+  try {
+    let revision = CONTRACT_REVISION
+    globalThis.fetch = async () => new Response(JSON.stringify({ contractRevision: revision, features: { 'meeting.remote-assistance': true } }))
+    const store = await freshStore()
+    await store.loadCapabilities()
+    assert.equal(store.isFeatureEnabled('meeting.remote-assistance'), true)
+    revision = 3
+    await store.loadCapabilities({ force: true })
+    assert.equal(store.isFeatureEnabled('meeting.remote-assistance'), false)
+  } finally { globalThis.fetch = original }
+})
+
 test('an explicit legacy 404 caches only the supported baseline and rejects unregistered operations', async () => {
   const original = globalThis.fetch
   let requests = 0

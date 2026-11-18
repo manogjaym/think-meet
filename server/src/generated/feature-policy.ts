@@ -29,7 +29,7 @@ export const FEATURE_DEFINITIONS = [
     "id": "meeting.remote-assistance",
     "stage": "in-progress",
     "requiresRevision": 4,
-    "defaultEnabled": false,
+    "defaultEnabled": true,
     "platforms": [
       "web",
       "android",

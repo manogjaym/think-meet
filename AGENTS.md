@@ -15,14 +15,14 @@
 기능은 `server/`·`web/`·`mobile/`의 Android/iOS 구현과 필요한 검증을 함께 마쳐야 완료입니다. 사용자가 범위를 한정했거나 서버 내부·OS 전용 작업이면 제외 사유를 기록합니다. 웹만 구현하고 공통 기능이 완료됐다고 처리하지 않습니다.
 
 1. **범위·명세:** `features/README.md`를 읽고 동작·권한·상태·오류·플랫폼별 완료 조건을 정합니다. UI 작업은 `design/README.md`도 확인합니다.
-2. **기능 등록:** `features/catalog.json`, 기능 명세, `features/changes/*.json`을 작성합니다. 새 기능은 `planned` 또는 `in-progress`, 기본 OFF로 등록합니다. 기존 baseline은 보존하고 새 endpoint·Socket 명령을 붙여 자동 활성화하지 않습니다.
+2. **기능 등록:** `features/catalog.json`, 기능 명세, `features/changes/*.json`을 작성합니다. 새 기능은 `planned` 또는 `in-progress`로 등록합니다. 구현 완료된 기능은 환경변수 없이 기본 사용하며, 미구현 기능은 비활성 상태로 둡니다. 기존 baseline에 새 endpoint·Socket 명령을 붙이지 않습니다.
 3. **공통 계약:** 통신 변경은 `contracts/openapi.json`·`contracts/realtime.json` 원본에서 합니다. 새 기능은 revision을 올리고 `x-feature`·`feature`와 catalog 참조를 연결합니다. `npm run shared:generate`로 생성하며 TypeScript·Kotlin 모델·프로토콜 정책은 직접 편집하지 않습니다.
 4. **서버·클라이언트 구현:** 서버 로직, React 웹, KMP Compose Android/iOS를 함께 반영합니다. 인증·쿠키·owner 권한·미디어 정리는 서버와 플랫폼 어댑터에 유지합니다. 웹의 `useFeature(id)`, 앱의 `supportsFeature(id)`, API/Socket 생성 정책으로 기능 지원을 확인하고 OS·기기 조건도 적용합니다. Capability 정보는 권한을 부여하지 않습니다.
 5. **화면 반영:** 자산·문구·토큰·반응형 값은 `design/` 원본을 공유합니다. 화면 구성·탐색·상호작용은 React와 Compose에 각각 구현하고 `design/system.json`도 갱신합니다. 공통 계약·manifest·생성물이 UI를 자동 구현하지는 않습니다.
 6. **검증·기록:** 플랫폼별 구현 상태, 제외 사유, 검사 명령과 증거를 변경 기록·기능 명세에 남깁니다. 영향 화면은 같은 계정·데이터·상태로 휴대폰·태블릿에서 비교합니다. 모든 대상 구현과 `features/README.md`의 검증 요건을 충족해야 `ready`로 바꿉니다. 미구현·미검증 항목은 완료로 표시하지 않습니다.
-7. **공개:** 웹·앱 배포 준비 후 서버에서 ready 기능을 명시적으로 켭니다. 앱/UI 지원과 양쪽 계약 revision도 맞아야 합니다. 새 기능은 ready여도 기본 OFF입니다.
+7. **공개:** 구현 완료된 기능은 웹·앱 배포 후 환경변수 없이 기본 사용합니다. 기능 활성화와 실제 검증 완료(`ready`)는 구분하며, 앱/UI 지원과 양쪽 계약 revision을 검사합니다. `THINK_MEET_FEATURE_FLAGS`는 사용하지 않습니다.
 
-배포된 `contracts/compatibility/` 기준은 변경하지 않습니다. 호환 가능한 추가 변경을 하거나 별도 버전의 마이그레이션을 설계합니다. 검사 통과를 위해 기준을 고치지 않습니다. 기능을 꺼도 수업 leave/end와 share.stop 정리는 기존 인증·권한 아래에서 허용합니다.
+배포된 `contracts/compatibility/` 기준은 변경하지 않습니다. 호환 가능한 추가 변경을 하거나 별도 버전의 마이그레이션을 설계합니다. 검사 통과를 위해 기준을 고치지 않습니다. 기능 미지원 상태에서도 수업 leave/end와 share.stop 정리는 기존 인증·권한 아래에서 허용합니다.
 
 ## 테스트 범위
 

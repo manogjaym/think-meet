@@ -128,7 +128,7 @@
       "title": "Android 학생 원격 화면 안내",
       "stage": "in-progress",
       "requiresRevision": 4,
-      "defaultEnabled": false,
+      "defaultEnabled": true,
       "platforms": [
         "web",
         "android",

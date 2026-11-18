@@ -1,5 +1,5 @@
 import { API_BASE_PATH, CONTRACT_REVISION, type CapabilitiesResponse } from "../generated/contracts.ts"
-import { CAPABILITY_HEADERS, FEATURE_DEFINITIONS, baselineFeatures, featureForEvent, featureForHttp, isKnownEvent, isKnownHttpOperation } from "../generated/feature-policy.ts"
+import { CAPABILITY_HEADERS, FEATURE_DEFINITIONS, baselineFeatures, featureForEvent, featureForHttp, isKnownEvent, isKnownHttpOperation, type FeatureDefinition } from "../generated/feature-policy.ts"
 
 type CapabilityState = {
   status: "idle" | "loading" | "ready" | "legacy" | "error"
@@ -77,8 +77,8 @@ export function loadCapabilities({ force = false, signal }: { force?: boolean; s
 }
 
 export function isFeatureEnabled(id: string): boolean {
-  const definition = FEATURE_DEFINITIONS.find(feature => feature.id === id)
-  if (!definition || !definition.platforms.some(platform => platform === "web") || definition.requiresRevision > CONTRACT_REVISION || !["baseline", "ready"].includes(definition.stage)) return false
+  const definition: FeatureDefinition | undefined = FEATURE_DEFINITIONS.find(feature => feature.id === id)
+  if (!definition || !definition.platforms.some(platform => platform === "web") || definition.requiresRevision > CONTRACT_REVISION || !definition.defaultEnabled || definition.stage === "planned") return false
   if (state.response && expiresAt > Date.now()) return state.response.contractRevision >= definition.requiresRevision && state.response.features[id] === true
   // Temporary capability failures must not prevent sign-in or existing classroom flows.
   return definition.stage === "baseline" && baseline[id] === true && !baselineDenials.has(id)

@@ -140,7 +140,7 @@ Kotlin 컴파일 전에 생성하며, `check`에도 검사가 연결되어 있�
 - 로그인과 별도로 capabilities를 조회하고 120초마다 갱신합니다.
 - 조회 실패·캐시 만료 시 해당 플랫폼의 baseline 중 서버가 거부하지 않은 기능만 허용합니다. 알 수 없는 새 기능은 끕니다.
 - 서버의 명시적 `false`는 해당 키의 명시적 `true` 또는 명시적 404 legacy 전환까지 유지합니다. 응답에서 키가 빠져도 거부 상태를 유지합니다.
-- 서버가 허용해도 앱의 플랫폼·stage·계약 revision 조건을 모두 충족해야 합니다.
+- 서버가 허용해도 앱의 플랫폼·구현 상태·계약 revision 조건을 모두 충족해야 합니다.
 
 새 UI는 `api.capabilities` 또는 `AppState.capabilities`를 Compose 상태로 수집하고 `capabilities.supports(ContractProtocol.FeatureIds.기능명)`으로 제어합니다. 명령 실행 시에도 `supportsFeature`를 확인합니다. PiP 메뉴·직접 진입·자동 진입에는 기능 정책과 OS 지원 조건을 함께 적용합니다.
 

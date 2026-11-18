@@ -9,12 +9,6 @@ import RefreshRuntime from '/@react-refresh'; RefreshRuntime.injectIntoGlobalHoo
 </script><script type="module" src="/@vite/client"></script><script type="module" src="/e2e/fixtures/remote-assistance.tsx"></script></body></html>`
 
 test.beforeEach(async ({ page }) => {
-  // Only this isolated browser fixture gets ready support. Production remains in-progress/OFF.
-  await page.route("**/src/generated/feature-policy.ts*", async route => {
-    const response = await route.fetch()
-    const body = (await response.text()).replace(/("id":\s*"meeting.remote-assistance",\s*"stage":\s*)"in-progress"/, '$1"ready"')
-    await route.fulfill({ response, body })
-  })
   await page.route("**/api/v1/capabilities", route => route.fulfill({ json: { contractRevision: 4, features: { "classroom.core": true, "meeting.remote-assistance": true } } }))
   await page.route("**/__remote_assistance_test", route => route.fulfill({ contentType: "text/html", body: fixtureHtml }))
   await page.goto("/__remote_assistance_test")

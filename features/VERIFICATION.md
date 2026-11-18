@@ -1,5 +1,14 @@
 # 공통 기능 개발 기반 검증
 
+## 구현 기능 기본 사용 정책 2026-11-18
+
+사용자 요청에 따라 `THINK_MEET_FEATURE_FLAGS`를 읽는 코드를 제거했습니다. 구현된 원격 안내 기능은 기본 사용하며, 서버·웹·Android/iOS의 플랫폼·계약 revision·권한·학생 승인 검사는 유지합니다. 카탈로그의 `in-progress`와 기존 실제 단말 검증 `pending`은 그대로입니다. 아래 과거 기본 OFF 검증 기록은 당시 결과입니다.
+
+- 저장소 루트의 `npm run shared:check`, `npm run verify` 통과. 공통·디자인 12개, 서버 20개, 웹 9개와 서버·웹 타입 검사·웹 production 빌드를 확인했습니다. 기존 환경변수의 false·잘못된 JSON이 활성화나 서버 시작에 영향을 주지 않으며, 계약 미지원·권한 거부·정리는 계속 검사합니다.
+- `web/`에서 `ASSISTANCE_BASE_URL=http://127.0.0.1:8443 npx playwright test e2e/remote-assistance.spec.ts --grep 'teacher requests'` 1개 통과. 실제 생성 정책을 쓰며 테스트 전용 ready 치환을 제거했습니다. 가상 학생 상태를 사용하는 요청·대기·취소 검사이며 실제 단말 송수신과 구분합니다.
+- `mobile/`에서 `JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk-17.jdk/Contents/Home ANDROID_HOME=/Users/pang/Library/Android/sdk ./gradlew :composeApp:testDebugUnitTest :composeApp:assembleDebug :composeApp:linkDebugFrameworkIosSimulatorArm64 --console=plain` 성공. 단위 검사 27개, 실패·오류·생략 0개입니다. Android APK와 iOS Simulator arm64 공통 프레임워크 빌드이며, 앱 설치·에뮬레이터 실행·Swift 호스트 빌드는 반복하지 않았습니다.
+- 실제 Android 승인·MediaProjection·LiveKit 교차 단말 전체 흐름, 휴대폰·태블릿 화면 비교, 실제 iOS 실행은 이번 정책 변경에서 추가 검증하지 않았습니다. 설치된 앱은 새 APK/앱으로 갱신해야 새 정책을 사용합니다.
+
 ## Android 원격 화면 안내 2026-11-17
 
 사용자가 Android 학생 우선 범위를 선택한 뒤 `meeting.remote-assistance`를 구현했습니다. 선생님 요청·학생 승인·전체 화면 캡처·PiP 전환·외부 앱 포인터·종료 정리를 연결했습니다. 선생님 화면은 웹·Android·iOS에 구현하고, iOS/웹 학생 수신은 제외합니다. 계약 revision은 4이며 신규 기능은 **`in-progress`·기본 OFF**입니다.

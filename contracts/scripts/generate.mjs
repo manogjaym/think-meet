@@ -53,8 +53,10 @@ export function validateSources({ api, realtime, catalog }) {
     if (!/^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)+$/.test(f.id) || featureIds.has(f.id)) fail(`Invalid/duplicate feature: ${f.id}`)
     featureIds.add(f.id)
     if (!['baseline', 'planned', 'in-progress', 'ready'].includes(f.stage) || !Number.isSafeInteger(f.requiresRevision) || f.requiresRevision < 0 || f.requiresRevision > api['x-contract-revision'] || typeof f.defaultEnabled !== 'boolean') fail(`Invalid feature rollout: ${f.id}`)
-    if (f.stage === 'baseline' ? f.requiresRevision !== 0 : f.requiresRevision < 1 || f.defaultEnabled) fail(`New features require a revision and default OFF: ${f.id}`)
+    if (f.stage === 'baseline' ? f.requiresRevision !== 0 : f.requiresRevision < 1) fail(`New features require a contract revision: ${f.id}`)
     if (!Array.isArray(f.platforms) || !f.platforms.length || new Set(f.platforms).size !== f.platforms.length || f.platforms.some(p => !['web', 'android', 'ios'].includes(p))) fail(`Invalid feature platforms: ${f.id}`)
+    const implemented = f.stage !== 'planned' && ['done', 'not-applicable'].includes(f.implementation?.server?.status) && f.platforms.every(p => f.implementation?.[p]?.status === 'done')
+    if (f.defaultEnabled !== implemented) fail(`Feature availability must match implementation status: ${f.id}`)
   }
   const operations = [], ids = new Set()
   for (const [route, methods] of Object.entries(api.paths)) for (const [method, operation] of Object.entries(methods)) {

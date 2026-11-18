@@ -27,6 +27,17 @@ class CapabilitiesContractTest {
     private val pip = ContractProtocol.FeatureIds.MeetingPip
 
     @Test
+    fun implementedRemoteAssistanceRequiresCompatibleServerSupport() {
+        val feature = ContractProtocol.FeatureIds.MeetingRemoteAssistance
+        for (platform in listOf("android", "ios")) {
+            val response = CapabilitiesResponse(ContractProtocol.Revision, mapOf(feature to true))
+            assertTrue(FeatureCapabilities.fromServer(response, platform).supports(feature))
+            assertFalse(FeatureCapabilities.fromServer(response.copy(contractRevision = 3), platform).supports(feature))
+            assertFalse(FeatureCapabilities.fromServer(response.copy(features = mapOf(feature to false)), platform).supports(feature))
+        }
+    }
+
+    @Test
     fun olderServerUsesOnlyPlatformBaselineAndSendsNegotiationHeaders() = runTest {
         val client = HttpClient(MockEngine { request ->
             assertEquals("/api/v1/capabilities", request.url.encodedPath)

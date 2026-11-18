@@ -1,7 +1,7 @@
 import { useEffect, useSyncExternalStore } from "react"
 import { getCapabilityState, isFeatureEnabled, loadCapabilities, subscribeCapabilities } from "./features"
 
-/** Unknown, unfinished and unsupported features stay off even if a server sends an extra flag. */
+/** Unknown, unimplemented and unsupported features stay off even if a server sends an extra flag. */
 export function useFeature(id: string): boolean {
   useSyncExternalStore(subscribeCapabilities, getCapabilityState, getCapabilityState)
   useEffect(() => { void loadCapabilities().catch(() => undefined) }, [id])

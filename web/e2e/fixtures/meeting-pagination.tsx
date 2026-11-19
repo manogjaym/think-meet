@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { createRoot } from "react-dom/client"
-import type { Participant, Room } from "livekit-client"
+import { Track, type Participant, type Room } from "livekit-client"
 import type { ApiLesson, User } from "../../src/lib/api"
 import type { MeetingSnapshot } from "../../src/lib/meeting"
 import { ParticipantGallery } from "../../src/components/meeting/ParticipantGallery"
@@ -17,14 +17,14 @@ const people: User[] = Array.from({ length: 25 }, (_, index) => ({
   username: `pagination-${index}`,
   role: index === 0 ? "teacher" : "student",
 }))
+const fixtureEvents = { on() { return this }, off() { return this } }
 const participant = (person: User) =>
   ({
+    ...fixtureEvents,
     identity: person.id,
     name: person.name,
-    isCameraEnabled: false,
-    isMicrophoneEnabled: true,
     isSpeaking: false,
-    getTrackPublication: () => undefined,
+    getTrackPublication: (source: Track.Source) => source === Track.Source.Microphone ? { isMuted: false } : undefined,
     audioTrackPublications: new Map(),
   }) as unknown as Participant
 const now = new Date().toISOString()
@@ -38,6 +38,7 @@ function Harness() {
   const roster = people.slice(0, count)
   const participants = roster.map(participant)
   const room = {
+    ...fixtureEvents,
     localParticipant: participants[0] || participant(people[0]),
     remoteParticipants: new Map(
       participants.slice(1).map((person) => [person.identity, person]),
@@ -104,7 +105,6 @@ function Harness() {
                 sendPreview={() => {}}
                 serverOffset={0}
                 outputDevice="muted"
-                revision={0}
                 onError={setError}
               />
             ) : (
@@ -139,7 +139,6 @@ function Harness() {
             snapshot={snapshot}
             command={async () => snapshot}
             onOutputChange={() => {}}
-            revision={0}
           />
         </div>
       </div>

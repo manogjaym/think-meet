@@ -10,6 +10,8 @@ import com.woongjin.thinkmeet.data.Share
 import com.woongjin.thinkmeet.data.ThinkMeetApi
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.darwin.Darwin
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -69,6 +71,7 @@ actual fun copyText(text: String) = native().copy(text)
 
 private class IosMediaController : MediaController {
     private val mutable = MutableStateFlow(MediaState())
+    private var disconnection: Deferred<Unit>? = null
     override val state: StateFlow<MediaState> = mutable
     init { native().listen { mutable.value = it } }
     private suspend fun perform(name: String, enabled: Boolean = false) = suspendCancellableCoroutine<Unit> { continuation ->
@@ -80,14 +83,18 @@ private class IosMediaController : MediaController {
         native().connect(url, token, camera, microphone) { error ->
             if (continuation.isActive) if (error == null) continuation.resume(Unit) else continuation.resumeWithException(IllegalStateException(error))
         }
-        continuation.invokeOnCancellation {
-            if (IosPlatform.mediaOwner === this) native().action("disconnect", false) {}
-        }
+        continuation.invokeOnCancellation { if (IosPlatform.mediaOwner === this) disconnectNative() }
     }
-    override suspend fun disconnect() {
-        // A disposed meeting's asynchronous cleanup must not disconnect the next meeting.
-        // Its DisposableEffect already schedules ownership-checked native teardown.
-        if (IosPlatform.mediaOwner === this) perform("disconnect")
+    override suspend fun disconnect() { disconnectNative().await() }
+
+    fun disconnectNative(): Deferred<Unit> = disconnection ?: CompletableDeferred<Unit>().also { done ->
+        disconnection = done
+        // A disposed controller must never disconnect the next meeting's native room.
+        if (IosPlatform.mediaOwner !== this) done.complete(Unit)
+        else native().action("disconnect", false) { error ->
+            if (error == null) done.complete(Unit)
+            else done.completeExceptionally(IllegalStateException(error))
+        }
     }
     override suspend fun setCamera(enabled: Boolean) = perform("camera", enabled)
     override suspend fun setMicrophone(enabled: Boolean) = perform("microphone", enabled)
@@ -101,8 +108,8 @@ private class IosMediaController : MediaController {
         // Prejoin is disposed in the same composition that creates the meeting controller.
         // Its cleanup must not tear down that controller's newly connecting native room.
         if (IosPlatform.mediaOwner === media) {
+            media.disconnectNative()
             IosPlatform.mediaOwner = null
-            native().action("disconnect", false) {}
         }
     } }
     return media

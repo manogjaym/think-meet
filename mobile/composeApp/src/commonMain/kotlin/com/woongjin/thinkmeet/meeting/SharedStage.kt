@@ -65,6 +65,7 @@ internal fun SharedStage(
     realtime: MeetingRealtime,
     modifier: Modifier,
     report: (Throwable) -> Unit,
+    onStopShare: (String) -> Unit,
 ) {
     val share = snapshot.share ?: return
     val owner = snapshot.lesson.teacher.id == user.id
@@ -272,10 +273,8 @@ internal fun SharedStage(
             val ownerName = snapshot.participants.firstOrNull { it.user.id == share.ownerId }?.user?.name ?: "참여자"
             Text(if (share.type == "screen") "$ownerName 님의 화면 공유 중" else "${share.material?.name ?: "수업 자료"} 공유 중", Modifier.weight(1f),
                 style = MaterialTheme.typography.bodySmall.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f), color = Palette.MeetingShareText, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (owner || share.ownerId == user.id) Surface(onClick = {
-                command("share.stop")
-                if (share.type == "screen" && share.ownerId == user.id) scope.launch { runCatching { media.setScreenShare(false) }.onFailure(report) }
-            }, enabled = !pending, color = Palette.MeetingShareText, contentColor = Palette.MeetingShareInk, shape = RoundedCornerShape(Corner.R6)) {
+            if (owner || share.ownerId == user.id) Surface(onClick = { onStopShare(share.id) },
+                enabled = !pending, color = Palette.MeetingShareText, contentColor = Palette.MeetingShareInk, shape = RoundedCornerShape(Corner.R6)) {
                 Box(Modifier.heightIn(min = Space.S36).padding(horizontal = if (compact) Space.S8 else Space.S12), contentAlignment = Alignment.Center) { Text("공유 중지", style = MaterialTheme.typography.labelMedium.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f)) }
             }
         }

@@ -1,0 +1,20 @@
+{
+  "id": "mobile-meeting-session",
+  "summary": "앱 수업 연결과 종료를 공통 MeetingSession으로 옮기고, PiP 닫기와 서버 종료가 겹쳐도 정리를 한 번만 실행합니다.",
+  "scope": "platform-only",
+  "featureIds": ["classroom.core", "meeting.pip"],
+  "platforms": {
+    "server": {"status": "unchanged", "reason": "기존 입장 확인·조회·개인 퇴장·전체 종료 계약을 그대로 사용합니다."},
+    "web": {"status": "unchanged", "reason": "Android·iOS 공통 화면과 네이티브 PiP 종료가 사용자 요청 범위입니다."},
+    "android": {"status": "implemented"},
+    "ios": {"status": "implemented"}
+  },
+  "verification": [
+    "2026-11-19 Asia/Seoul. 저장소 루트에서 이번 작업 파일 목록으로 npm run shared:check -- --changed-files <변경 파일 목록>과 git diff --check 통과.",
+    "mobile/에서 JDK 17과 로컬 Android SDK로 ./gradlew --offline :composeApp:checkDesignTokens :composeApp:checkContracts :composeApp:testDebugUnitTest :composeApp:assembleDebug :composeApp:linkDebugFrameworkIosSimulatorArm64 통과. 공통 JVM 테스트 31개 중 새 MeetingSessionTest는 4개입니다.",
+    "MeetingSessionTest에서 서버 종료와 PiP 닫기의 두 순서, 화면 폐기가 먼저 일어난 경우, 사용자가 요청한 종료 실패 후 재시도를 검증했습니다. 미디어·캡처·PiP·소켓 정리 횟수와 서버 요청, 종료 콜백을 확인했습니다.",
+    "mobile/에서 ./gradlew :composeApp:iosSimulatorArm64Test --tests '*.MeetingSessionTest' 실행. iOS 시뮬레이터용 Kotlin/Native 테스트 4개가 통과했습니다.",
+    "mobile/에서 생성한 KMP 프레임워크로 xcodebuild -project iosApp/ThinkMeet.xcodeproj -scheme ThinkMeet -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' ARCHS=arm64 SKIP_KOTLIN_BUILD=YES CODE_SIGNING_ALLOWED=NO KMP_FRAMEWORK_DIR=<생성한 프레임워크 디렉터리> build 통과.",
+    "실제 Android·iOS 앱의 OS PiP 버튼과 서버 종료를 동시에 재현하는 기기 검증과 원격 CI는 실행하지 않았습니다."
+  ]
+}

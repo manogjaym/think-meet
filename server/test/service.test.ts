@@ -2,9 +2,10 @@ import 'reflect-metadata'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
-import { AccessToken } from 'livekit-server-sdk'
+import { AccessToken, TrackSource } from 'livekit-server-sdk'
 import { Lessons, lessonInput } from '../src/lessons'
 import { ApiError } from '../src/errors'
+import { Gateway } from '../src/gateway'
 import { publicUser, tokenHash, Auth } from '../src/auth'
 import type { PublicUser } from '../src/types'
 const teacher: PublicUser = { id: randomUUID(), username: 'teacher', name: 'Teacher', role: 'teacher' }
@@ -37,6 +38,42 @@ test('students cannot update teacher video or PDF page', async () => {
 })
 test('students cannot stop another sharer', async () => {
   await assert.rejects(service({ ...base, share: { id: randomUUID(), ownerId: teacher.id, type: 'screen' } }).command(student, { lessonId: id, type: 'share.stop', payload: {} }), code('FORBIDDEN'))
+})
+test('guarded Socket stops preserve a replacement and keep legacy stops and owner permissions', async () => {
+  const oldScreenId = randomUUID()
+  const document = { id: randomUUID(), ownerId: teacher.id, type: 'document' }
+  let share: typeof document | null = document
+  let writes = 0
+  let actor = teacher
+  const svc = new Lessons({
+    lesson: {
+      findUnique: async () => ({ ...base, seq: 1, share }),
+      update: async () => { writes++; share = null },
+    },
+    user: { findMany: async () => [teacher, student] },
+    message: { findMany: async () => [] },
+    stroke: { findMany: async () => [] },
+  } as any)
+  svc.dto = async () => ({ id }) as any
+  svc.broadcast = async () => ({ share }) as any
+  const gateway = new Gateway({ userFromCookie: async () => actor } as any, svc)
+  const socket = { id: 'socket', handshake: { headers: {} } } as any
+  const input = { lessonId: id, type: 'share.stop' }
+  const stale = await gateway.command(socket, { ...input, expectedShareId: oldScreenId })
+  assert.equal(stale.ok, true)
+  assert.deepEqual(stale.snapshot?.share, document)
+  assert.equal(writes, 0)
+
+  actor = student
+  assert.equal((await gateway.command(socket, { ...input, expectedShareId: document.id })).error?.code, 'FORBIDDEN')
+  assert.equal(writes, 0)
+  actor = teacher
+  assert.equal((await gateway.command(socket, { ...input, expectedShareId: document.id })).ok, true)
+  assert.equal(share, null)
+  share = document
+  assert.equal((await gateway.command(socket, input)).ok, true)
+  assert.equal(share, null)
+  assert.equal(writes, 2)
 })
 test('student cannot end whole class', async () => { await assert.rejects(service().end(id, student), code('FORBIDDEN')) })
 test('lesson commands run serially and recover after rejected command', async () => {
@@ -128,4 +165,55 @@ test('share expiration still runs when all admission IDs have been cleared', asy
   }
   const svc = new Lessons(db); svc.livekit.listParticipants = async () => []; svc.broadcast = async () => ({}) as any
   await svc.reconcile(); assert.equal(share, null)
+})
+
+test('ordinary screen share survives unpublish and republish, and expires if the video stays missing', async t => {
+  let now = Date.now()
+  t.mock.method(Date, 'now', () => now)
+  const firstShare = { id: randomUUID(), type: 'screen', ownerId: teacher.id }
+  let share: typeof firstShare | null = firstShare
+  const owner = { userId: teacher.id, online: true, banned: false }
+  const audio = { sid: 'screen-audio', source: TrackSource.SCREEN_SHARE_AUDIO }
+  let tracks = [audio]
+  const lesson = () => ({ ...base, share, members: [owner] })
+  const svc = new Lessons({
+    lesson: {
+      findMany: async () => [lesson()],
+      findUnique: async () => lesson(),
+      update: async () => { share = null },
+    },
+    lessonMember: { findUnique: async () => owner },
+    loginSession: { deleteMany: async () => {} },
+    webhookEvent: { deleteMany: async () => {} },
+  } as any)
+  svc.broadcast = async () => ({ share }) as any
+  svc.livekit.listParticipants = async () => [{ identity: owner.userId, tracks }] as any
+  svc.receiver.receive = async () => ({
+    event: 'track_unpublished', room: { name: base.roomName },
+    participant: { identity: owner.userId }, track: { sid: 'old-video', source: TrackSource.SCREEN_SHARE },
+  }) as any
+
+  await svc.webhook('', '')
+  await svc.reconcile()
+  now += 29_000
+  await svc.reconcile()
+  assert.equal(share, firstShare)
+
+  tracks = [audio, { sid: 'new-video', source: TrackSource.SCREEN_SHARE }]
+  await svc.webhook('', '')
+  now += 10_000
+  await svc.reconcile()
+  assert.equal(share, firstShare)
+
+  tracks = [audio]
+  await svc.reconcile()
+  assert.equal(share, firstShare)
+  const nextShare = { ...firstShare, id: randomUUID() }
+  share = nextShare
+  now += 30_000
+  await svc.reconcile()
+  assert.equal(share, nextShare)
+  now += 30_000
+  await svc.reconcile()
+  assert.equal(share, null)
 })

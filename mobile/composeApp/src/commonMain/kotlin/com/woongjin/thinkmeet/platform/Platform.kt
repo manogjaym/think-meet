@@ -18,6 +18,8 @@ data class MediaState(
     val participants: List<MediaParticipant> = emptyList(), val error: String? = null,
     val camera: Boolean = true, val microphone: Boolean = true,
     val screenSharing: Boolean = false, val speaker: Boolean = true,
+    /** The local regular capture, including while its LiveKit publication is reconnecting. */
+    val screenCaptureId: Long = 0,
 )
 interface MediaController {
     val state: StateFlow<MediaState>

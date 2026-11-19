@@ -105,7 +105,7 @@ fun HomeScreen(state: AppUiState, controller: AppState) {
                 item(key = "features") {
                     val session: @Composable (Modifier) -> Unit = { modifier ->
                         SessionFeature(featured, upcoming.size, state, compact, featureWide, large, modifier,
-                            onJoin = { controller.open(it, Route.Prejoin) }, onSchedule = { scope.launch { scroll.animateScrollToItem(2) } })
+                            onJoin = controller::prejoin, onSchedule = { scope.launch { scroll.animateScrollToItem(2) } })
                     }
                     val quick: @Composable (Modifier) -> Unit = { modifier ->
                         QuickJoin(code, { code = it; codeError = null; submittedCode = false }, codeError ?: state.error?.takeIf { submittedCode },

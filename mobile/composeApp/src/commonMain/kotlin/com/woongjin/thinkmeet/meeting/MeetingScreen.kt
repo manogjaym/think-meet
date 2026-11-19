@@ -43,16 +43,9 @@ import com.woongjin.thinkmeet.data.*
 import com.woongjin.thinkmeet.platform.*
 import kotlinx.datetime.toLocalDateTime
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.*
 
 
@@ -83,7 +76,7 @@ fun MeetingScreen(
     val remote = rememberRemoteAssistanceController(media)
     val remoteState by remote.state.collectAsState()
     val capabilities by api.capabilities.collectAsState()
-    val realtime = remember(api, lesson.id) { api.realtime(scope, lesson.id) }
+    val realtime = remember(api, lesson.id) { MeetingRealtime(api, scope, lesson.id) }
     val liveSnapshot by realtime.snapshot.collectAsState()
     val socketConnected by realtime.connected.collectAsState()
     val snapshot = liveSnapshot
@@ -94,14 +87,10 @@ fun MeetingScreen(
     val snackbar = remember { SnackbarHostState() }
     var panel by remember { mutableStateOf<Panel?>(null) }
     var confirmLeave by remember { mutableStateOf(false) }
-    var busy by remember { mutableStateOf(false) }
-    var exiting by remember { mutableStateOf(false) }
-    var exited by remember { mutableStateOf(false) }
     var grid by remember { mutableStateOf(true) }
     var knownMessages by remember { mutableStateOf<Set<String>?>(null) }
     var unread by remember { mutableIntStateOf(0) }
     var notification by remember { mutableStateOf<ChatMessage?>(null) }
-    var fatalError by remember { mutableStateOf<String?>(null) }
     var miniPreference by remember(lesson.id) { mutableStateOf<Boolean?>(null) }
     val miniPosition = remember(lesson.id) { MiniVideoPosition() }
     val chatDraft = remember(lesson.id) { MeetingChatDraft() }
@@ -114,149 +103,57 @@ fun MeetingScreen(
         selectMiniVideoTarget(mediaState.participants, user.id, currentLesson.teacher.id)
     }
     val miniVisible = miniPreference ?: false
-    val compactSystemPip = platformName() == "Android" && (pipState.active || pipState.transitioning) && !exited && fatalError == null
     val people = (snapshot?.participants.orEmpty().map { it.user } + currentLesson.students + currentLesson.teacher + user).distinctBy { it.id }
     fun videoName(target: PipVideoTarget?): String = people.firstOrNull { it.id == target?.identity }?.name
         ?: mediaState.participants.firstOrNull { it.identity == target?.identity }?.name?.takeIf { it.isNotBlank() }
         ?: "수업 영상"
     val latestExit by rememberUpdatedState(onExit)
+    val showMessage: (String) -> Unit = { message -> scope.launch { snackbar.showSnackbar(message) } }
     val report: (Throwable) -> Unit = { error ->
         if (error is CancellationException) throw error
-        scope.launch { snackbar.showSnackbar(error.message ?: "요청을 처리하지 못했어요.") }
+        showMessage(error.message ?: "요청을 처리하지 못했어요.")
     }
     val latestReport by rememberUpdatedState(report)
+    val session = remember(realtime, media, pip, remote) {
+        MeetingSession(ApiMeetingSessionTransport(api, realtime, lesson.id), media, pip, remote,
+            onExit = { latestExit(it) }, report = showMessage)
+    }
+    val sessionState by session.state.collectAsState()
+    val (busy, exited, fatalError) = sessionState
+    val screenShare = remember(api, realtime, media, user.id) {
+        ScreenShareSession(media, RealtimeScreenShareTransport(api, realtime), user.id, scope) { latestReport(it) }
+    }
+    val ownScreen = snapshot?.share?.takeIf { it.type == "screen" && it.ownerId == user.id && it.assistanceId == null }
+    val compactSystemPip = platformName() == "Android" && (pipState.active || pipState.transitioning) && !exited && fatalError == null
     val assistanceSession = remember(api, realtime, remote, pip, user.id) {
         RemoteAssistanceSession(api, realtime, remote, pip, user.id, scope) { latestReport(it) }
     }
     val assistanceBusy by assistanceSession.busy.collectAsState()
     val pipEnabled = capabilities.supports(ContractProtocol.FeatureIds.MeetingPip) && pipState.supported &&
-        mediaState.connected && !exited && !exiting && fatalError == null && currentLesson.canJoin && pipTarget != null &&
+        mediaState.connected && !exited && !busy && fatalError == null && currentLesson.canJoin && pipTarget != null &&
         (!assistanceBusy || assistance?.status == "active")
     DisposableEffect(assistanceSession) { onDispose { assistanceSession.close() } }
     fun execute(block: suspend () -> Unit) { scope.launch { try { block() } catch (e: Throwable) { report(e) } } }
     val command: (String, JsonObject) -> Unit = { type, payload -> execute { realtime.command(type, payload) } }
 
-    suspend fun exit(endForAll: Boolean, notifyServer: Boolean = true, force: Boolean = false) {
-        if (exited || busy) return
-        exiting = true
-        busy = true
-        pip.update(false, null)
-        remote.clearPointer()
-        try {
-            // Stop the approved device capture before waiting for a leave/end network response.
-            runCatching { remote.stopScreenShare() }
-            if (notifyServer) try {
-                if (endForAll) api.end(lesson.id) else api.leave(lesson.id)
-            } catch (error: Throwable) {
-                if (!force || error is CancellationException) throw error
-            }
-            exited = true
-            realtime.close()
-            withContext(NonCancellable) { runCatching { media.disconnect() } }
-            latestExit(endForAll)
-        } catch (error: Throwable) {
-            report(error)
-        } finally { busy = false; if (!exited) exiting = false }
+    DisposableEffect(session) {
+        session.start(admission, camera, microphone)
+        onDispose { session.close() }
+    }
+    DisposableEffect(screenShare) {
+        screenShare.observe()
+        onDispose { screenShare.close() }
     }
 
     SideEffect {
         // The native close event is sticky until consumed; do not clear it during disconnection.
         if (!pipState.closedByUser) pip.update(pipEnabled, pipTarget.takeIf { pipEnabled })
     }
-    LaunchedEffect(pip) {
-        // A stopped Activity can pause recomposition before the system-close flag is rendered.
-        withContext(Dispatchers.Main.immediate) {
-            pip.state.collect { state ->
-                if (state.closedByUser) withContext(NonCancellable) {
-                    // Closing the system window always leaves personally, including for the owner.
-                    exit(endForAll = false, notifyServer = true, force = true)
-                }
-            }
-        }
-    }
     LaunchedEffect(pipState.error) { pipState.error?.let { snackbar.showSnackbar(it) } }
-    LaunchedEffect(fatalError, pip) {
-        // A terminal error must also remove an already-visible system window.
-        if (fatalError != null) pip.close()
-    }
 
     BackHandler { confirmLeave = true }
-    LaunchedEffect(api, lesson.id) {
-        try { realtime.accept(api.snapshot(lesson.id)) } catch (error: Throwable) { report(error) }
-        val token = admission.token
-        val url = admission.livekitUrl
-        if (token.isNullOrBlank() || url.isNullOrBlank()) {
-            fatalError = "입장 정보가 만료되었어요. 수업에서 다시 입장해 주세요."
-            pip.update(false, null)
-        } else try {
-            media.connect(url, token, camera, microphone)
-        } catch (error: Throwable) {
-            if (error is CancellationException) throw error
-            fatalError = error.message ?: "영상 연결에 실패했어요."
-            pip.update(false, null)
-            withContext(NonCancellable) { runCatching { media.disconnect() } }
-        }
-    }
-    // LiveKit must contain the participant before the server will mark the owner LIVE.
-    LaunchedEffect(mediaState.connected) {
-        if (mediaState.connected) {
-            var lastError: Throwable? = null
-            repeat(8) { attempt ->
-                try { api.connected(lesson.id); return@LaunchedEffect }
-                catch (error: Throwable) {
-                    if (error is CancellationException) throw error
-                    lastError = error
-                    delay(350L * (attempt + 1))
-                }
-            }
-            lastError?.let(report)
-        }
-    }
     LaunchedEffect(realtime) {
         realtime.errors.collectLatest { snackbar.showSnackbar(it) }
-    }
-    // Reconciliation catches a missed closure/kick even when a socket silently stalls.
-    LaunchedEffect(api, lesson.id, realtime) {
-        while (true) {
-            delay(if (realtime.connected.value) 12_000L else 3_000L)
-            if (fatalError != null || exited) break
-            try { realtime.accept(api.snapshot(lesson.id)) }
-            catch (error: CancellationException) { throw error }
-            catch (error: ApiException) {
-                if (error.status == 401 || error.status == 403 || error.code in listOf("KICKED", "NOT_INVITED", "ACCOUNT", "ENDED", "CANCELLED", "REPLACED")) {
-                    fatalError = error.message
-                    pip.update(false, null)
-                    runCatching { media.disconnect() }
-                }
-            }
-            catch (_: Exception) { /* Reconnect and the next reconciliation recover transient transport errors. */ }
-        }
-    }
-    LaunchedEffect(realtime) {
-        realtime.roomErrors.collectLatest {
-            val code = it.code.lowercase()
-            if (listOf("kick", "forbidden", "unauthorized", "unauthenticated", "not_invited", "account", "expired", "replaced", "banned", "ended", "cancelled").any(code::contains)) {
-                fatalError = it.message
-                pip.update(false, null)
-                runCatching { media.disconnect() }
-            }
-        }
-    }
-    LaunchedEffect(currentLesson.status, busy) {
-        if (!busy && (currentLesson.status == "ENDED" || currentLesson.status == "CANCELLED")) {
-            pip.close()
-            exit(true, false, true)
-        }
-    }
-    LaunchedEffect(mediaState.error) {
-        mediaState.error?.let {
-            if (listOf("replaced", "duplicate_identity", "participant_removed", "kicked").any(it.lowercase()::contains)) {
-                fatalError = "다른 기기에서 입장했거나 수업 접근이 종료되었어요."
-                pip.update(false, null)
-                runCatching { media.disconnect() }
-            }
-            else snackbar.showSnackbar(it)
-        }
     }
     LaunchedEffect(snapshot?.messages?.lastOrNull()?.id, panel) {
         val messages = snapshot?.messages.orEmpty()
@@ -272,15 +169,6 @@ fun MeetingScreen(
         val id = notification?.id ?: return@LaunchedEffect
         delay(8_000)
         if (notification?.id == id) notification = null
-    }
-    DisposableEffect(realtime, media, pip) {
-        onDispose {
-            pip.close()
-            realtime.close()
-            // A composition scope is already cancelled during disposal; release native capture separately.
-            val cleanup = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-            cleanup.launch { try { media.disconnect() } finally { cleanup.cancel() } }
-        }
     }
 
     MeetingStageTheme {
@@ -318,9 +206,9 @@ fun MeetingScreen(
                     Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(Space.S16)) {
                         Box(Modifier.weight(1f).fillMaxHeight()) {
                             val current = snapshot
-                            if (current?.share != null) SharedStage(api, current, user, media, realtime, Modifier.fillMaxSize(), report)
+                            if (current?.share != null) SharedStage(api, current, user, media, realtime, Modifier.fillMaxSize(), report, screenShare::stop)
                             else ParticipantGallery(current, currentLesson, user, media, mediaState, grid, Modifier.fillMaxSize())
-                            if (miniVisible && miniTarget != null && !pipState.active && !pipState.transitioning && fatalError == null && !exited && !exiting) {
+                            if (miniVisible && miniTarget != null && !pipState.active && !pipState.transitioning && fatalError == null && !exited && !busy) {
                                 FloatingMiniVideo(media, mediaState, miniTarget, videoName(miniTarget), !compact, miniPosition,
                                     onClose = { miniPreference = false }, modifier = Modifier.fillMaxSize())
                             }
@@ -347,21 +235,21 @@ fun MeetingScreen(
                 }
                 MeetingControls(
                     compact = compact, owner = owner, microphone = mediaState.microphone, camera = mediaState.camera,
-                    sharing = mediaState.screenSharing, raised = snapshot?.participants?.find { it.user.id == user.id }?.raised == true,
+                    sharing = ownScreen != null || mediaState.screenCaptureId != 0L || (assistance?.studentId == user.id && mediaState.screenSharing),
+                    raised = snapshot?.participants?.find { it.user.id == user.id }?.raised == true,
                     count = mediaState.participants.size.coerceAtLeast(1), panel = panel, unread = unread, busy = busy,
                     onMicrophone = { execute { media.setMicrophone(!mediaState.microphone) } },
                     onCamera = { execute { media.setCamera(!mediaState.camera) } },
                     onHand = { command("hand.set", buildJsonObject { put("raised", snapshot?.participants?.find { it.user.id == user.id }?.raised != true) }) },
                     onPanel = { next -> panel = if (panel == next) null else next },
-                    onShare = { execute {
-                        if (assistance?.studentId == user.id) {
+                    onShare = {
+                        if (assistance?.studentId == user.id) execute {
                             if (mediaState.screenSharing) assistanceSession.stop(assistance.id)
                             else error(DesignContent.RemoteAssistUseApproval)
-                        } else if (mediaState.screenSharing) {
-                            media.setScreenShare(false)
-                            if (snapshot?.share?.ownerId == user.id && snapshot?.share?.type == "screen") realtime.command("share.stop")
-                        } else media.setScreenShare(true)
-                    } },
+                        } else if (ownScreen != null) screenShare.stop(ownScreen.id)
+                        else if (mediaState.screenCaptureId != 0L) screenShare.stopCapture()
+                        else screenShare.startCapture()
+                    },
                     onExit = { confirmLeave = true },
                 )
             }
@@ -376,35 +264,24 @@ fun MeetingScreen(
         if (compactSystemPip) CompactVideo(media, mediaState, pipTarget, videoName(pipTarget), Modifier.fillMaxSize())
     }
     }
-    LaunchedEffect(mediaState.screenSharing) {
-        if (mediaState.screenSharing && !assistanceBusy && !remoteState.capturing) {
-            try { realtime.command("share.start", buildJsonObject { put("type", "screen") }) }
-            catch (error: Throwable) { report(error); media.setScreenShare(false) }
-        }
-    }
-    LaunchedEffect(snapshot?.share?.id, snapshot?.share?.ownerId) {
-        if (mediaState.screenSharing && snapshot?.share != null && (snapshot?.share?.ownerId != user.id || snapshot?.share?.type != "screen")) {
-            try { media.setScreenShare(false) } catch (error: Throwable) { report(error) }
-        }
-    }
     if (confirmLeave && !compactSystemPip) AlertDialog(
         onDismissRequest = { if (!busy) confirmLeave = false },
         title = { Text(if (owner) "수업에서 나갈까요?" else "수업을 나갈까요?") },
         text = { Text(if (owner) "혼자 나가면 수업이 계속됩니다. 모두 종료하면 참여자의 연결이 종료됩니다." else "수업이 진행 중이면 다시 입장할 수 있어요.") },
         confirmButton = {
-            if (owner) TextButton(enabled = !busy, onClick = { scope.launch { exit(true) } }) { Text("모두 종료", color = MaterialTheme.colorScheme.error) }
-            else TextButton(enabled = !busy, onClick = { scope.launch { exit(false) } }) { Text("나가기") }
+            if (owner) TextButton(enabled = !busy, onClick = { session.leave(true) }) { Text("모두 종료", color = MaterialTheme.colorScheme.error) }
+            else TextButton(enabled = !busy, onClick = { session.leave(false) }) { Text("나가기") }
         },
         dismissButton = {
             Row {
                 TextButton(enabled = !busy, onClick = { confirmLeave = false }) { Text("취소") }
-                if (owner) TextButton(enabled = !busy, onClick = { scope.launch { exit(false) } }) { Text("나만 나가기") }
+                if (owner) TextButton(enabled = !busy, onClick = { session.leave(false) }) { Text("나만 나가기") }
             }
         },
     )
     if (fatalError != null && !compactSystemPip) AlertDialog(
-        onDismissRequest = {}, title = { Text("수업 연결을 확인해 주세요") }, text = { Text(fatalError!!) },
-        confirmButton = { TextButton(onClick = { scope.launch { exit(false, true, true) } }) { Text("수업으로 돌아가기") } },
+        onDismissRequest = {}, title = { Text("수업 연결을 확인해 주세요") }, text = { Text(fatalError) },
+        confirmButton = { TextButton(onClick = session::returnToLessons) { Text("수업으로 돌아가기") } },
     )
 }
 

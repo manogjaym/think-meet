@@ -1,5 +1,5 @@
 // Generated from contracts/openapi.json and realtime.json. Do not edit.
-export const CONTRACT_REVISION = 4 as const;
+export const CONTRACT_REVISION = 5 as const;
 export const API_BASE_PATH = "/api/v1" as const;
 export const SOCKET_PATH = "/socket.io" as const;
 export const SOCKET_EVENTS = {
@@ -36,7 +36,7 @@ export type LoginInput = { username: string; password: string };
 export type KickInput = { userId: string };
 export type InviteInput = { studentIds: Array<string> };
 export type SubscribeInput = { lessonId: string };
-export type CommandEnvelope = { lessonId: string; type: string; payload?: Record<string, unknown>; requestId?: string };
+export type CommandEnvelope = { lessonId: string; type: string; payload?: Record<string, unknown>; requestId?: string; expectedShareId?: string };
 export type SuccessAck = { ok: true; snapshot: MeetingSnapshot };
 export type ErrorAck = { ok: false; error: RealtimeError };
 export type CommandAck = SuccessAck | ErrorAck;

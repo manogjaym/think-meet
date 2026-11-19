@@ -1,0 +1,19 @@
+{
+  "id": "screen-share-lifecycle",
+  "summary": "웹·Android·iOS에서 일반 화면 캡처와 서버 공유 ID를 분리하고, 늦은 중지가 교체된 공유를 지우지 않도록 합니다.",
+  "scope": "shared",
+  "featureIds": ["classroom.core"],
+  "platforms": {
+    "server": {"status": "implemented", "reason": "기존 share.stop 명령에 선택적 대상 ID를 추가하고 수업 잠금 안에서 비교합니다. 구버전 요청은 기존 권한으로 처리합니다."},
+    "web": {"status": "implemented"},
+    "android": {"status": "implemented"},
+    "ios": {"status": "implemented"}
+  },
+  "verification": [
+    "2026-11-19 Asia/Seoul. 루트에서 npm run shared:generate와 npm run verify -- --changed-files <이번 작업 파일 목록> 실행. 계약 호환성, 웹 공유 상태 테스트 6개, 웹·서버 타입 검사와 웹 빌드가 통과했습니다.",
+    "server/에서 node --import tsx --test test/service.test.ts 실행. 21개 통과. 이전 공유 중지가 교체된 공유를 보존하는 경우, 기존 권한·구버전 요청과 영상 재발행 유예를 확인했습니다.",
+    "web/에서 별도 로컬 Compose의 BASE_URL과 테스트 계정 TEST_PASSWORD를 지정하고 SCREEN_SHARE_TEST_CAPTURE=synthetic npx playwright test e2e/devices.spec.ts 실행. Chromium 두 참가자와 LiveKit 1.13.11에서 영상 프레임 전송, 시그널링 연결 복구 후 공유 ID 유지, PDF 교체, 사용자 중지와 테스트에서 전달한 캡처 종료 이벤트를 확인했습니다. 테스트 1개가 통과했고 임시 컨테이너와 데이터는 정리했습니다.",
+    "mobile/에서 JDK 17과 로컬 SDK로 ./gradlew --offline :composeApp:testDebugUnitTest :composeApp:assembleDebug :composeApp:linkDebugFrameworkIosSimulatorArm64 실행. Android JVM 테스트 37개, Android APK와 Kotlin iOS 프레임워크 빌드가 통과했습니다. :composeApp:iosSimulatorArm64Test --tests '*.ScreenShareSessionTest'로 iOS 시뮬레이터 테스트 6개, xcodebuild로 iOS 시뮬레이터용 호스트 빌드가 통과했습니다.",
+    "브라우저는 합성 화면·오디오 트랙을 사용했습니다. Android MediaProjection·iOS ReplayKit 종료를 실제 앱에서 조작하는 검증, 휴대폰·태블릿 시각 비교와 원격 CI는 실행하지 않았습니다."
+  ]
+}

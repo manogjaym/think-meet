@@ -8,7 +8,6 @@ import ThinkMeet
 final class VideoCallPictureInPicture: NSObject, @MainActor AVPictureInPictureControllerDelegate {
     private let sourceView: () -> UIView?
     private let videoTrack: (PipVideoTarget?) -> VideoTrack?
-    private let didCloseCall: () -> Void
     private var listener: ((PictureInPictureState) -> Void)?
     private var controller: AVPictureInPictureController?
     private var contentController: AVPictureInPictureVideoCallViewController?
@@ -28,10 +27,9 @@ final class VideoCallPictureInPicture: NSObject, @MainActor AVPictureInPictureCo
     private var supported: Bool { AVPictureInPictureController.isPictureInPictureSupported() }
     private var state = PictureInPictureState(supported: false, active: false, transitioning: false, closedByUser: false, error: nil)
 
-    init(sourceView: @escaping () -> UIView?, videoTrack: @escaping (PipVideoTarget?) -> VideoTrack?, didCloseCall: @escaping () -> Void) {
+    init(sourceView: @escaping () -> UIView?, videoTrack: @escaping (PipVideoTarget?) -> VideoTrack?) {
         self.sourceView = sourceView
         self.videoTrack = videoTrack
-        self.didCloseCall = didCloseCall
         super.init()
         NotificationCenter.default.addObserver(self, selector: #selector(prepareForBackground), name: UIApplication.willResignActiveNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(didEnterBackground), name: UIApplication.didEnterBackgroundNotification, object: nil)
@@ -269,8 +267,6 @@ final class VideoCallPictureInPicture: NSObject, @MainActor AVPictureInPictureCo
         programmaticStop = false
         restoring = false
         returnedFromBackground = false
-        // Never call lesson.end: closing a system window leaves only this participant.
-        if closedByUser { didCloseCall() }
     }
 
     func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController,

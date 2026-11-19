@@ -28,7 +28,8 @@ const track = (landscape: boolean) => ({ attach(video: HTMLVideoElement) {
   video.dispatchEvent(new Event("loadedmetadata"))
 }, detach() {} })
 const portraitTrack = track(false), landscapeTrack = track(true)
-const participant = (user: User, landscape = false) => ({ identity: user.id, name: user.name, isCameraEnabled: false, isMicrophoneEnabled: false, getTrackPublication: (source: Track.Source) => source === Track.Source.ScreenShare && user.id === student.id ? { track: landscape ? landscapeTrack : portraitTrack } : undefined, audioTrackPublications: new Map() })
+const fixtureEvents = { on() { return this }, off() { return this } }
+const participant = (user: User, landscape = false) => ({ ...fixtureEvents, identity: user.id, name: user.name, getTrackPublication: (source: Track.Source) => source === Track.Source.ScreenShare && user.id === student.id ? { track: landscape ? landscapeTrack : portraitTrack, isMuted: false } : undefined })
 
 function Harness() {
   const [snapshot, setSnapshot] = useState(base)
@@ -43,7 +44,7 @@ function Harness() {
   const [frames, setFrames] = useState<AssistancePointer[]>([])
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const remoteUser = user.id === teacher.id ? student : teacher
-  const room = { localParticipant: participant(user, landscape), remoteParticipants: new Map([[remoteUser.id, participant(remoteUser, landscape)]]) } as unknown as Room
+  const room = { ...fixtureEvents, localParticipant: participant(user, landscape), remoteParticipants: new Map([[remoteUser.id, participant(remoteUser, landscape)]]) } as unknown as Room
   const command = async (type: string, payload: Record<string, unknown> = {}) => {
     setCommands(value => [...value, type])
     let next = snapshot
@@ -78,7 +79,7 @@ function Harness() {
       <button onClick={() => { void loadCapabilities({ force: true }) }}>지원 새로고침</button>
     </div></header>
     {error && <p role="alert">{error}</p>}
-    <div className="meeting-body"><div className="meeting-main"><RemoteAssistanceStatus pointingReady={pointingReady} snapshot={snapshot} userId={user.id} command={command} onError={setError} />{snapshot.share && <><div className="share-status-bar">김학생 님의 화면 공유 중</div><section className="stage is-sharing"><SharedStage user={user} snapshot={snapshot} room={room} command={command} previews={{}} sendPreview={() => {}} remotePointer={pointer} sendAssistancePointer={sendPointer} assistanceConnected={connected} onAssistanceReady={setPointingReady} serverOffset={0} outputDevice="muted" revision={landscape ? 1 : 0} onError={setError} /></section></>}</div>{panel && <div className="meeting-panel-container"><SidePanel panel={panel} setPanel={setPanel} user={user} lesson={snapshot.lesson} room={room} snapshot={snapshot} command={command} onOutputChange={() => {}} revision={0} /></div>}</div>
+    <div className="meeting-body"><div className="meeting-main"><RemoteAssistanceStatus pointingReady={pointingReady} snapshot={snapshot} userId={user.id} command={command} onError={setError} />{snapshot.share && <><div className="share-status-bar">김학생 님의 화면 공유 중</div><section className="stage is-sharing"><SharedStage user={user} snapshot={snapshot} room={room} command={command} previews={{}} sendPreview={() => {}} remotePointer={pointer} sendAssistancePointer={sendPointer} assistanceConnected={connected} onAssistanceReady={setPointingReady} serverOffset={0} outputDevice="muted" onError={setError} /></section></>}</div>{panel && <div className="meeting-panel-container"><SidePanel panel={panel} setPanel={setPanel} user={user} lesson={snapshot.lesson} room={room} snapshot={snapshot} command={command} onOutputChange={() => {}} /></div>}</div>
     <output hidden data-testid="commands">{JSON.stringify(commands)}</output><output hidden data-testid="frames">{JSON.stringify(frames)}</output>
   </main>
 }

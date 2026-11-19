@@ -1,0 +1,19 @@
+{
+  "id": "mobile-admission-navigation",
+  "summary": "Android·iOS 공통 앱에서 화면별 상태에 필수 수업 정보와 입장 결과를 담습니다.",
+  "scope": "platform-only",
+  "featureIds": ["classroom.core"],
+  "platforms": {
+    "server": {"status": "unchanged", "reason": "기존 수업 조회·입장·예약 API와 Socket 계약을 재사용합니다."},
+    "web": {"status": "unchanged", "reason": "Android·iOS 공통 화면 전환 상태가 리팩토링 범위입니다."},
+    "android": {"status": "implemented"},
+    "ios": {"status": "implemented"}
+  },
+  "verification": [
+    "2026-11-19 Asia/Seoul. 저장소 루트에서 npm run shared:check 및 이번 작업 파일 목록을 지정한 npm run shared:check -- --changed-files <변경 파일 목록>, git diff --check 통과.",
+    "mobile/에서 JDK 17과 로컬 Android SDK로 ./gradlew --offline :composeApp:checkDesignTokens :composeApp:checkContracts :composeApp:testDebugUnitTest :composeApp:assembleDebug :composeApp:linkDebugFrameworkIosSimulatorArm64 :composeApp:iosSimulatorArm64Test --tests '*.AppStateSafetyTest' 통과. Android JVM 테스트 40개와 iOS 시뮬레이터용 Kotlin/Native 테스트 6개가 통과했습니다.",
+    "AppStateSafetyTest에서 중복 입장 방지, 대기 중 입장 준비로 돌아가기, 참여 링크를 통한 대기·자동 입장·퇴장, 입장보다 늦게 도착한 다른 참여 링크 응답, 재입장 후 늦은 퇴장 요약, 예약·수정과 세션 만료를 Ktor 모의 응답으로 검증했습니다.",
+    "mobile/에서 생성한 KMP 프레임워크로 xcodebuild -project iosApp/ThinkMeet.xcodeproj -scheme ThinkMeet -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' ARCHS=arm64 SKIP_KOTLIN_BUILD=YES CODE_SIGNING_ALLOWED=NO KMP_FRAMEWORK_DIR=<생성한 프레임워크 디렉터리> build 통과.",
+    "검증은 공통 상태 로직 실행과 앱 빌드까지 수행했습니다. Android·iOS 앱 화면을 직접 조작하는 기기 테스트와 원격 CI는 실행하지 않았습니다."
+  ]
+}

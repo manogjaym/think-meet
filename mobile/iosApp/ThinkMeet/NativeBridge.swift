@@ -8,7 +8,7 @@ import LiveKit
 import ThinkMeet
 
 /// The platform layer contains media and OS integration only; screens and rules live in KMP.
-final class NativeBridge: NSObject, IosNativeBridge, RoomDelegate, UIDocumentPickerDelegate, @unchecked Sendable {
+final class NativeBridge: NSObject, IosNativeBridge, RoomDelegate, BroadcastManagerDelegate, UIDocumentPickerDelegate, @unchecked Sendable {
     private let room = Room(roomOptions: RoomOptions(defaultScreenShareCaptureOptions: ScreenShareCaptureOptions(appAudio: true, useBroadcastExtension: true), adaptiveStream: true, dynacast: true, suspendLocalVideoTracksInBackground: false))
     private var listener: ((MediaState) -> Void)?
     private var preview: LocalVideoTrack?
@@ -16,6 +16,10 @@ final class NativeBridge: NSObject, IosNativeBridge, RoomDelegate, UIDocumentPic
     private var speaker = true
     private var microphoneWanted = false
     private var screenAudioActive = false
+    private var restoreMicrophoneAfterReconnect = false
+    private var broadcastAllowed = false
+    private var screenCaptureId: Int64 = 0
+    private var captureGeneration: Int64 = 0
     private var lastError: String?
     private var pickerCompletion: ((String?, String?, String?, KotlinLong) -> Void)?
     private var videoViews: [WeakVideoView] = []
@@ -27,12 +31,14 @@ final class NativeBridge: NSObject, IosNativeBridge, RoomDelegate, UIDocumentPic
             let people: [Participant] = [self.room.localParticipant] + Array(self.room.remoteParticipants.values)
             return people.first { $0.identity?.stringValue == target.identity }?.videoTracks
                 .first { $0.source == (target.screen ? .screenShareVideo : .camera) && !$0.isMuted }?.track as? VideoTrack
-        },
-        didCloseCall: { [weak self] in
-            Task { @MainActor [weak self] in await self?.disconnectMedia() }
         }
     )
-    override init() { super.init(); room.add(delegate: self) }
+    override init() {
+        super.init()
+        room.add(delegate: self)
+        BroadcastManager.shared.shouldPublishTrack = false
+        BroadcastManager.shared.delegate = self
+    }
 
     private func onMain(_ operation: @escaping @MainActor () -> Void) {
         if Thread.isMainThread { MainActor.assumeIsolated { operation() } }
@@ -56,7 +62,7 @@ final class NativeBridge: NSObject, IosNativeBridge, RoomDelegate, UIDocumentPic
     @MainActor private func disconnectMedia() async {
         pictureInPicture.update(enabled: false, target: nil)
         await stopPreview()
-        BroadcastManager.shared.requestStop()
+        endBroadcast()
         await stopAppAudio()
         await room.disconnect()
         emitState()
@@ -88,6 +94,8 @@ final class NativeBridge: NSObject, IosNativeBridge, RoomDelegate, UIDocumentPic
             do {
                 await stopPreview()
                 await stopAppAudio()
+                restoreMicrophoneAfterReconnect = false
+                AudioManager.shared.mixer.micVolume = 1
                 lastError = nil
                 try await room.connect(url: url, token: token)
                 if camera, await AVCaptureDevice.requestAccess(for: .video) {
@@ -124,10 +132,15 @@ final class NativeBridge: NSObject, IosNativeBridge, RoomDelegate, UIDocumentPic
                     }
                 case "screen":
                     if enabled {
+                        guard room.connectionState == .connected else { throw NativeError.screenNotConnected }
+                        guard !BroadcastManager.shared.isBroadcasting else { throw NativeError.broadcastStopping }
+                        broadcastAllowed = true
+                        BroadcastManager.shared.shouldPublishTrack = true
                         if !screenAudioActive { microphoneWanted = room.localParticipant.isMicrophoneEnabled() }
                         AudioManager.shared.mixer.micVolume = microphoneWanted ? 1 : 0
-                        try await room.localParticipant.setScreenShare(enabled: true)
-                    } else { BroadcastManager.shared.requestStop(); try await room.localParticipant.setScreenShare(enabled: false); await stopAppAudio() }
+                        do { try await room.localParticipant.setScreenShare(enabled: true) }
+                        catch { try? await stopScreenShare(); throw error }
+                    } else { try await stopScreenShare() }
                 case "speaker": try AVAudioSession.sharedInstance().overrideOutputAudioPort(enabled ? .speaker : .none); speaker = enabled
                 case "flip":
                     let track = (room.localParticipant.videoTracks.first { $0.source == .camera }?.track as? LocalVideoTrack) ?? preview
@@ -138,6 +151,44 @@ final class NativeBridge: NSObject, IosNativeBridge, RoomDelegate, UIDocumentPic
             } catch { lastError = error.localizedDescription; emitState(); _ = completion(error.localizedDescription) }
         }
     }
+
+    @MainActor private func endBroadcast() {
+        broadcastAllowed = false
+        BroadcastManager.shared.shouldPublishTrack = false
+        screenCaptureId = 0
+        AudioManager.shared.mixer.appVolume = 0
+        if BroadcastManager.shared.isBroadcasting { BroadcastManager.shared.requestStop() }
+    }
+
+    @MainActor private func stopScreenShare() async throws {
+        endBroadcast()
+        emitState()
+        do { try await room.localParticipant.setScreenShare(enabled: false) }
+        catch { await stopAppAudio(); throw error }
+        await stopAppAudio()
+    }
+
+    func broadcastManager(didChangeState isBroadcasting: Bool) {
+        onMain {
+            if isBroadcasting {
+                guard self.broadcastAllowed else { BroadcastManager.shared.requestStop(); return }
+                if self.screenCaptureId == 0 {
+                    self.captureGeneration += 1
+                    self.screenCaptureId = self.captureGeneration
+                    Task { @MainActor in await self.startAppAudio() }
+                }
+            } else if self.screenCaptureId != 0 {
+                self.endBroadcast()
+                let ended = self.captureGeneration
+                Task { @MainActor in
+                    guard self.captureGeneration == ended, !self.broadcastAllowed else { return }
+                    try? await self.stopScreenShare()
+                }
+            }
+            self.emitState()
+        }
+    }
+
     private func emitState() {
         if !Thread.isMainThread { DispatchQueue.main.async { self.emitState() }; return }
         let people: [Participant] = [room.localParticipant] + Array(room.remoteParticipants.values)
@@ -150,7 +201,7 @@ final class NativeBridge: NSObject, IosNativeBridge, RoomDelegate, UIDocumentPic
                 return MediaParticipant(identity: id, name: p.name ?? "", camera: p.isCameraEnabled(), microphone: microphone,
                     screen: p.isScreenShareEnabled(), speaking: p.isSpeaking, local: p === room.localParticipant, screenAspectRatio: ratio)
             }, error: lastError, camera: room.localParticipant.isCameraEnabled(), microphone: screenAudioActive ? microphoneWanted : room.localParticipant.isMicrophoneEnabled(),
-            screenSharing: room.localParticipant.isScreenShareEnabled(), speaker: speaker)
+            screenSharing: room.localParticipant.isScreenShareEnabled(), speaker: speaker, screenCaptureId: screenCaptureId)
         _ = listener?(state)
         videoViews = videoViews.filter { $0.view != nil }
         for item in videoViews {
@@ -195,13 +246,15 @@ final class NativeBridge: NSObject, IosNativeBridge, RoomDelegate, UIDocumentPic
         preview = nil
     }
     @MainActor private func startAppAudio() async {
-        guard !screenAudioActive, room.connectionState == .connected, room.localParticipant.isScreenShareEnabled() else { return }
+        let capture = screenCaptureId
+        guard capture != 0, !screenAudioActive, room.connectionState == .connected, room.localParticipant.isScreenShareEnabled() else { return }
         guard await AVCaptureDevice.requestAccess(for: .audio) else {
             lastError = "화면 소리를 전달하려면 설정에서 마이크 권한을 허용해 주세요. 화면 영상은 계속 공유됩니다."
             emitState(); return
         }
-        guard room.connectionState == .connected, room.localParticipant.isScreenShareEnabled() else { return }
+        guard screenCaptureId == capture, !screenAudioActive, room.connectionState == .connected, room.localParticipant.isScreenShareEnabled() else { return }
         screenAudioActive = true
+        restoreMicrophoneAfterReconnect = false
         AudioManager.shared.mixer.micVolume = microphoneWanted ? 1 : 0
         AudioManager.shared.mixer.appVolume = 1
         do { try await room.localParticipant.setMicrophone(enabled: true) }
@@ -209,10 +262,16 @@ final class NativeBridge: NSObject, IosNativeBridge, RoomDelegate, UIDocumentPic
         emitState()
     }
     @MainActor private func stopAppAudio() async {
-        guard screenAudioActive else { AudioManager.shared.mixer.micVolume = 1; return }
+        AudioManager.shared.mixer.appVolume = 0
+        guard screenAudioActive else { return }
         screenAudioActive = false
-        if room.connectionState == .connected { _ = try? await room.localParticipant.setMicrophone(enabled: microphoneWanted) }
-        AudioManager.shared.mixer.micVolume = 1
+        // Keep a muted microphone silent while the publication is still up during a reconnect.
+        AudioManager.shared.mixer.micVolume = microphoneWanted ? 1 : 0
+        if room.connectionState == .connected {
+            _ = try? await room.localParticipant.setMicrophone(enabled: microphoneWanted)
+        } else if room.connectionState == .reconnecting {
+            restoreMicrophoneAfterReconnect = true
+        }
         emitState()
     }
     func materialView() -> UIView { MaterialView() }
@@ -283,7 +342,15 @@ final class NativeBridge: NSObject, IosNativeBridge, RoomDelegate, UIDocumentPic
         return top
     }
     func roomDidConnect(_ room: Room) { emitState() }
-    func roomDidReconnect(_ room: Room) { emitState() }
+    func roomDidReconnect(_ room: Room) {
+        onMain {
+            self.emitState()
+            if self.restoreMicrophoneAfterReconnect && !self.screenAudioActive {
+                self.restoreMicrophoneAfterReconnect = false
+                Task { @MainActor in _ = try? await room.localParticipant.setMicrophone(enabled: self.microphoneWanted) }
+            }
+        }
+    }
     func roomIsReconnecting(_ room: Room) { emitState() }
     func room(_ room: Room, participantDidConnect participant: RemoteParticipant) { emitState() }
     func room(_ room: Room, participantDidDisconnect participant: RemoteParticipant) { emitState() }
@@ -293,15 +360,23 @@ final class NativeBridge: NSObject, IosNativeBridge, RoomDelegate, UIDocumentPic
     func room(_ room: Room, participant: RemoteParticipant, didUnsubscribeTrack publication: RemoteTrackPublication) { emitState() }
     func room(_ room: Room, participant: LocalParticipant, didPublishTrack publication: LocalTrackPublication) {
         emitState()
-        if publication.source == .screenShareVideo { Task { @MainActor in await startAppAudio() } }
+        if publication.source == .screenShareVideo {
+            Task { @MainActor in
+                if broadcastAllowed && BroadcastManager.shared.isBroadcasting { await startAppAudio() }
+                else { try? await participant.unpublish(publication: publication) }
+            }
+        }
     }
     func room(_ room: Room, participant: LocalParticipant, didUnpublishTrack publication: LocalTrackPublication) {
         emitState()
-        if publication.source == .screenShareVideo { Task { @MainActor in await stopAppAudio() } }
     }
     func room(_ room: Room, didDisconnectWithError error: LiveKitError?) {
         DispatchQueue.main.async {
             self.pictureInPicture.update(enabled: false, target: nil)
+            if self.broadcastAllowed {
+                self.endBroadcast()
+                Task { @MainActor in await self.stopAppAudio() }
+            }
             if error?.type == .duplicateIdentity { self.lastError = "REPLACED: 다른 기기에서 수업에 입장했어요." }
             else if error?.type == .participantRemoved { self.lastError = "KICKED: 선생님이 참여를 종료했어요." }
             else { self.lastError = error?.localizedDescription }
@@ -312,11 +387,13 @@ final class NativeBridge: NSObject, IosNativeBridge, RoomDelegate, UIDocumentPic
 }
 private struct WeakVideoView { weak var view: VideoView?; let identity: String; let screen: Bool }
 private enum NativeError: LocalizedError {
-    case permission(String), fileSize
+    case permission(String), fileSize, broadcastStopping, screenNotConnected
     var errorDescription: String? {
         switch self {
         case .permission(let name): return "설정에서 \(name) 권한을 허용해 주세요."
         case .fileSize: return "PDF는 50MB, MP4는 500MB까지 선택할 수 있어요."
+        case .broadcastStopping: return "이전 화면 공유가 멈춘 뒤 다시 시도해 주세요."
+        case .screenNotConnected: return "수업 연결 후 화면을 공유해 주세요."
         }
     }
 }

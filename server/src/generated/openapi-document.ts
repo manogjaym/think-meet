@@ -6,7 +6,7 @@ export const OPENAPI_DOCUMENT = {
     "version": "1.0.0",
     "description": "Canonical REST schemas shared by NestJS, React and KMP. Socket.IO is defined in realtime.json."
   },
-  "x-contract-revision": 4,
+  "x-contract-revision": 5,
   "servers": [
     {
       "url": "/api/v1"
@@ -1816,6 +1816,11 @@ export const OPENAPI_DOCUMENT = {
           "requestId": {
             "type": "string",
             "maxLength": 100
+          },
+          "expectedShareId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "For share.stop, only stop the currently selected share if it has this ID. Omitted by legacy clients. Supported since revision 5."
           }
         },
         "required": [

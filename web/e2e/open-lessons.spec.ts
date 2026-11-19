@@ -69,6 +69,10 @@ async function mockReservations(
     const request = route.request()
     const path = new URL(request.url()).pathname
     const method = request.method()
+    if (method === "GET" && path === "/api/v1/capabilities") {
+      await route.fulfill({ status: 404 })
+      return
+    }
     if (method === "GET" && path === "/api/v1/auth/me") {
       await route.fulfill({ json: user })
       return

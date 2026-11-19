@@ -40,22 +40,25 @@ fun App() {
         val api = remember { ThinkMeetApi(client, ServerConfig.ORIGIN) }
         val scope = rememberCoroutineScope()
         val controller = remember(api) { AppState(api, scope) }
-        val state by controller.state.collectAsState()
-        val deepLink by AppLinks.code.collectAsState()
+        val state = controller.state.collectAsState().value
+        val user = state.user
+        val route = state.route
+        val inMeeting = route is Route.Meeting
+        val pendingLink = AppLinks.code.collectAsState().value
         val snackbar = remember { SnackbarHostState() }
         val savedScreens = rememberSaveableStateHolder()
-        ConfigureSystemAppearance(state.route == Route.Meeting && state.user != null)
+        ConfigureSystemAppearance(inMeeting && user != null)
         DisposableEffect(controller) { onDispose { controller.close(); client.close() } }
-        LaunchedEffect(deepLink, state.user, state.busy) {
-            if (deepLink != null && state.user != null && !state.busy && state.route != Route.Meeting) {
-                controller.joinCode(deepLink!!); AppLinks.consume()
+        LaunchedEffect(pendingLink, user, state.busy, inMeeting) {
+            if (pendingLink != null && user != null && !state.busy && !inMeeting) {
+                controller.joinCode(pendingLink); AppLinks.consume()
             }
         }
         LaunchedEffect(state.error) {
-            if (state.error != null && state.user != null) snackbar.showSnackbar(state.error!!, actionLabel = "닫기", withDismissAction = true)
+            if (state.error != null && user != null) snackbar.showSnackbar(state.error, actionLabel = "닫기", withDismissAction = true)
         }
-        BackHandler(state.user != null && state.route != Route.Home && state.route != Route.Meeting) {
-            if (state.route in listOf(Route.Prejoin, Route.Form) && state.selected != null) controller.detail() else controller.home()
+        BackHandler(user != null && route != Route.Home && !inMeeting) {
+            if (route is Route.Prejoin || route is Route.Edit) controller.detail() else controller.home()
         }
         Surface(Modifier.fillMaxSize(), color = Canvas) {
             when {
@@ -65,28 +68,30 @@ fun App() {
                         Text("수업을 준비하고 있어요", color = Muted)
                     }
                 }
-                state.user == null -> LoginScreen(state.busy, state.error, controller::login)
-                state.route == Route.Meeting && state.selected != null && state.admission != null ->
-                    MeetingScreen(api, state.selected!!, state.user!!, state.admission!!, state.camera, state.microphone, controller::meetingExit)
+                user == null -> LoginScreen(state.busy, state.error, controller::login)
+                route is Route.Meeting ->
+                    MeetingScreen(api, route.lesson, user, route.admission, state.camera, state.microphone, controller::meetingExit)
                 else -> BoxWithConstraints(Modifier.fillMaxSize()) {
                     val mobile = maxWidth <= LayoutToken.RootNavigationMobile
                     val compact = maxWidth <= LayoutToken.RootHeaderCompact
-                    val rootRoute = state.route == Route.Home || (state.route == Route.Form && state.selected == null)
-                    val rootTabs = rootRoute && mobile && state.user!!.isTeacher
+                    val rootRoute = route == Route.Home || route == Route.Create
+                    val rootTabs = rootRoute && mobile && user.isTeacher
                     Scaffold(containerColor = Canvas, contentWindowInsets = WindowInsets(0, 0, 0, 0),
                         snackbarHost = { SnackbarHost(snackbar) },
-                        topBar = { AppHeader(state, mobile, compact, maxWidth, controller::home, { controller.form() }, controller::logout, controller::detail) },
-                        bottomBar = { if (rootTabs) RootNavigation(state.route, true, controller::home, { controller.form() }) },
+                        topBar = { AppHeader(state, mobile, compact, maxWidth, controller::home, controller::form, controller::logout, controller::detail) },
+                        bottomBar = { if (rootTabs) RootNavigation(route, true, controller::home, controller::form) },
                     ) { padding ->
                         Box(Modifier.fillMaxSize().padding(padding).then(if (rootTabs) Modifier else Modifier.navigationBarsPadding())) {
-                            when (state.route) {
-                                Route.Home -> savedScreens.SaveableStateProvider("home:${state.user!!.id}") { HomeScreen(state, controller) }
-                                Route.Form -> LessonForm(state, controller)
-                                Route.Detail, Route.Created -> LessonDetail(state, controller, api.origin)
-                                Route.Prejoin -> PrejoinScreen(state, controller)
-                                Route.Waiting -> WaitingScreen(state, controller)
-                                Route.Ended -> EndedScreen(state, controller)
-                                Route.Meeting -> Unit
+                            when (route) {
+                                Route.Home -> savedScreens.SaveableStateProvider("home:${user.id}") { HomeScreen(state, controller) }
+                                Route.Create -> LessonForm(state, controller, existing = null)
+                                is Route.Edit -> LessonForm(state, controller, existing = route.lesson)
+                                is Route.Detail -> LessonDetail(route.lesson, state, controller, api.origin)
+                                is Route.Created -> CreatedLesson(route.lesson, controller, api.origin)
+                                is Route.Prejoin -> PrejoinScreen(route.lesson, user, state, controller)
+                                is Route.Waiting -> WaitingScreen(route.lesson, user, state, controller)
+                                is Route.Ended -> EndedScreen(route.lesson, user, state, controller)
+                                is Route.Meeting -> Unit
                             }
                             if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth().align(Alignment.TopCenter))
                         }
@@ -110,7 +115,8 @@ fun BrandMark(compact: Boolean = false) {
 private fun AppHeader(state: AppUiState, mobile: Boolean, compact: Boolean, width: androidx.compose.ui.unit.Dp,
     home: () -> Unit, form: () -> Unit, logout: () -> Unit, detail: () -> Unit,
 ) {
-    val rootRoute = state.route == Route.Home || (state.route == Route.Form && state.selected == null)
+    val route = state.route
+    val rootRoute = route == Route.Home || route == Route.Create
     val height = if (if (rootRoute) compact else mobile) LayoutToken.RootHeaderCompactHeight else LayoutToken.RootHeaderHeight
     Surface(color = Palette.White) {
         Column(Modifier.statusBarsPadding()) {
@@ -128,16 +134,25 @@ private fun AppHeader(state: AppUiState, mobile: Boolean, compact: Boolean, widt
                     if (!mobile) {
                         val gap = when { width <= LayoutToken.DashboardFeatureWide -> 24.dp; width <= LayoutToken.DashboardIntermediate -> 32.dp; else -> 48.dp }
                         Spacer(Modifier.width(gap))
-                        RootNavigation(state.route, false, home, form, state.user!!.isTeacher)
+                        RootNavigation(route, false, home, form, state.user!!.isTeacher)
                     }
                     Spacer(Modifier.weight(1f))
                     AccountMenu(state, width <= LayoutToken.HeaderProfileCompact, logout)
                 }
             } else {
-                val canBack = state.route in listOf(Route.Detail, Route.Prejoin) || (state.route == Route.Form && state.selected != null)
-                val title = when (state.route) { Route.Detail -> "수업 상세"; Route.Prejoin -> "입장 준비"; Route.Form -> "수업 일정 수정"; Route.Waiting -> "입장 대기"; Route.Created -> "예약 완료"; Route.Ended -> "수업 종료"; else -> "안내" }
+                val backToDetail = route is Route.Prejoin || route is Route.Edit
+                val canBack = backToDetail || route is Route.Detail
+                val title = when (route) {
+                    is Route.Detail -> "수업 상세"
+                    is Route.Prejoin -> "입장 준비"
+                    is Route.Edit -> "수업 일정 수정"
+                    is Route.Waiting -> "입장 대기"
+                    is Route.Created -> "예약 완료"
+                    is Route.Ended -> "수업 종료"
+                    else -> "안내"
+                }
                 Row(Modifier.fillMaxWidth().height(height).padding(horizontal = if (mobile) 8.dp else 24.dp), verticalAlignment = Alignment.CenterVertically) {
-                    if (canBack) IconButton(onClick = { if (state.route == Route.Prejoin || state.route == Route.Form) detail() else home() }) { DesignIcon("back", Modifier.size(24.dp), Palette.TextSecondary, "이전 화면으로 돌아가기") }
+                    if (canBack) IconButton(onClick = if (backToDetail) detail else home) { DesignIcon("back", Modifier.size(24.dp), Palette.TextSecondary, "이전 화면으로 돌아가기") }
                     Text(title, Modifier.weight(1f).padding(horizontal = 8.dp), fontSize = if (mobile) 18.sp else Type.Heading, lineHeight = if (mobile) 27.sp else Leading.Heading, fontWeight = DesignWeight.SemiBold)
                     if (!canBack) IconButton(onClick = home) { DesignIcon("close", Modifier.size(23.dp), Palette.TextSecondary, "닫고 내 수업으로 이동") }
                 }
@@ -151,7 +166,7 @@ private fun AppHeader(state: AppUiState, mobile: Boolean, compact: Boolean, widt
 private fun RootNavigation(route: Route, mobile: Boolean, home: () -> Unit, form: () -> Unit, teacher: Boolean = true) {
     val tabs: @Composable RowScope.() -> Unit = {
         listOf(Triple(DesignContent.RootHomeTab, "calendar", home), Triple(DesignContent.RootBookingTab, "plus", form)).take(if (teacher) 2 else 1).forEachIndexed { index, (label, icon, action) ->
-            val selected = if (index == 0) route == Route.Home else route == Route.Form
+            val selected = if (index == 0) route == Route.Home else route == Route.Create
             val color = if (selected) Brand else Muted
             if (mobile) Column(Modifier.weight(1f).fillMaxHeight().clickable(onClick = action).padding(vertical = 4.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                 DesignIcon(icon, Modifier.size(22.dp), color)

@@ -61,7 +61,7 @@ function Harness() {
       <div className="meeting-main"><section className="stage" aria-label="수업 화면"><div className="video-tile" style={{ height: "100%" }}><span className="tile-avatar">민준</span></div></section></div>
       <button className="panel-backdrop" aria-label="패널 닫기" aria-hidden={!panel} tabIndex={panel ? 0 : -1} onClick={() => changePanel(null)} />
       <div id="meeting-side-panel" className="meeting-panel-container" inert={!panel} aria-hidden={!panel}>
-        <SidePanel panel={panel || lastPanel} setPanel={changePanel} user={user} lesson={lesson} room={null} snapshot={snapshot} command={async () => snapshot} onOutputChange={() => {}} revision={0} unreadChatCount={unreadCount} />
+        <SidePanel panel={panel || lastPanel} setPanel={changePanel} user={user} lesson={lesson} room={null} snapshot={snapshot} command={async () => snapshot} onOutputChange={() => {}} unreadChatCount={unreadCount} />
       </div>
     </div>
     {notification && <ChatNotification message={notification} onOpen={() => changePanel("chat")} onDismiss={dismissNotification} />}

@@ -132,8 +132,8 @@ internal class AndroidPictureInPictureController(
         mutable.update { it.copy(active = false, transitioning = false, closedByUser = true) }
         applyParameters()
         // Synchronous room shutdown protects capture even if stopped-Activity recomposition is paused.
-        // Shared UI separately performs api.leave for this participant, including a lesson owner.
-        media?.disconnectForPictureInPictureDismissal()
+        // The shared session separately leaves this participant, including a lesson owner.
+        media?.disconnectNow()
     }
 
     private fun canEnter(): Boolean {
@@ -237,7 +237,7 @@ internal class AndroidPictureInPictureController(
         target = null
         applyParameters()
         closed = true
-        mutable.update { it.copy(active = false, transitioning = false, closedByUser = false) }
+        mutable.update { it.copy(active = false, transitioning = false) }
         activity?.detachPictureInPictureController(this)
         activity?.dismissTerminalPictureInPicture(entering)
     }

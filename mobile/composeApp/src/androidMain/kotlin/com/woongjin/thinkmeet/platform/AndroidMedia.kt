@@ -51,10 +51,15 @@ internal class AndroidMediaController(private val context: Context) : MediaContr
     }
     internal var preview by mutableStateOf<LocalVideoTrack?>(null)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var disconnected = false
     private var microphoneDesired = false
     private var screenAudioActive = false
     private var screenAudioCapturer: ScreenAudioCapturer? = null
     private var screenAudioTrack: LocalAudioTrack? = null
+    private var restoreMicrophoneAfterReconnect = false
+    private var captureGeneration = 0L
+    private var screenCaptureId = 0L
+    private var regularScreenTrack: LocalVideoTrack? = null
     private val videoRenderers = mutableMapOf<Pair<String, Boolean>, MutableSet<TextureViewRenderer>>()
     var permissionRequest: ((Array<String>, CompletableDeferred<Map<String, Boolean>>) -> Unit)? = null
     var screenRequest: ((Boolean, CompletableDeferred<Intent?>) -> Unit)? = null
@@ -62,8 +67,14 @@ internal class AndroidMediaController(private val context: Context) : MediaContr
         scope.launch {
             room.events.collect { event ->
                 if (event is RoomEvent.Disconnected) {
+                    endRegularCapture()
+                    restoreMicrophoneAfterReconnect = false
                     disposeScreenAudio()
                     mutable.value = mutable.value.copy(error = if (event.reason.toString().contains("DUPLICATE", true)) "REPLACED: 다른 기기에서 수업에 입장했어요." else event.error?.message)
+                }
+                if (event is RoomEvent.Reconnected && restoreMicrophoneAfterReconnect) {
+                    restoreMicrophoneAfterReconnect = false
+                    if (!screenAudioActive) runCatching { room.localParticipant.setMicrophoneEnabled(microphoneDesired) }
                 }
                 refresh()
             }
@@ -89,6 +100,7 @@ internal class AndroidMediaController(private val context: Context) : MediaContr
             camera = room.localParticipant.enabled(Track.Source.CAMERA),
             microphone = microphoneDesired,
             screenSharing = room.localParticipant.enabled(Track.Source.SCREEN_SHARE),
+            screenCaptureId = screenCaptureId,
         )
     }
     override suspend fun connect(url: String, token: String, camera: Boolean, microphone: Boolean) {
@@ -100,6 +112,8 @@ internal class AndroidMediaController(private val context: Context) : MediaContr
             permissionRequest?.invoke(requested.toTypedArray(), deferred)
             if (permissionRequest != null) deferred.await()
         }
+        currentCoroutineContext().ensureActive()
+        check(!disconnected) { "수업 연결이 종료되었어요." }
         mutable.value = mutable.value.copy(error = null)
         microphoneDesired = false
         room.connect(url, token)
@@ -110,14 +124,21 @@ internal class AndroidMediaController(private val context: Context) : MediaContr
             .onFailure { mutable.value = mutable.value.copy(error = "마이크를 시작하지 못했어요: ${it.message}") }
         refresh()
     }
-    override suspend fun disconnect() { stopPreview(); stopScreenAudio(); room.disconnect(); refresh() }
-    /** System PiP dismissal cannot wait for a stopped Activity's Compose effects to resume. */
-    internal fun disconnectForPictureInPictureDismissal() {
-        stopPreview()
-        room.disconnect()
-        disposeScreenAudio()
-        microphoneDesired = false
-        refresh()
+    override suspend fun disconnect() = disconnectNow()
+
+    /** Also used by Activity dismissal, where capture must stop synchronously. */
+    internal fun disconnectNow() {
+        if (disconnected) return
+        disconnected = true
+        try {
+            stopPreview()
+            endRegularCapture()
+            room.disconnect()
+        } finally {
+            disposeScreenAudio()
+            microphoneDesired = false
+            refresh()
+        }
     }
     override suspend fun setCamera(enabled: Boolean) {
         if (enabled && !allowed(Manifest.permission.CAMERA)) error("설정에서 카메라 권한을 허용해 주세요.")
@@ -128,7 +149,10 @@ internal class AndroidMediaController(private val context: Context) : MediaContr
         if (screenAudioActive) {
             // The publication transports shared sound too; mute only the physical microphone.
             (room.lkObjects.audioDeviceModule as? JavaAudioDeviceModule)?.setAudioRecordEnabled(enabled)
-        } else room.localParticipant.setMicrophoneEnabled(enabled)
+        } else {
+            (room.lkObjects.audioDeviceModule as? JavaAudioDeviceModule)?.setAudioRecordEnabled(enabled)
+            room.localParticipant.setMicrophoneEnabled(enabled)
+        }
         microphoneDesired = enabled
         refresh()
     }
@@ -136,10 +160,7 @@ internal class AndroidMediaController(private val context: Context) : MediaContr
         ((room.localParticipant.getTrackPublication(Track.Source.CAMERA)?.track as? LocalVideoTrack) ?: preview)?.switchCamera()
     }
     override suspend fun setScreenShare(enabled: Boolean) {
-        if (enabled) startScreenShare(fullDisplay = false) else {
-            stopScreenAudio()
-            room.localParticipant.setScreenShareEnabled(false)
-        }
+        if (enabled) startScreenShare(fullDisplay = false) else stopRegularScreenShare()
         refresh()
     }
 
@@ -151,16 +172,34 @@ internal class AndroidMediaController(private val context: Context) : MediaContr
     }
 
     private suspend fun startScreenShare(fullDisplay: Boolean): LocalVideoTrack {
+        val attempt = ++captureGeneration
         val deferred = CompletableDeferred<Intent?>()
         screenRequest?.invoke(fullDisplay, deferred) ?: error("화면 공유를 시작할 수 없어요.")
         val data = deferred.await() ?: error("화면 공유가 취소되었어요.")
-        if (fullDisplay) check(room.localParticipant.getTrackPublication(Track.Source.SCREEN_SHARE) == null) {
+        currentCoroutineContext().ensureActive()
+        if (disconnected || attempt != captureGeneration) throw CancellationException("Screen capture was cancelled")
+        check(room.localParticipant.getTrackPublication(Track.Source.SCREEN_SHARE) == null && regularScreenTrack == null) {
             "기존 화면 공유를 중지한 뒤 원격 화면 안내를 시작해 주세요."
         }
-        room.localParticipant.setScreenShareEnabled(true, ScreenCaptureParams(data, onStop = { scope.launch { stopScreenAudio(); refresh() } }))
+        room.localParticipant.setScreenShareEnabled(true, ScreenCaptureParams(data, onStop = { scope.launch {
+            if (attempt == captureGeneration) {
+                if (fullDisplay) { stopScreenAudio(); refresh() }
+                else stopRegularScreenShare()
+            }
+        } }))
         val track = room.localParticipant.getTrackPublication(Track.Source.SCREEN_SHARE)?.track as? LocalVideoTrack
             ?: error("전체 화면 공유 연결을 확인하지 못했어요.")
-        try { startScreenAudio() }
+        if (!fullDisplay) {
+            if (attempt != captureGeneration || disconnected) {
+                track.stopCapture()
+                room.localParticipant.setScreenShareEnabled(false)
+                throw CancellationException("Screen capture was cancelled")
+            }
+            regularScreenTrack = track
+            screenCaptureId = attempt
+            refresh()
+        }
+        try { startScreenAudio(track, attempt) }
         catch (error: Throwable) {
             // Sound permission setup can be cancelled after this video publication has succeeded.
             if (fullDisplay) {
@@ -170,6 +209,27 @@ internal class AndroidMediaController(private val context: Context) : MediaContr
             throw error
         }
         return track
+    }
+
+    private fun endRegularCapture(): LocalVideoTrack? {
+        captureGeneration++
+        val track = regularScreenTrack
+        regularScreenTrack = null
+        screenCaptureId = 0
+        track?.stopCapture()
+        return track
+    }
+
+    private suspend fun stopRegularScreenShare() {
+        val track = endRegularCapture()
+        refresh()
+        if (track == null) return
+        try { stopScreenAudio() }
+        finally {
+            if (room.localParticipant.getTrackPublication(Track.Source.SCREEN_SHARE)?.track === track)
+                room.localParticipant.setScreenShareEnabled(false)
+            refresh()
+        }
     }
 
     /** Remove the capture immediately even when a stopped Activity cannot await normal cleanup. */
@@ -187,7 +247,7 @@ internal class AndroidMediaController(private val context: Context) : MediaContr
         refresh()
     }
 
-    private suspend fun startScreenAudio() {
+    private suspend fun startScreenAudio(video: LocalVideoTrack, attempt: Long) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
             mutable.value = mutable.value.copy(error = "이 기기에서는 화면만 공유돼요. 화면 소리 공유는 Android 10 이상에서 지원합니다.")
             return
@@ -196,6 +256,7 @@ internal class AndroidMediaController(private val context: Context) : MediaContr
             mutable.value = mutable.value.copy(error = "화면은 공유되고 있어요. 화면 소리도 전달하려면 마이크 권한을 허용해 주세요.")
             return
         }
+        if (attempt != captureGeneration || room.localParticipant.getTrackPublication(Track.Source.SCREEN_SHARE)?.track !== video) return
         try {
             val module = room.lkObjects.audioDeviceModule as? JavaAudioDeviceModule
                 ?: error("이 기기의 오디오 장치는 화면 소리 공유를 지원하지 않습니다.")
@@ -204,8 +265,10 @@ internal class AndroidMediaController(private val context: Context) : MediaContr
             // Disable physical recording before publishing if the user muted their microphone.
             module.setAudioRecordEnabled(microphoneDesired)
             room.localParticipant.setMicrophoneEnabled(true)
-            val video = room.localParticipant.getTrackPublication(Track.Source.SCREEN_SHARE)?.track as? LocalVideoTrack
-                ?: error("화면 공유 연결을 확인하지 못했어요.")
+            if (attempt != captureGeneration || room.localParticipant.getTrackPublication(Track.Source.SCREEN_SHARE)?.track !== video) {
+                stopScreenAudio()
+                return
+            }
             val audio = room.localParticipant.getTrackPublication(Track.Source.MICROPHONE)?.track as? LocalAudioTrack
                 ?: error("화면 소리 전송을 준비하지 못했어요.")
             val capturer = ScreenAudioCapturer.createFromScreenShareTrack(video)
@@ -244,17 +307,20 @@ internal class AndroidMediaController(private val context: Context) : MediaContr
         // Stop the publication before restoring the recorder, so a muted mic never leaks audio.
         try {
             if (!microphoneDesired && room.state == Room.State.CONNECTED) room.localParticipant.setMicrophoneEnabled(false)
-        } finally { disposeScreenAudio() }
+        } finally {
+            if (room.state == Room.State.RECONNECTING) restoreMicrophoneAfterReconnect = true
+            disposeScreenAudio(recordingEnabled = microphoneDesired)
+        }
         if (microphoneDesired && room.state == Room.State.CONNECTED) room.localParticipant.setMicrophoneEnabled(true)
     }
 
-    private fun disposeScreenAudio() {
+    private fun disposeScreenAudio(recordingEnabled: Boolean = true) {
         screenAudioTrack?.setAudioBufferCallback(null)
         screenAudioTrack = null
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) screenAudioCapturer?.releaseAudioResources()
         screenAudioCapturer = null
         screenAudioActive = false
-        (room.lkObjects.audioDeviceModule as? JavaAudioDeviceModule)?.setAudioRecordEnabled(true)
+        (room.lkObjects.audioDeviceModule as? JavaAudioDeviceModule)?.setAudioRecordEnabled(recordingEnabled)
         AndroidScreenAudioService.stop(context)
     }
     @Suppress("DEPRECATION")
@@ -270,7 +336,7 @@ internal class AndroidMediaController(private val context: Context) : MediaContr
         }.onFailure { mutable.value = mutable.value.copy(error = "카메라 미리보기를 사용할 수 없어요.") }
     }
     internal fun stopPreview() { preview?.let { it.stopCapture(); it.dispose() }; preview = null }
-    internal fun release() { stopPreview(); room.disconnect(); disposeScreenAudio(); videoRenderers.clear(); room.release(); scope.cancel() }
+    internal fun release() { disconnectNow(); videoRenderers.clear(); room.release(); scope.cancel() }
     internal fun registerVideoRenderer(identity: String, screen: Boolean, renderer: TextureViewRenderer) {
         videoRenderers.getOrPut(identity to screen) { mutableSetOf() }.add(renderer)
     }

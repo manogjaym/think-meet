@@ -60,6 +60,8 @@ class MeetingRealtime internal constructor(
     val snapshot: StateFlow<MeetingSnapshot?> = state.asStateFlow()
     private val connection = MutableStateFlow(false)
     val connected: StateFlow<Boolean> = connection.asStateFlow()
+    private val subscription = MutableStateFlow(false)
+    val subscribed = subscription.asStateFlow()
     private val errorMessages = MutableSharedFlow<String>(extraBufferCapacity = 8, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     val errors: SharedFlow<String> = errorMessages.asSharedFlow()
     private val roomErrorEvents = MutableSharedFlow<RealtimeError>(extraBufferCapacity = 8, onBufferOverflow = BufferOverflow.DROP_OLDEST)
@@ -92,6 +94,7 @@ class MeetingRealtime internal constructor(
                 } catch (_: Exception) {
                     if (attempt == 0) errorMessages.tryEmit("실시간 연결을 복구하고 있어요.")
                 } finally {
+                    subscription.value = false
                     connection.value = false
                     withContext(NonCancellable) {
                         transportLock.withLock {
@@ -114,6 +117,7 @@ class MeetingRealtime internal constructor(
         closed = true
         job?.cancel()
         job = null
+        subscription.value = false
         connection.value = false
     }
 
@@ -158,6 +162,7 @@ class MeetingRealtime internal constructor(
                             try {
                                 val ack = request(ContractProtocol.Events.Subscribe, ThinkMeetJson.encodeToJsonElement(SubscribeInput(lessonId)))
                                 accept(readAck(ack))
+                                subscription.value = true
                             } catch (error: CancellationException) { throw error }
                             catch (error: Exception) { report(error) }
                         }
@@ -194,9 +199,9 @@ class MeetingRealtime internal constructor(
         }
     }
 
-    suspend fun command(type: String, payload: JsonObject = buildJsonObject {}): MeetingSnapshot {
+    suspend fun command(type: String, payload: JsonObject = buildJsonObject {}, expectedShareId: String? = null): MeetingSnapshot {
         val id = lessonId ?: throw ApiException(400, "NO_LESSON", "수업을 먼저 선택해 주세요.")
-        val ack = request(ContractProtocol.Events.Command, ThinkMeetJson.encodeToJsonElement(CommandEnvelope(id, type, payload)))
+        val ack = request(ContractProtocol.Events.Command, ThinkMeetJson.encodeToJsonElement(CommandEnvelope(id, type, payload, expectedShareId = expectedShareId)))
         return readAck(ack).also(::accept)
     }
 

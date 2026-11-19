@@ -8,16 +8,44 @@ import kotlin.time.Clock
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
 
-enum class Route { Home, Detail, Form, Created, Prejoin, Waiting, Meeting, Ended }
+sealed interface Route {
+    data object Home : Route
+    data object Create : Route
+
+    sealed interface ForLesson : Route { val lesson: Lesson }
+    data class Detail(override val lesson: Lesson) : ForLesson
+    data class Edit(override val lesson: Lesson) : ForLesson
+    data class Created(override val lesson: Lesson) : ForLesson
+    data class Prejoin(override val lesson: Lesson) : ForLesson
+    data class Waiting(override val lesson: Lesson) : ForLesson
+    data class Meeting(val admission: JoinResult) : ForLesson {
+        init { require(!admission.waiting) }
+        override val lesson: Lesson get() = admission.lesson
+    }
+    data class Ended(override val lesson: Lesson) : ForLesson
+}
+
+private fun Route.refreshFrom(lessons: List<Lesson>): Route {
+    if (this !is Route.ForLesson) return this
+    val current = lessons.find { it.id == lesson.id } ?: return this
+    return when (this) {
+        is Route.Detail -> copy(lesson = current)
+        is Route.Edit -> copy(lesson = current)
+        is Route.Created -> copy(lesson = current)
+        is Route.Prejoin -> copy(lesson = current)
+        is Route.Waiting -> copy(lesson = current)
+        is Route.Meeting -> copy(admission = admission.copy(lesson = current))
+        is Route.Ended -> copy(lesson = current)
+    }
+}
+
 data class AppUiState(
     val loading: Boolean = true,
     val busy: Boolean = false,
     val user: User? = null,
     val lessons: List<Lesson> = emptyList(),
     val students: List<User> = emptyList(),
-    val selected: Lesson? = null,
     val route: Route = Route.Home,
-    val admission: JoinResult? = null,
     val error: String? = null,
     val camera: Boolean = true,
     val microphone: Boolean = false,
@@ -73,7 +101,7 @@ class AppState(val api: ThinkMeetApi, private val scope: CoroutineScope) {
     private fun expireSession(message: String) {
         sessionVersion++
         sessionJob?.cancel(); sessionJob = null
-        waitingJob?.cancel(); waitingJob = null
+        cancelWaiting()
         postMeetingJob?.cancel(); postMeetingJob = null
         cancelWork()
         mutable.value = AppUiState(loading = false, error = message)
@@ -91,7 +119,7 @@ class AppState(val api: ThinkMeetApi, private val scope: CoroutineScope) {
         }
         if (user == null) {
             sessionVersion++
-            sessionJob?.cancel(); waitingJob?.cancel()
+            sessionJob?.cancel(); cancelWaiting()
             mutable.value = AppUiState(loading = false, busy = true)
         } else {
             sessionVersion++
@@ -111,7 +139,13 @@ class AppState(val api: ThinkMeetApi, private val scope: CoroutineScope) {
     private fun watchHome() {
         sessionJob?.cancel()
         sessionJob = scope.launch {
-            state.map { it.user?.id to (it.route in listOf(Route.Home, Route.Detail, Route.Created)) }
+            state.map { state ->
+                val visible = when (state.route) {
+                    Route.Home, is Route.Detail, is Route.Created -> true
+                    else -> false
+                }
+                state.user?.id to visible
+            }
                 .distinctUntilChanged().collectLatest { (userId, visible) ->
                     if (userId == null || !visible) return@collectLatest
                     coroutineScope {
@@ -142,8 +176,7 @@ class AppState(val api: ThinkMeetApi, private val scope: CoroutineScope) {
                 currentCoroutineContext().ensureActive()
                 mutable.update { old ->
                     if (version != sessionVersion || old.user?.id != user.id || closed) old
-                    else old.copy(lessons = rows, students = roster,
-                        selected = rows.find { it.id == old.selected?.id } ?: old.selected, error = null)
+                    else old.copy(lessons = rows, students = roster, route = old.route.refreshFrom(rows), error = null)
                 }
             }
         } finally { refreshLock.unlock() }
@@ -154,78 +187,103 @@ class AppState(val api: ThinkMeetApi, private val scope: CoroutineScope) {
     fun logout() = work {
         api.logout()
         sessionVersion++
-        sessionJob?.cancel(); waitingJob?.cancel(); postMeetingJob?.cancel()
+        sessionJob?.cancel(); cancelWaiting(); postMeetingJob?.cancel()
         mutable.value = AppUiState(loading = false, busy = true)
     }
     fun home() {
-        cancelWork(); waitingJob?.cancel()
-        mutable.update { it.copy(route = Route.Home, admission = null, error = null) }
+        show(Route.Home)
         reload()
     }
-    fun open(lesson: Lesson, route: Route = Route.Detail) = work {
-        // Leaving the waiting screen must stop its polling/admission flow before opening prejoin.
-        waitingJob?.cancel(); waitingJob = null
-        val current = api.lesson(lesson.id)
-        mutable.update { it.copy(selected = current, route = route, admission = null) }
+    fun open(lesson: Lesson) = openLesson(lesson) { Route.Detail(it) }
+    fun prejoin(lesson: Lesson) = openLesson(lesson) { Route.Prejoin(it) }
+
+    private fun openLesson(lesson: Lesson, destination: (Lesson) -> Route.ForLesson) = work {
+        cancelWaiting()
+        val fetched = api.lesson(lesson.id)
+        currentCoroutineContext().ensureActive()
+        mutable.update { it.copy(route = destination(fetched)) }
     }
-    fun form(edit: Boolean = false) {
-        cancelWork(); waitingJob?.cancel()
-        mutable.update { it.copy(route = Route.Form, selected = if (edit) it.selected else null, admission = null, error = null) }
+    fun form() = show(Route.Create)
+    fun edit(lesson: Lesson) = show(Route.Edit(lesson))
+
+    private fun show(route: Route) {
+        cancelWork(); cancelWaiting()
+        mutable.update { it.copy(route = route, error = null) }
     }
+
     fun detail() {
-        cancelWork(); waitingJob?.cancel()
-        mutable.update { it.copy(route = Route.Detail, admission = null, error = null) }
+        val current = state.value.route as? Route.ForLesson ?: return
+        show(Route.Detail(current.lesson))
     }
     fun devices(camera: Boolean, microphone: Boolean) { mutable.update { it.copy(camera = camera, microphone = microphone) } }
     fun joinCode(value: String) = work {
+        if (state.value.route is Route.Meeting) return@work
         val code = parseJoinCode(value, api.origin)
         val lesson = api.byCode(code)
-        mutable.update { it.copy(selected = lesson, route = Route.Prejoin, admission = null) }
+        currentCoroutineContext().ensureActive()
+        if (state.value.route is Route.Meeting) return@work
+        cancelWaiting()
+        mutable.update { it.copy(route = Route.Prejoin(lesson)) }
     }
     fun save(input: LessonInput) = work {
-        val existing = state.value.selected
-        val lesson = api.saveLesson(input, existing?.id)
-        mutable.update { it.copy(selected = lesson, route = if (existing == null) Route.Created else Route.Detail) }
+        val lessonId = when (val route = state.value.route) {
+            Route.Create -> null
+            is Route.Edit -> route.lesson.id
+            else -> return@work
+        }
+        val lesson = api.saveLesson(input, lessonId)
+        mutable.update { it.copy(route = if (lessonId == null) Route.Created(lesson) else Route.Detail(lesson)) }
         refresh()
     }
     fun cancel() = work {
-        state.value.selected?.let { lesson ->
-            val cancelled = api.cancel(lesson.id)
-            mutable.update { it.copy(selected = cancelled, route = Route.Detail) }
-            refresh()
-        }
+        val detail = state.value.route as? Route.Detail ?: return@work
+        val lesson = api.cancel(detail.lesson.id)
+        mutable.update { it.copy(route = Route.Detail(lesson)) }
+        refresh()
     }
     fun join() = work {
-        val lesson = state.value.selected ?: return@work
-        accept(api.join(lesson.id))
+        val prejoin = state.value.route as? Route.Prejoin ?: return@work
+        val result = api.join(prejoin.lesson.id)
+        currentCoroutineContext().ensureActive()
+        val route = admissionRoute(result)
+        mutable.update { it.copy(route = route, error = null) }
+        if (route is Route.Waiting) waitForTeacher(route.lesson.id)
     }
-    private fun accept(result: JoinResult) {
-        mutable.update { it.copy(selected = result.lesson, admission = result,
-            route = if (result.waiting) Route.Waiting else Route.Meeting, error = null) }
-        if (result.waiting) waitForTeacher(result.lesson.id)
-    }
-    private fun waitForTeacher(id: String) {
+
+    private fun admissionRoute(result: JoinResult): Route.ForLesson =
+        if (result.waiting) Route.Waiting(result.lesson) else Route.Meeting(result)
+
+    private fun cancelWaiting() {
         waitingJob?.cancel()
+        waitingJob = null
+    }
+
+    private fun waitForTeacher(id: String) {
+        cancelWaiting()
         val userId = state.value.user?.id ?: return
         val version = sessionVersion
         waitingJob = scope.launch {
             val realtime = api.realtime(this, id)
             val admissionLock = kotlinx.coroutines.sync.Mutex()
-            fun stillWaiting() = version == sessionVersion && state.value.user?.id == userId &&
-                state.value.route == Route.Waiting && state.value.selected?.id == id
+            fun waitingRoute(): Route.Waiting? {
+                val current = state.value
+                if (version != sessionVersion || current.user?.id != userId) return null
+                return (current.route as? Route.Waiting)?.takeIf { it.lesson.id == id }
+            }
             suspend fun consider(lesson: Lesson) {
                 admissionLock.lock()
                 try {
-                    if (!stillWaiting()) return
-                    mutable.update { it.copy(selected = lesson, error = null) }
+                    if (waitingRoute() == null) return
                     if (lesson.status in listOf("ENDED", "CANCELLED")) {
-                        mutable.update { it.copy(route = Route.Ended, admission = null) }
-                    } else if (lesson.status == "LIVE") {
+                        mutable.update { it.copy(route = Route.Ended(lesson), error = null) }
+                        return
+                    }
+                    mutable.update { it.copy(route = Route.Waiting(lesson), error = null) }
+                    if (lesson.status == "LIVE") {
                         // Socket broadcasts and fallback polls share one admission gate.
                         val result = api.join(id)
                         currentCoroutineContext().ensureActive()
-                        if (stillWaiting()) mutable.update { it.copy(selected = result.lesson, admission = result,
-                            route = if (result.waiting) Route.Waiting else Route.Meeting, error = null) }
+                        if (waitingRoute() != null) mutable.update { it.copy(route = admissionRoute(result), error = null) }
                     }
                 } finally { admissionLock.unlock() }
             }
@@ -237,35 +295,40 @@ class AppState(val api: ThinkMeetApi, private val scope: CoroutineScope) {
                 }
             }
             try {
-                while (isActive && stillWaiting()) {
+                while (isActive && waitingRoute() != null) {
                     try { consider(api.lesson(id)) }
                     catch (e: CancellationException) { throw e }
                     catch (e: ApiError) {
+                        val waiting = waitingRoute() ?: return@launch
                         if (e.status == 401) { handleFailure(e); return@launch }
-                        mutable.update { it.copy(error = e.message) }
                         if (e.status in listOf(403, 404)) {
-                            mutable.update { it.copy(route = Route.Ended, admission = null) }; return@launch
+                            mutable.update { it.copy(route = Route.Ended(waiting.lesson), error = e.message) }
+                            return@launch
                         }
+                        mutable.update { it.copy(error = e.message) }
                     } catch (e: Throwable) { handleFailure(e) }
-                    if (stillWaiting()) delay(3_000)
+                    if (waitingRoute() != null) delay(3_000)
                 }
             } finally { updates.cancel(); realtime.close() }
         }
     }
     fun meetingExit(ended: Boolean) {
         val before = state.value
-        if (before.user == null || before.route != Route.Meeting) return
-        val id = before.selected?.id
+        val user = before.user ?: return
+        val meeting = before.route as? Route.Meeting ?: return
+        val endedRoute = Route.Ended(meeting.lesson)
         val version = sessionVersion
-        mutable.update { it.copy(route = Route.Ended, admission = null) }
+        mutable.update { it.copy(route = endedRoute) }
         postMeetingJob?.cancel()
         postMeetingJob = scope.launch {
             try {
-                if (id != null) {
-                    val lesson = api.lesson(id)
-                    mutable.update { old ->
-                        if (version == sessionVersion && old.user?.id == before.user.id && old.selected?.id == id && !closed) old.copy(selected = lesson) else old
-                    }
+                val lesson = api.lesson(meeting.lesson.id)
+                currentCoroutineContext().ensureActive()
+                mutable.update { old ->
+                    // The summary belongs to this visit to Ended, even if the user rejoins the same lesson.
+                    if (version == sessionVersion && old.user?.id == user.id && old.route === endedRoute && !closed) {
+                        old.copy(route = Route.Ended(lesson))
+                    } else old
                 }
             } catch (e: CancellationException) { throw e }
             catch (e: ApiError) { if (e.status == 401) handleFailure(e) }

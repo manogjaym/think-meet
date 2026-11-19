@@ -34,6 +34,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false)
     }
   }, [])
+  const retry = useCallback(() => void refresh(), [refresh])
   useEffect(() => {
     void refresh()
   }, [refresh])
@@ -58,7 +59,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         error,
         login,
         logout,
-        retry: () => void refresh(),
+        retry,
       }}
     >
       {children}

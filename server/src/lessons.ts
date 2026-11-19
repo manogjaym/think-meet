@@ -1,6 +1,6 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
-import { AccessToken, RoomServiceClient, WebhookReceiver } from 'livekit-server-sdk'
+import { AccessToken, RoomServiceClient, TrackSource, WebhookReceiver } from 'livekit-server-sdk'
 import { jwtVerify } from 'jose'
 import { randomUUID, randomBytes } from 'node:crypto'
 import { z } from 'zod'
@@ -9,6 +9,7 @@ import { ApiError } from './errors'
 import type { PublicUser, Share, Command } from './types'
 import { AssistanceSessions, assistanceGeometrySchema, type AssistanceBinding, type AssistanceCommandContext } from './assistance'
 const ids = z.array(z.string().uuid()).min(1).max(100)
+const screenShareRecoveryMs = 30_000
 export const lessonInput = z.object({
   title: z.string().trim().min(1, '학습 제목을 입력해 주세요.').max(200),
   description: z.string().trim().max(5000).default(''),
@@ -30,6 +31,7 @@ export class Lessons implements OnModuleInit, OnModuleDestroy {
   readonly assistance = new AssistanceSessions()
   assistanceConnected: (session: AssistanceBinding) => boolean = () => false
   private locks = new Map<string, Promise<any>>()
+  private missingScreenShares = new Map<string, { shareId: string; since: number }>()
   private timer?: NodeJS.Timeout
   constructor(readonly db: Database) {}
   onModuleInit() { this.timer = setInterval(() => this.reconcile().catch(error => console.error('reconciliation failed', error.message)), 10000); this.timer.unref() }
@@ -337,6 +339,8 @@ export class Lessons implements OnModuleInit, OnModuleDestroy {
         }
         this.assistance.remove(id)
       } else if (type === 'share.stop') {
+        // An old capture can end after a different share has already taken its place.
+        if (command.expectedShareId && share?.id !== command.expectedShareId) return this.snapshotUnlocked(id)
         if (share && share.ownerId !== user.id && user.id !== lesson.teacherId) throw new ApiError('FORBIDDEN', '자신의 화면 공유만 중지할 수 있습니다.', 403)
         await writeShare(null)
         this.assistance.remove(id)
@@ -485,10 +489,11 @@ export class Lessons implements OnModuleInit, OnModuleDestroy {
     if (lesson) await this.locked(lesson.id, async () => {
       if (event.event === 'participant_joined' && event.participant) await this.applyParticipant(await this.get(lesson.id), event.participant)
       if (event.event === 'participant_left' && event.participant) await this.offline(lesson.id, event.participant.identity, event.participant.sid)
-      if (event.event === 'track_unpublished' && event.participant && event.track?.source === 3) {
+      if (event.event === 'track_unpublished' && event.participant && event.track?.source === TrackSource.SCREEN_SHARE) {
         const current = await this.get(lesson.id)
         const share = current.share as Share | null
-        if (share?.type === 'screen' && share.ownerId === event.participant.identity) await this.db.lesson.update({ where: { id: lesson.id }, data: { share: Prisma.DbNull } })
+        // Regular shares can republish on reconnect. Approved assistance keeps its immediate cleanup.
+        if (share?.type === 'screen' && share.assistanceId && share.ownerId === event.participant.identity) await this.db.lesson.update({ where: { id: lesson.id }, data: { share: Prisma.DbNull } })
       }
       await this.broadcast(lesson.id)
     })
@@ -501,9 +506,11 @@ export class Lessons implements OnModuleInit, OnModuleDestroy {
       await this.broadcast(session.lessonId)
     })
     const lessons = await this.db.lesson.findMany({ where: { status: { in: ['LIVE','SCHEDULED'] }, OR: [{ members: { some: { admissionId: { not: null } } } }, { share: { not: Prisma.DbNull } }] }, include: { members: true } })
+    const activeLessonIds = new Set(lessons.map(lesson => lesson.id))
+    for (const id of this.missingScreenShares.keys()) if (!activeLessonIds.has(id)) this.missingScreenShares.delete(id)
     for (const candidate of lessons) await this.locked(candidate.id, async () => {
       const lesson = await this.get(candidate.id)
-      let participants: any[]
+      let participants: Awaited<ReturnType<RoomServiceClient['listParticipants']>>
       try { participants = await this.livekit.listParticipants(lesson.roomName) } catch (error: any) { if (error.status !== 404 && error.code !== 'not_found') return; participants = [] }
       let changed = false
       for (const participant of participants) {
@@ -512,12 +519,24 @@ export class Lessons implements OnModuleInit, OnModuleDestroy {
       }
       for (const member of lesson.members) if (member.online && !participants.some(participant => participant.identity === member.userId)) { await this.offline(lesson.id, member.userId); changed = true }
       const share = lesson.share as Share | null
+      const screenMissing = share?.type === 'screen' && !share.assistanceId && !participants.some(participant =>
+        participant.identity === share.ownerId && participant.tracks.some(track => track.source === TrackSource.SCREEN_SHARE))
+      let screenExpired = false
+      if (screenMissing) {
+        const missing = this.missingScreenShares.get(lesson.id)
+        const now = Date.now()
+        if (missing?.shareId === share.id) screenExpired = now - missing.since >= screenShareRecoveryMs
+        else this.missingScreenShares.set(lesson.id, { shareId: share.id, since: now })
+      } else this.missingScreenShares.delete(lesson.id)
+
       if (share) {
-        if (share.assistanceId && this.assistance.current(lesson.id)?.id !== share.assistanceId) {
-          await this.db.lesson.update({ where: { id: lesson.id }, data: { share: Prisma.DbNull } }); changed = true
-        }
         const owner = await this.db.lessonMember.findUnique({ where: { lessonId_userId: { lessonId: lesson.id, userId: share.ownerId } } })
-        if (!owner?.online && owner?.disconnectedAt && Date.now() - owner.disconnectedAt.getTime() > 30000) { await this.db.lesson.update({ where: { id: lesson.id }, data: { share: Prisma.DbNull } }); changed = true }
+        const ownerExpired = !owner?.online && owner?.disconnectedAt && Date.now() - owner.disconnectedAt.getTime() > screenShareRecoveryMs
+        if (screenExpired || ownerExpired || share.assistanceId && this.assistance.current(lesson.id)?.id !== share.assistanceId) {
+          await this.db.lesson.update({ where: { id: lesson.id }, data: { share: Prisma.DbNull } })
+          this.missingScreenShares.delete(lesson.id)
+          changed = true
+        }
       }
       if (changed) await this.broadcast(lesson.id)
     })

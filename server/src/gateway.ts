@@ -10,7 +10,7 @@ import { socketFeatureClient } from './feature-policy'
 import type { AssistanceBinding, AssistanceCommandContext } from './assistance'
 import { SOCKET_EVENTS } from './generated/contracts'
 import type { CommandEnvelope, SubscribeInput, StrokePreview, AssistancePointer } from './generated/contracts'
-const commandSchema = z.object({ lessonId: z.string().uuid(), type: z.string().min(1).max(100), payload: z.any().default({}), requestId: z.string().max(100).optional() })
+const commandSchema = z.object({ lessonId: z.string().uuid(), type: z.string().min(1).max(100), payload: z.any().default({}), requestId: z.string().max(100).optional(), expectedShareId: z.string().uuid().optional() })
 export function socketError(error: any) {
   if (error instanceof ApiError) return error.getResponse()
   if (error instanceof ZodError) return { code: 'VALIDATION', message: error.issues[0]?.message || '입력값이 올바르지 않습니다.' }

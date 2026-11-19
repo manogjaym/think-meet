@@ -61,9 +61,7 @@ private val LocalLessonWidth = staticCompositionLocalOf { LayoutToken.PageMaxWid
     }
 }
 
-@Composable fun LessonDetail(state: AppUiState, controller: AppState, origin: String) {
-    val lesson = state.selected ?: return
-    if (state.route == Route.Created) { CreatedLesson(lesson, controller, origin); return }
+@Composable fun LessonDetail(lesson: Lesson, state: AppUiState, controller: AppState, origin: String) {
     var cancelling by remember(lesson.id) { mutableStateOf(false) }
     var copied by remember(lesson.id) { mutableStateOf(false) }
     val owner = lesson.teacher.id == state.user?.id
@@ -136,15 +134,15 @@ private val LocalLessonWidth = staticCompositionLocalOf { LayoutToken.PageMaxWid
                 val compactAside = width > LayoutToken.RootNavigationMobile && width <= LayoutToken.FormWide
                 val canEdit = owner && lesson.status == "SCHEDULED"
                 val primaryAction: @Composable (Modifier) -> Unit = { actionModifier ->
-                    DesignButton(if (lesson.canJoin) if (lesson.status == "SCHEDULED") "입장 준비" else "수업 참여" else "홈으로 돌아가기", { if (lesson.canJoin) controller.open(lesson, Route.Prejoin) else controller.home() }, actionModifier, enabled = !state.busy, icon = if (lesson.canJoin) ({ DesignIcon("video", Modifier.size(Space.S20), tint = Palette.White) }) else null)
+                    DesignButton(if (lesson.canJoin) if (lesson.status == "SCHEDULED") "입장 준비" else "수업 참여" else "홈으로 돌아가기", { if (lesson.canJoin) controller.prejoin(lesson) else controller.home() }, actionModifier, enabled = !state.busy, icon = if (lesson.canJoin) ({ DesignIcon("video", Modifier.size(Space.S20), tint = Palette.White) }) else null)
                 }
                 if (compactAside) Row(horizontalArrangement = Arrangement.spacedBy(Space.S18)) {
                     primaryAction(Modifier.weight(1f))
-                    if (canEdit) DesignButton("일정 수정", { controller.form(true) }, Modifier.weight(1f), enabled = !state.busy, secondary = true) else Spacer(Modifier.weight(1f))
+                    if (canEdit) DesignButton("일정 수정", { controller.edit(lesson) }, Modifier.weight(1f), enabled = !state.busy, secondary = true) else Spacer(Modifier.weight(1f))
                 } else primaryAction(Modifier.fillMaxWidth())
                 if (owner && lesson.status == "SCHEDULED") {
                     Spacer(Modifier.height(Space.S8))
-                    if (!compactAside) DesignButton("일정 수정", { controller.form(true) }, Modifier.fillMaxWidth(), enabled = !state.busy, secondary = true)
+                    if (!compactAside) DesignButton("일정 수정", { controller.edit(lesson) }, Modifier.fillMaxWidth(), enabled = !state.busy, secondary = true)
                     Row {
                         TextButton({ cancelling = true }, (if (compactAside) Modifier.weight(1f) else Modifier.fillMaxWidth()).heightIn(min = Space.S48), enabled = !state.busy) { LessonText("예정 수업 취소", color = Palette.DangerText, fontSize = Type.Label, fontWeight = DesignWeight.SemiBold) }
                         if (compactAside) Spacer(Modifier.weight(1f))
@@ -188,8 +186,7 @@ private val LocalLessonWidth = staticCompositionLocalOf { LayoutToken.PageMaxWid
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
-@Composable fun LessonForm(state: AppUiState, controller: AppState) {
-    val existing = state.selected
+@Composable fun LessonForm(state: AppUiState, controller: AppState, existing: Lesson?) {
     val initial = remember(existing?.id) { existing?.let { localDateTime(it.startsAt) } ?: (Clock.System.now() + 1.days).toLocalDateTime(Seoul).date.atTime(16, 0) }
     var title by remember(existing?.id) { mutableStateOf(existing?.title.orEmpty()) }
     var description by remember(existing?.id) { mutableStateOf(existing?.description.orEmpty()) }
@@ -322,9 +319,7 @@ private val LocalLessonWidth = staticCompositionLocalOf { LayoutToken.PageMaxWid
     }
 }
 
-@Composable fun PrejoinScreen(state: AppUiState, controller: AppState) {
-    val lesson = state.selected ?: return
-    val user = state.user ?: return
+@Composable fun PrejoinScreen(lesson: Lesson, user: User, state: AppUiState, controller: AppState) {
     val media = rememberMediaController()
     val mediaState by media.state.collectAsState()
     val scope = rememberCoroutineScope()
@@ -417,9 +412,7 @@ private val LocalLessonWidth = staticCompositionLocalOf { LayoutToken.PageMaxWid
     Row(horizontalArrangement = Arrangement.spacedBy(Space.S6), verticalAlignment = Alignment.CenterVertically) { DesignIcon(icon, Modifier.size(Space.S17), tint = Muted); LessonText(label, color = Muted, fontSize = Type.Support, fontWeight = DesignWeight.Medium) }
 }
 
-@Composable fun WaitingScreen(state: AppUiState, controller: AppState) {
-    val lesson = state.selected ?: return
-    val user = state.user ?: return
+@Composable fun WaitingScreen(lesson: Lesson, user: User, state: AppUiState, controller: AppState) {
     CenteredLessonCard(LayoutToken.WaitingCardMaxWidth, waiting = true) {
         Surface(Modifier.size(ComponentToken.WaitingIconSize), shape = CircleShape, color = Palette.Selection) { Box(contentAlignment = Alignment.Center) { DesignIcon("clock", Modifier.size(Space.S28), tint = Brand) } }
         Spacer(Modifier.height(Space.S24)); SmallBadge("입장 대기 중", selected = true); Spacer(Modifier.height(Space.S16))
@@ -427,12 +420,12 @@ private val LocalLessonWidth = staticCompositionLocalOf { LayoutToken.PageMaxWid
         LessonText("${lesson.title} · ${lesson.teacher.name} 선생님\n선생님이 수업을 시작할 때까지 잠시 기다려 주세요.", color = Muted, fontSize = Type.Body, lineHeight = Type.Body * 1.5f, textAlign = TextAlign.Center); Spacer(Modifier.height(Space.S32))
         Surface(Modifier.fillMaxWidth(), color = Palette.Canvas, shape = RoundedCornerShape(Corner.R8)) { Row(Modifier.padding(Space.S16), horizontalArrangement = Arrangement.spacedBy(Space.S12), verticalAlignment = Alignment.CenterVertically) { DesignAvatar(user.name, user.id, small = true); LessonText("${user.name} ${if (user.isTeacher) "선생님" else "학생"}으로 대기 중", color = Muted, fontSize = Type.Support, fontWeight = DesignWeight.Medium) } }
         Spacer(Modifier.height(Space.S24)); state.error?.let { ErrorCard(it); Spacer(Modifier.height(Space.S12)) }
-        DesignButton("카메라·마이크 확인하기", { controller.open(lesson, Route.Prejoin) }, Modifier.fillMaxWidth(), secondary = true, enabled = !state.busy)
+        DesignButton("카메라·마이크 확인하기", { controller.prejoin(lesson) }, Modifier.fillMaxWidth(), secondary = true, enabled = !state.busy)
         TextButton(controller::home, Modifier.fillMaxWidth().heightIn(min = Space.S48)) { LessonText("대기 나가기", color = Muted, fontSize = Type.Label, fontWeight = DesignWeight.SemiBold) }
     }
 }
 
-@Composable private fun CreatedLesson(lesson: Lesson, controller: AppState, origin: String) {
+@Composable fun CreatedLesson(lesson: Lesson, controller: AppState, origin: String) {
     var copied by remember(lesson.id) { mutableStateOf(false) }
     val link = "$origin/join/${lesson.code}"
     CenteredLessonCard {
@@ -464,9 +457,7 @@ fun attendanceText(lesson: Lesson, userId: String): String {
     val seconds = lesson.attendance.filter { it.userId == userId }.sumOf { runCatching { ((it.leftAt?.let(Instant::parse) ?: lesson.endedAt?.let(Instant::parse) ?: Clock.System.now()) - Instant.parse(it.joinedAt)).inWholeSeconds.coerceAtLeast(0) }.getOrDefault(0) }
     return if (seconds > 0) "${seconds / 60}분 ${seconds % 60}초 참여" else "참여 기록 없음"
 }
-@Composable fun EndedScreen(state: AppUiState, controller: AppState) {
-    val lesson = state.selected ?: return
-    val user = state.user ?: return
+@Composable fun EndedScreen(lesson: Lesson, user: User, state: AppUiState, controller: AppState) {
     val ended = lesson.status == "ENDED"
     val cancelled = lesson.status == "CANCELLED"
     CenteredLessonCard {
@@ -483,7 +474,7 @@ fun attendanceText(lesson: Lesson, userId: String): String {
         }
         state.error?.let { Spacer(Modifier.height(Space.S12)); ErrorCard(it) }
         Spacer(Modifier.height(Space.S24)); DesignButton("홈으로 돌아가기", controller::home, Modifier.fillMaxWidth())
-        if (lesson.canJoin) TextButton({ controller.open(lesson, Route.Prejoin) }, Modifier.fillMaxWidth().heightIn(min = Space.S48)) { LessonText("수업에 다시 참여", color = Muted, fontSize = Type.Label, fontWeight = DesignWeight.SemiBold) }
+        if (lesson.canJoin) TextButton({ controller.prejoin(lesson) }, Modifier.fillMaxWidth().heightIn(min = Space.S48)) { LessonText("수업에 다시 참여", color = Muted, fontSize = Type.Label, fontWeight = DesignWeight.SemiBold) }
     }
 }
 @Composable private fun SummaryRow(label: String, value: String) {

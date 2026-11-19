@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react"
-import { Track, type Participant, type Room, type VideoTrack } from "livekit-client"
+import { Track, type Room, type VideoTrack } from "livekit-client"
 import { getDocument, GlobalWorkerOptions, type PDFDocumentProxy } from "pdfjs-dist"
 import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url"
 import type { User } from "../../lib/api"
@@ -12,12 +12,13 @@ import designLayout from "../../generated/design-layout.json"
 import { designContent } from "../../generated/design-content"
 import { useFeature } from "../../lib/useFeature"
 import { activeAssistance, assistancePoint, geometryMatchesVideo, matchesAssistancePointer, REMOTE_POINTER_TTL_MS, type RemotePointer } from "../../lib/remoteAssistance"
+import { useParticipantTrack, useRoomParticipants } from "../../lib/livekitMedia"
 
 GlobalWorkerOptions.workerSrc = pdfWorker
 const colors = ["#1f2937", "#ef6461", "#f2b84b", "#4f9d76", "#4386d8", "#8b6bc1"]
 const pathFor = (points: Point[]) => points.map((point, index) => `${index ? "L" : "M"}${point.x * 1000},${point.y * 1000}`).join(" ")
-type Props = { user: User; snapshot: MeetingSnapshot; room: Room | null; command: Command; previews: Record<string, PreviewStroke>; sendPreview: (stroke: PreviewStroke) => void; remotePointer?: RemotePointer | null; sendAssistancePointer?: (x: number, y: number) => void; assistanceConnected?: boolean; onAssistanceReady?: (ready: boolean) => void; serverOffset: number; outputDevice: string; revision: number; onError: (message: string) => void }
-export function SharedStage({ user, snapshot, room, command, previews, sendPreview, remotePointer, sendAssistancePointer, assistanceConnected = false, onAssistanceReady, serverOffset, outputDevice, revision, onError }: Props) {
+type Props = { user: User; snapshot: MeetingSnapshot; room: Room | null; command: Command; previews: Record<string, PreviewStroke>; sendPreview: (stroke: PreviewStroke) => void; remotePointer?: RemotePointer | null; sendAssistancePointer?: (x: number, y: number) => void; assistanceConnected?: boolean; onAssistanceReady?: (ready: boolean) => void; serverOffset: number; outputDevice: string; onError: (message: string) => void }
+export function SharedStage({ user, snapshot, room, command, previews, sendPreview, remotePointer, sendAssistancePointer, assistanceConnected = false, onAssistanceReady, serverOffset, outputDevice, onError }: Props) {
   const share = snapshot.share!
   const [tool, setTool] = useState<"pen" | "highlighter" | "eraser">("pen")
   const [annotating, setAnnotating] = useState(false)
@@ -74,8 +75,9 @@ export function SharedStage({ user, snapshot, room, command, previews, sendPrevi
   }, [canPoint, geometryKey, stopPointing])
   const scale = Math.min(available.w / natural.w, available.h / natural.h) * (share.type === "document" ? zoom : 1)
   const width = Math.max(1, natural.w * scale), height = Math.max(1, natural.h * scale)
-  const owner = share.ownerId === user.id ? room?.localParticipant : room?.remoteParticipants.get(share.ownerId)
-  const screenTrack = owner?.getTrackPublication(Track.Source.ScreenShare)?.track as VideoTrack | undefined
+  const participants = useRoomParticipants(room)
+  const owner = share.type === "screen" ? participants.find(person => person.identity === share.ownerId) : undefined
+  const screenTrack = useParticipantTrack(owner, Track.Source.ScreenShare).track as VideoTrack | undefined
   const execute = async (type: string, payload?: Record<string, unknown>) => {
     setControlPending(true)
     try { await command(type, payload) } catch(e) { onError(friendlyError(e)) } finally { setControlPending(false) }
@@ -123,7 +125,7 @@ export function SharedStage({ user, snapshot, room, command, previews, sendPrevi
     screenTrack.attach(video)
     measureVideo(video)
     return () => { screenTrack.detach(video) }
-  }, [share.type, screenTrack, revision])
+  }, [share.type, screenTrack])
   useEffect(() => {
     if (share.type !== "document" || !share.materialId) return
     let cancelled = false
@@ -238,7 +240,7 @@ export function SharedStage({ user, snapshot, room, command, previews, sendPrevi
     ? Math.max(1, Math.min(4, Math.floor((participantWidth + 8) / 120)))
     : Math.max(1, Math.min(4, Math.floor((participantHeight - 40 - 52 + 12) / (participantTileHeight + 12))))
   const participantPages = useParticipantPagination(people.length, participantPageSize)
-  const personParticipant = (id: string): Participant | undefined => id === user.id ? room?.localParticipant : room?.remoteParticipants.get(id)
+  const personParticipant = (id: string) => participants.find(person => person.identity === id)
 
   return <div className="shared-stage">
     <div ref={contentRef} className="shared-content live-shared-content">
@@ -256,7 +258,7 @@ export function SharedStage({ user, snapshot, room, command, previews, sendPrevi
       </div>
     </div>
     <div ref={areaRef} className="shared-participant-gallery">
-      <div id="shared-participant-tiles" className="shared-participants" style={{ "--shared-tile-height": `${participantTileHeight}px` } as CSSProperties}><div className="shared-participants-title"><Icon name="users" size={14} />{canControl ? `참여자 ${people.length}명` : "선생님"}</div>{people.slice(participantPages.start, participantPages.end).map(({ user: person, raised }) => { const participant = personParticipant(person.id); return <VideoTile key={person.id} person={person.name} teacher={person.id === snapshot.lesson.teacher.id} participant={participant} small self={person.id === user.id} muted={!participant?.isMicrophoneEnabled} cameraOn={participant?.isCameraEnabled} hand={raised} speaking={participant?.isSpeaking} /> })}{!people.length && <div className="shared-participants-empty"><Icon name="users" size={18} />입장 대기 중</div>}</div>
+      <div id="shared-participant-tiles" className="shared-participants" style={{ "--shared-tile-height": `${participantTileHeight}px` } as CSSProperties}><div className="shared-participants-title"><Icon name="users" size={14} />{canControl ? `참여자 ${people.length}명` : "선생님"}</div>{people.slice(participantPages.start, participantPages.end).map(({ user: person, raised }) => { const participant = personParticipant(person.id); return <VideoTile key={person.id} person={person.name} teacher={person.id === snapshot.lesson.teacher.id} participant={participant} small self={person.id === user.id} hand={raised} /> })}{!people.length && <div className="shared-participants-empty"><Icon name="users" size={18} />입장 대기 중</div>}</div>
       <ParticipantPagination page={participantPages.page} pageCount={participantPages.pageCount} start={participantPages.start} end={participantPages.end} total={people.length} onPageChange={participantPages.setPage} compact controlsId="shared-participant-tiles" />
     </div>
     {share.type === "document" && <div className="document-controls"><button aria-label="PDF 축소" onClick={() => setZoom(value => Math.max(.5, value - .25))}>− 축소</button><span>{Math.round(zoom * 100)}%</span><button aria-label="PDF 확대" onClick={() => setZoom(value => Math.min(4, value + .25))}>＋ 확대</button><button onClick={() => setZoom(1)}>화면에 맞추기</button><button aria-label="PDF 이전 페이지" disabled={!canControl || share.page <= 1 || controlPending} onClick={() => void execute("document.page", { page: share.page - 1 })}>이전</button><span>{share.page} / {pages}쪽</span><button aria-label="PDF 다음 페이지" disabled={!canControl || share.page >= pages || controlPending} onClick={() => void execute("document.page", { page: share.page + 1 })}>다음</button></div>}

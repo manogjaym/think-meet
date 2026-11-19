@@ -39,6 +39,7 @@ private class IosPictureInPictureController : PictureInPictureController {
     }
 
     override fun close() {
+        if (closed) return
         closed = true
         if (IosPlatform.pictureInPictureOwner === this) native.closePictureInPicture()
     }

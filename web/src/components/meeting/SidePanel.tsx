@@ -1,6 +1,6 @@
 import { designContent } from "../../generated/design-content"
 import { useEffect, useRef, useState } from "react"
-import { Room, Track, createAudioAnalyser, supportsAudioOutputSelection, type LocalAudioTrack } from "livekit-client"
+import { Track, createAudioAnalyser, supportsAudioOutputSelection, type LocalAudioTrack, type Participant, type Room } from "livekit-client"
 import { api, colorFor, joinLink, type ApiLesson, type User } from "../../lib/api"
 import { API_BASE_PATH } from "../../generated/contracts"
 import { capabilityHeaders, requireHttpFeature } from "../../lib/features"
@@ -10,9 +10,10 @@ import { Avatar, Confirm, Icon } from "../ui"
 import { AnimatedPresence } from "../AnimatedPresence"
 import { useFeature } from "../../lib/useFeature"
 import { currentAssistance } from "../../lib/remoteAssistance"
+import { useMediaStreamTrack, useParticipantTrack, useRoomParticipants } from "../../lib/livekitMedia"
 
-type PanelProps = { panel: Panel; setPanel: (panel: Panel) => void; user: User; lesson: ApiLesson; room: Room | null; snapshot: MeetingSnapshot | null; command: Command; onOutputChange: (id: string) => void; revision: number; unreadChatCount?: number }
-export function SidePanel({ panel, setPanel, user, lesson, room, snapshot, command, onOutputChange, revision, unreadChatCount = 0 }: PanelProps) {
+type PanelProps = { panel: Panel; setPanel: (panel: Panel) => void; user: User; lesson: ApiLesson; room: Room | null; snapshot: MeetingSnapshot | null; command: Command; onOutputChange: (id: string) => void; unreadChatCount?: number }
+export function SidePanel({ panel, setPanel, user, lesson, room, snapshot, command, onOutputChange, unreadChatCount = 0 }: PanelProps) {
   const isHost = lesson.teacher.id === user.id
   const remoteAssistanceEnabled = useFeature("meeting.remote-assistance")
   const [requestingAssistance, setRequestingAssistance] = useState(false)
@@ -40,8 +41,10 @@ export function SidePanel({ panel, setPanel, user, lesson, room, snapshot, comma
   const messages = snapshot?.messages || []
   const title = { people: designContent.meetingPeoplePanel, more: "더보기", chat: designContent.meetingChatPanel, invite: isOpen ? "참여 링크 공유" : "다른 참석자 추가", settings: "설정", content: "콘텐츠 공유" }[panel || "more"]
   const roster = snapshot?.participants || [lesson.teacher, ...lesson.students].map(person => ({ user: person, online: false, raised: false }))
-  const online = roster.filter(person => room?.localParticipant.identity === person.user.id || room?.remoteParticipants.has(person.user.id))
-  const offline = roster.filter(person => !online.some(connected => connected.user.id === person.user.id))
+  const participants = useRoomParticipants(panel === "people" || panel === "chat" ? room : null)
+  const connected = new Map(participants.map(person => [person.identity, person]))
+  const online = roster.filter(person => connected.has(person.user.id))
+  const offline = roster.filter(person => !connected.has(person.user.id))
   useEffect(() => { setSearch(""); setError(""); setNotice("") }, [panel])
   useEffect(() => { endMessages.current?.scrollIntoView({ block: "end", behavior: "smooth" }) }, [messages.length, panel])
   useEffect(() => {
@@ -102,14 +105,14 @@ export function SidePanel({ panel, setPanel, user, lesson, room, snapshot, comma
   }
   const participantRow = (entry: typeof roster[number], joined: boolean) => {
     const person = entry.user
-    const participant = person.id === user.id ? room?.localParticipant : room?.remoteParticipants.get(person.id)
+    const participant = connected.get(person.id)
     return <div className="person-row" key={person.id}>
       <Avatar name={person.name} color={colorFor(person.id)} small />
       <div><strong>{person.name}{person.id === user.id ? " (나)" : ""}</strong><span>{person.id === lesson.teacher.id ? "선생님 · 호스트" : `${person.role === "teacher" ? "선생님" : "학생"} · ${joined ? "참여 중" : "아직 입장하지 않음"}`}</span>
         {isHost && joined && person.role === "student" && remoteAssistanceEnabled && <button className="assistance-request" aria-label={`${person.name} ${designContent.remoteAssistRequest}`} disabled={assistanceRequestBlocked} onClick={() => requestAssistance(person.id)}><Icon name="screen" size={17} />{designContent.remoteAssistRequest}</button>}
       </div>
       {entry.raised && <span className="raised" aria-label="손들기"><Icon name="hand" size={16} /></span>}
-      {joined && <div className="participant-devices"><span className={`device-state ${participant?.isMicrophoneEnabled ? "" : "off"}`} title={participant?.isMicrophoneEnabled ? "마이크 켜짐" : "음소거"}><Icon name={participant?.isMicrophoneEnabled ? "mic" : "micOff"} size={15} /></span><span className={`device-state ${participant?.isCameraEnabled ? "" : "off"}`}><Icon name={participant?.isCameraEnabled ? "video" : "videoOff"} size={15} /></span></div>}
+      {joined && <ParticipantDevices participant={participant} />}
       {isHost && person.id !== lesson.teacher.id && <button aria-label={`${person.name} 퇴장`} onClick={() => setKick(person)}><Icon name="more" size={20} /></button>}
     </div>
   }
@@ -132,29 +135,39 @@ export function SidePanel({ panel, setPanel, user, lesson, room, snapshot, comma
         </>}
         <button className="copy-link" onClick={() => void run(() => navigator.clipboard.writeText(joinLink(lesson)), "참여 링크를 복사했어요.")}><Icon name="copy" size={17} />참여 링크 복사</button><p className="content-note">{joinLink(lesson)}</p>
       </div>}
-      {panel === "settings" && <Settings room={room} revision={revision} onError={setError} onOutputChange={onOutputChange} />}
+      {panel === "settings" && <Settings room={room} onError={setError} onOutputChange={onOutputChange} />}
       {panel === "content" && isHost && <div className="panel-body content-body"><div className="tabs"><button className={contentTab === "media" ? "active" : ""} onClick={() => setContentTab("media")}>미디어</button><button className={contentTab === "document" ? "active" : ""} onClick={() => setContentTab("document")}>문서</button></div><input ref={fileInput} type="file" hidden accept={contentTab === "media" ? ".mp4,video/mp4" : ".pdf,application/pdf"} onChange={e => { const file = e.target.files?.[0]; if (file) uploadFile(file); e.target.value = "" }} /><button className="upload" disabled={Boolean(upload)} onClick={() => fileInput.current?.click()}><Icon name="plus" />{contentTab === "media" ? "미디어 파일 업로드" : "문서 파일 업로드"}</button>{upload && <div className="upload-progress"><div><strong>{upload.name}</strong><button onClick={cancelUpload}>취소</button></div><span><i style={{ width: `${upload.progress}%` }} /></span><small>{upload.progress >= 99 ? "파일을 확인하는 중" : `업로드 중 · ${upload.progress}%`}</small></div>}{failedFile && <button className="upload" onClick={() => uploadFile(failedFile)}>업로드 다시 시도</button>}<p className="panel-label">내 파일</p>{materials.filter(material => material.type === contentTab).map(material => <div className={`content-item ${snapshot?.share?.materialId === material.id ? "active" : ""}`} key={material.id}><div className="file-thumb"><Icon name={material.type === "media" ? "video" : "file"} /></div><button className="content-share" onClick={() => void run(async () => { await command("share.start", { type: material.type, materialId: material.id }); setPanel(null) })}><strong>{material.name}</strong><span>{material.type === "media" ? `${formatDuration(material.duration || 0)} · MP4` : `${material.pages || ""}페이지 · PDF`} · {(material.size / 1024 / 1024).toFixed(1)}MiB</span></button><button className="content-delete" disabled={snapshot?.share?.materialId === material.id} title={snapshot?.share?.materialId === material.id ? "공유를 중지한 후 삭제할 수 있어요." : "파일 삭제"} aria-label={`${material.name} 삭제`} onClick={() => void run(async () => { await api(`/materials/${material.id}`, { method: "DELETE" }); setMaterials(current => current.filter(item => item.id !== material.id)) }, "파일을 삭제했어요.")}><Icon name="trash" size={17} /></button></div>)}{!materials.some(material => material.type === contentTab) && <p className="chat-notice">업로드한 자료가 없어요.</p>}<div className="content-note"><Icon name="alert" size={17} /><span>새 자료 또는 화면을 공유하면 기존 공유가 전환됩니다. PDF 50MiB, MP4 500MiB까지 지원합니다.</span></div></div>}
     </div>
     <AnimatedPresence show={Boolean(kick)}><Confirm title={`${kick?.name || "참여자"} 님을 퇴장시킬까요?`} copy="이 참여자는 이 수업에 다시 입장할 수 없습니다." cancel={() => setKick(null)} confirm={() => { if (kick) void run(() => api(`/lessons/${lesson.id}/kick`, { method: "POST", body: JSON.stringify({ userId: kick.id }) }), "참여자를 퇴장시켰어요."); setKick(null) }} confirmText="퇴장시키기" /></AnimatedPresence>
   </aside>
 }
 
-function Settings({ room, revision, onError, onOutputChange }: { room: Room | null; revision: number; onError: (message: string) => void; onOutputChange: (id: string) => void }) {
+function ParticipantDevices({ participant }: { participant: Participant | undefined }) {
+  const mic = useParticipantTrack(participant, Track.Source.Microphone).enabled
+  const camera = useParticipantTrack(participant, Track.Source.Camera).enabled
+  return <div className="participant-devices"><span className={`device-state ${mic ? "" : "off"}`} title={mic ? "마이크 켜짐" : "음소거"}><Icon name={mic ? "mic" : "micOff"} size={15} /></span><span className={`device-state ${camera ? "" : "off"}`}><Icon name={camera ? "video" : "videoOff"} size={15} /></span></div>
+}
+
+function Settings({ room, onError, onOutputChange }: { room: Room | null; onError: (message: string) => void; onOutputChange: (id: string) => void }) {
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
   const [preferences, setPreferences] = useState(readDevicePreferences)
   const [level, setLevel] = useState(0)
   const [applied, setApplied] = useState(false)
   const video = useRef<HTMLVideoElement>(null)
-  const camera = room?.localParticipant.getTrackPublication(Track.Source.Camera)?.track
-  const mic = room?.localParticipant.getTrackPublication(Track.Source.Microphone)?.track as LocalAudioTrack | undefined
+  const cameraState = useParticipantTrack(room?.localParticipant, Track.Source.Camera)
+  const micState = useParticipantTrack(room?.localParticipant, Track.Source.Microphone)
+  const camera = cameraState.enabled ? cameraState.track : undefined
+  const mic = micState.track as LocalAudioTrack | undefined
+  const activeMic = micState.enabled ? mic : undefined
+  const micStream = useMediaStreamTrack(activeMic)
   useEffect(() => { const refresh = () => { void navigator.mediaDevices?.enumerateDevices().then(setDevices).catch(e => onError(friendlyError(e))) }; refresh(); navigator.mediaDevices?.addEventListener("devicechange", refresh); return () => navigator.mediaDevices?.removeEventListener("devicechange", refresh) }, [onError])
-  useEffect(() => { const element = video.current; if (!camera || !element) return; camera.attach(element); return () => { camera.detach(element) } }, [camera, revision])
+  useEffect(() => { const element = video.current; if (!camera || !element) return; camera.attach(element); return () => { camera.detach(element) } }, [camera])
   useEffect(() => {
-    if (!mic || mic.isMuted) { setLevel(0); return }
-    const analyser = createAudioAnalyser(mic)
+    if (!activeMic || !micStream) { setLevel(0); return }
+    const analyser = createAudioAnalyser(activeMic)
     const interval = window.setInterval(() => setLevel(Math.min(100, analyser.calculateVolume() * 250)), 100)
     return () => { window.clearInterval(interval); void analyser.cleanup() }
-  }, [mic, revision])
+  }, [activeMic, micStream])
   const change = async (key: "cameraId" | "microphoneId" | "speakerId" | "noise", value: string | boolean) => {
     if (!room) return
     try {

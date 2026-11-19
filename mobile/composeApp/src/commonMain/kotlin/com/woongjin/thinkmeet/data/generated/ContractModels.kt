@@ -214,6 +214,8 @@ data class CommandEnvelope(
     val payload: JsonObject = JsonObject(emptyMap()),
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     val requestId: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val expectedShareId: String? = null,
 )
 
 @Serializable

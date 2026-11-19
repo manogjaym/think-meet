@@ -1,0 +1,19 @@
+{
+  "id": "web-meeting-media-subscriptions",
+  "summary": "웹 LiveKit의 일괄 갱신을 사용처별 상태 구독으로 바꾸고, 참가자 입퇴장과 발화자 변경 중에 카메라 미리보기와 마이크 입력 레벨 측정을 유지합니다.",
+  "scope": "platform-only",
+  "featureIds": ["classroom.core"],
+  "platforms": {
+    "server": {"status": "unchanged", "reason": "웹의 LiveKit 상태 구독만 바꾸며 기존 미디어·수업 계약을 사용합니다."},
+    "web": {"status": "implemented"},
+    "android": {"status": "unchanged", "reason": "사용자가 웹 LiveKit 구독으로 범위를 한정했습니다."},
+    "ios": {"status": "unchanged", "reason": "사용자가 웹 LiveKit 구독으로 범위를 한정했습니다."}
+  },
+  "verification": [
+    "2026-11-19 Asia/Seoul. 저장소 루트에서 npm run shared:check 및 이번 변경 파일 목록을 지정한 npm run shared:check -- --changed-files <변경 파일 목록>, git diff --check 통과.",
+    "web/에서 npm run design:check, npm run contracts:check, npm run typecheck, npm run test:features 5개, npm run build 통과.",
+    "web/에서 임시 Docker 서버 HTTPS 주소를 BASE_URL에 지정하고 Chromium으로 npm run test:e2e -- e2e/meeting-device-subscriptions.spec.ts e2e/devices.spec.ts 실행. 로컬 LiveKit과 Chromium 가상 기기로 2개 통과. 참가자 입퇴장과 발화 시작·종료 때 카메라 미리보기 재연결 및 마이크 측정기 재생성이 0회였고 측정은 계속됐습니다. 카메라·마이크 켜기/끄기와 노이즈 캔슬링 변경으로 실제 장치 상태를 바꿨을 때는 미리보기와 레벨 측정이 각각 갱신됐습니다.",
+    "동일한 장치 구독 테스트는 수정 전 HEAD의 웹 빌드에서 참가자 입장 직후 실패했습니다. 카메라 미리보기 스트림 설정·해제 횟수는 1회에서 7회로, 마이크 측정기 생성 횟수는 1회에서 4회로 증가했습니다.",
+    "web/에서 로컬 Vite 주소를 PAGINATION_BASE_URL, CHAT_BASE_URL, ASSISTANCE_BASE_URL에 지정하고 npm run test:e2e -- e2e/meeting-pagination.spec.ts e2e/chat-notifications.spec.ts e2e/remote-assistance.spec.ts 실행. Chromium 테스트 24개 통과. 다른 브라우저와 물리 장치는 검증 범위에 포함하지 않았습니다."
+  ]
+}

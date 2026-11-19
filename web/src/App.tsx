@@ -10,6 +10,7 @@ import {
 import { BrowserRouter, useLocation, useNavigate } from "react-router-dom"
 import { createAppSocket, requestSocket } from "./lib/socket"
 import { useCapabilityRefresh } from "./lib/useFeature"
+import { useLessonDirectory } from "./lib/useLessonDirectory"
 import type { CommandAck, MeetingSnapshot } from "./generated/contracts"
 import { SOCKET_EVENTS as Events } from "./generated/contracts"
 import { createWaitingAdmission } from "./lib/waitingAdmission"
@@ -25,7 +26,6 @@ import {
   displayLesson,
   type ApiLesson,
   type JoinResult,
-  type User,
 } from "./lib/api"
 import { initialJoinDevices, type JoinDevices } from "./screens/Join"
 import type { ExceptionType } from "./screens/End"
@@ -118,11 +118,12 @@ function Application() {
       : parts[0] === "error"
         ? "exception"
         : "home"
-  const [lessons, setLessons] = useState<ApiLesson[]>([])
-  const [students, setStudents] = useState<User[]>([])
+  const { lessons, students, loading, error, refresh } = useLessonDirectory(
+    user,
+    screen !== "meeting" && screen !== "waiting",
+    auth.retry,
+  )
   const [selected, setSelected] = useState<ApiLesson | null>(null)
-  const [loading, setLoading] = useState(true),
-    [error, setError] = useState("")
   const [detailLoading, setDetailLoading] = useState(false),
     [detailError, setDetailError] = useState<unknown>(null)
   const [homeView, setHomeView] = useState<HomeView>({
@@ -136,55 +137,6 @@ function Application() {
     previousLocation = useRef(location.pathname),
     scrollPositions = useRef<Record<string, number>>({})
   const [motion, setMotion] = useState<ScreenMotion>("none")
-  const refresh = useCallback(async () => {
-    if (!user) return
-    try {
-      const [rows, roster] = await Promise.all([
-        api<ApiLesson[]>("/lessons"),
-        user.role === "teacher"
-          ? api<User[]>("/students")
-          : Promise.resolve([]),
-      ])
-      setLessons(rows)
-      setStudents(roster)
-      setError("")
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "수업을 불러오지 못했어요.")
-      if (e instanceof ApiError && e.status === 401) auth.retry()
-    } finally {
-      setLoading(false)
-    }
-  }, [user?.id, user?.role])
-  useEffect(() => {
-    if (!user) {
-      setLessons([])
-      setStudents([])
-      setSelected(null)
-      return
-    }
-    setLoading(true)
-    void refresh()
-    const timer = setInterval(() => void refresh(), 15000)
-    const focus = () => void refresh()
-    window.addEventListener("focus", focus)
-    return () => {
-      clearInterval(timer)
-      window.removeEventListener("focus", focus)
-    }
-  }, [refresh, user?.id])
-  useEffect(() => {
-    if (!user || screen === "meeting" || screen === "waiting") return
-    const socket = createAppSocket()
-    let pending: ReturnType<typeof setTimeout> | undefined
-    socket.on(Events.LessonsChanged, () => {
-      clearTimeout(pending)
-      pending = setTimeout(() => void refresh(), 500)
-    })
-    return () => {
-      clearTimeout(pending)
-      socket.disconnect()
-    }
-  }, [user?.id, screen, refresh])
   useEffect(() => {
     if (auth.loading || auth.error) return
     if (!user && parts[0] !== "login") {

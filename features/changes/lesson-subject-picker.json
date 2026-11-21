@@ -1,0 +1,18 @@
+{
+  "id": "lesson-subject-picker",
+  "summary": "과목 카드 팝업과 과목별 최근 완료 수업을 추가합니다.",
+  "scope": "shared",
+  "featureIds": ["classroom.subjects"],
+  "platforms": {
+    "server": {"status": "implemented"},
+    "web": {"status": "implemented"},
+    "android": {"status": "implemented"},
+    "ios": {"status": "implemented"}
+  },
+  "verification": [
+    "npm run shared:check, npm run verify 및 종료 기록 API 검증 통과",
+    "Chromium 과목 팝업·수업 시작·종료 기록 검증 2건 통과",
+    "웹·Android 휴대폰과 태블릿 폭에서 같은 수업 기록 확인",
+    "Android 핵심 테스트·APK와 iOS 시뮬레이터 앱 빌드 통과. iOS 팝업 실행 미검증"
+  ]
+}

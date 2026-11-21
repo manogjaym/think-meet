@@ -481,6 +481,8 @@ function Application() {
       <Form
         key="new"
         students={students}
+        lessons={lessons}
+        teacherId={user.id}
         setScreen={setScreen}
         onCreated={(item) => {
           setSelected(item)
@@ -524,6 +526,8 @@ function Application() {
       <Form
         key={lesson.id}
         students={students}
+        lessons={lessons}
+        teacherId={user.id}
         lesson={lesson}
         setScreen={(next) =>
           next === "home" ? navigate(`/lessons/${lesson.id}`) : setScreen(next)

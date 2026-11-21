@@ -5,7 +5,7 @@ data class ContractHttpOperation(val id: String, val method: String, val path: S
 data class ContractFeature(val id: String, val stage: String, val requiresRevision: Int, val defaultEnabled: Boolean, val platforms: Set<String>)
 
 object ContractProtocol {
-    const val Revision = 11
+    const val Revision = 12
     const val ApiBasePath = "/api/v1"
     const val SocketPath = "/socket.io"
     const val PlatformHeader = "X-ThinkMeet-Platform"

@@ -2,6 +2,9 @@ import type { Lesson } from "./Home"
 import type { Role, Screen } from "../models"
 import type { User } from "../lib/api"
 import { Badge, Icon } from "../components/ui"
+import { designContent } from "../generated/design-content"
+import { lessonRecordStart } from "../lib/lessonRecord"
+import { useFeature } from "../lib/useFeature"
 const timeFormat = new Intl.DateTimeFormat("ko-KR", {
   timeZone: "Asia/Seoul",
   hour: "numeric",
@@ -19,11 +22,13 @@ export function Ended({
   user: User
 }) {
   const ended = lesson.status === "ENDED"
+  const subjectsEnabled = useFeature("classroom.subjects")
   const intervals = lesson.attendance?.filter(item => item.userId === user.id) || []
   const personalStart = intervals.length ? new Date(Math.min(...intervals.map(item=>Date.parse(item.joinedAt)))) : null
   const localFinish = sessionStorage.getItem(`think-meet.left.${lesson.id}`)
   const fallbackFinish = lesson.endedAt || localFinish || new Date().toISOString()
-  const start = role === "student" ? personalStart : lesson.startedAt ? new Date(lesson.startedAt) : null
+  const startedAt = subjectsEnabled && lesson.subject ? lessonRecordStart(lesson) : lesson.startedAt
+  const start = role === "student" ? personalStart : startedAt ? new Date(startedAt) : null
   const finish = role === "student" && intervals.length ? new Date(Math.max(...intervals.map(item=>Date.parse(item.leftAt || fallbackFinish)))) : new Date(fallbackFinish)
   const duration = role === "student" ? intervals.reduce((total,item)=>total+Math.max(0,Date.parse(item.leftAt || fallbackFinish)-Date.parse(item.joinedAt)),0) : start ? finish.getTime()-start.getTime() : 0
   const elapsed = start ? `${timeFormat.format(start)} – ${timeFormat.format(finish)} · ${Math.max(0,Math.round(duration/60000))}분` : role === "student" ? "참여 기록이 없어요" : "수업이 시작되지 않았어요"
@@ -49,6 +54,10 @@ export function Ended({
             <small>학습 제목</small>
             <strong>{lesson.title}</strong>
           </div>
+          {subjectsEnabled && lesson.subject && <div>
+            <small>{designContent.lessonSubjectLabel}</small>
+            <strong>{lesson.subject.name}</strong>
+          </div>}
           <div>
             <small>{role === "student" ? "내 참여 시간" : ended ? "실제 진행 시간" : "현재까지 진행 시간"}</small>
             <strong>{elapsed}</strong>

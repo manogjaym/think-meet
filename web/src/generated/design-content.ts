@@ -18,6 +18,11 @@ export const designContent = {
   "rootBookingTab": "수업 예약",
   "lessonSubjectLabel": "과목",
   "lessonSubjectOptional": "과목 (선택)",
+  "lessonSubjectPickerTitle": "과목 선택",
+  "lessonSubjectPickerClose": "닫기",
+  "lessonSubjectRecord": "최근 수업 기록",
+  "lessonSubjectRecordEmpty": "완료된 수업 기록이 없어요.",
+  "lessonSubjectActualTime": "실제 진행 시간",
   "lessonSubjectNone": "선택 안 함",
   "lessonSubjectsLoading": "과목을 불러오는 중이에요.",
   "lessonSubjectsEmpty": "등록된 과목이 없어요.",
@@ -193,6 +198,7 @@ export const screenContract = {
     "sections": [
       "hierarchical-appbar",
       "lesson-or-form-card-with-optional-subject",
+      "subject-picker-dialog-with-latest-completed-lesson",
       "roster-or-invitation",
       "primary-action",
       "teacher-worksheet-list"
@@ -223,7 +229,7 @@ export const screenContract = {
     "web": "web/src/screens/Meeting.tsx",
     "native": "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/meeting/MeetingScreen.kt",
     "sections": [
-      "dark-header",
+      "dark-header-with-optional-lesson-subject",
       "owner-lesson-mode-actions",
       "mirroring-student-dialog",
       "gallery-or-shared-stage",

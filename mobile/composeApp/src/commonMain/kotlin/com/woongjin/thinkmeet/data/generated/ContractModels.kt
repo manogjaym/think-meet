@@ -48,6 +48,8 @@ data class Lesson(
     val teacher: User,
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     val subject: TeacherSubject? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val instruction: LessonInstruction? = null,
     val students: List<User> = emptyList(),
     val startsAt: String,
     val endsAt: String? = null,

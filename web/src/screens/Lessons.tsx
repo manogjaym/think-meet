@@ -3,6 +3,8 @@ import { useEffect, useState } from "react"
 import type { LessonInput, TeacherSubject } from "../generated/contracts"
 import { designContent } from "../generated/design-content"
 import { useFeature } from "../lib/useFeature"
+import { completedLessonTime } from "../lib/lessonRecord"
+import { LessonSubjectDialog } from "../components/LessonSubjectDialog"
 import {
   api,
   colorFor,
@@ -60,6 +62,7 @@ export function Detail({
   const isUpcoming = lesson.state === "예정"
   const isOpen = lesson.accessMode === "OPEN"
   const canJoin = isLive || isUpcoming
+  const actualTime = subjectsEnabled && lesson.subject ? completedLessonTime(lesson) : undefined
   const participants = lesson.students.map((student) => ({
     ...student,
     color: colorFor(student.id),
@@ -112,6 +115,7 @@ export function Detail({
             {subjectsEnabled && lesson.subject && (
               <Info icon="file" label={designContent.lessonSubjectLabel} value={lesson.subject.name} />
             )}
+            {actualTime && <Info icon="clock" label={designContent.lessonSubjectActualTime} value={actualTime} />}
           </div>
           {isOpen && (
             <div className="detail-access-note">
@@ -312,11 +316,15 @@ export function Form({
   onCreated,
   lesson,
   students,
+  lessons,
+  teacherId,
 }: {
   setScreen: (s: Screen) => void
   onCreated?: (lesson: Lesson) => void
   lesson?: Lesson
   students: User[]
+  lessons: ApiLesson[]
+  teacherId: string
 }) {
   const details = lesson
   const subjectsEnabled = useFeature("classroom.subjects")
@@ -324,13 +332,11 @@ export function Form({
   const [subjectsFailed, setSubjectsFailed] = useState(false)
   const [subjectRetry, setSubjectRetry] = useState(0)
   const [subjectChange, setSubjectChange] = useState<string | null>()
+  const [subjectPickerOpen, setSubjectPickerOpen] = useState(false)
   const savedSubjectId = lesson?.subject?.id ?? null
   const selectedSubjectId = subjectChange === undefined ? savedSubjectId : subjectChange
-  const subjectsMessage = subjectsFailed
-    ? designContent.lessonSubjectsError
-    : subjects === null
-      ? designContent.lessonSubjectsLoading
-      : subjects.length === 0 ? designContent.lessonSubjectsEmpty : null
+  const selectedSubjectName = subjects?.find(subject => subject.id === selectedSubjectId)?.name
+    ?? (selectedSubjectId === savedSubjectId ? lesson?.subject?.name : undefined)
   useEffect(() => {
     if (!subjectsEnabled) return
     const request = new AbortController()
@@ -478,28 +484,23 @@ export function Form({
             </label>
             {subjectsEnabled && (
               <div className="field min-w-0">
-                <label htmlFor="lesson-subject">{designContent.lessonSubjectOptional}</label>
-                <select
-                  id="lesson-subject"
-                  value={selectedSubjectId ?? ""}
-                  disabled={saving || subjects === null || (subjects.length === 0 && selectedSubjectId === null)}
-                  aria-describedby={subjectsMessage ? "lesson-subject-status" : undefined}
-                  onChange={(event) => {
-                    const next = event.target.value || null
-                    setSubjectChange(next === savedSubjectId ? undefined : next)
-                  }}
-                >
-                  <option value="">{designContent.lessonSubjectNone}</option>
-                  {lesson?.subject && !subjects?.some(({ id }) => id === lesson.subject?.id) && (
-                    <option value={lesson.subject.id}>{lesson.subject.name}</option>
-                  )}
-                  {subjects?.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
-                </select>
-                {subjectsMessage && <p id="lesson-subject-status" role="status" className="text-[var(--muted)]">{subjectsMessage}</p>}
-                {subjectsFailed && (
-                  <button type="button" className="link-button" onClick={() => setSubjectRetry((attempt) => attempt + 1)}>
-                    {designContent.lessonSubjectsRetry}
-                  </button>
+                <span>{designContent.lessonSubjectOptional}</span>
+                <button type="button" className="secondary lesson-subject-trigger"
+                  aria-label={designContent.lessonSubjectPickerTitle}
+                  aria-describedby={selectedSubjectName ? "selected-lesson-subject" : undefined}
+                  aria-haspopup="dialog" aria-expanded={subjectPickerOpen} disabled={saving}
+                  onClick={() => setSubjectPickerOpen(true)}>
+                  <span id="selected-lesson-subject">{selectedSubjectName ?? designContent.lessonSubjectPickerTitle}</span>
+                  <Icon name="chevron" size={16} />
+                </button>
+                {subjectPickerOpen && (
+                  <LessonSubjectDialog subjects={subjects} selectedId={selectedSubjectId} failed={subjectsFailed}
+                    lessons={lessons} teacherId={teacherId} onRetry={() => setSubjectRetry(attempt => attempt + 1)}
+                    onClose={() => setSubjectPickerOpen(false)}
+                    onSelect={id => {
+                      setSubjectChange(id === savedSubjectId ? undefined : id)
+                      setSubjectPickerOpen(false)
+                    }} />
                 )}
               </div>
             )}

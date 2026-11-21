@@ -78,6 +78,23 @@ test('teacher subjects are private and lesson changes preserve compatibility', a
     assert.equal(cleared.status, 200)
     assert.equal((await api(path, owner)).body.subject, undefined)
     assert.equal((await database.lesson.findUnique({ where: { id: created.body.id } })).subjectId, null)
+
+    const recorded = await create({ subjectId: math.id })
+    assert.equal(recorded.status, 201)
+    const instructionStartedAt = new Date(Date.now() - 10 * 60_000)
+    await database.lesson.update({ where: { id: recorded.body.id }, data: {
+      status: 'LIVE', startedAt: new Date(Date.now() - 20 * 60_000),
+      instructionPhase: 'classroom', instructionStartedAt,
+    } })
+    const ended = await api(`/lessons/${recorded.body.id}/end`, { ...owner, method: 'POST' })
+    assert.equal(ended.status, 201)
+    assert.equal(ended.body.status, 'ENDED')
+    assert.deepEqual(ended.body.subject, math)
+    assert.equal(ended.body.instruction.startedAt, instructionStartedAt.toISOString())
+    const history = (await api('/lessons', owner)).body.find(item => item.id === recorded.body.id)
+    assert.equal(history.endedAt, ended.body.endedAt)
+    assert.deepEqual(history.subject, math)
+    assert.deepEqual(history.instruction, ended.body.instruction)
   } finally {
     try {
       await database.lesson.deleteMany({ where: { teacherId: { in: userIds } } })

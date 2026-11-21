@@ -1,4 +1,47 @@
 .form-page .form-grid { align-items: start; }
+.lesson-subject-trigger { justify-content: space-between; min-width: 0; }
+.lesson-subject-trigger span { overflow: hidden; text-overflow: ellipsis; }
+.lesson-subject-trigger svg { flex-shrink: 0; color: var(--muted); transform: rotate(90deg); }
+.lesson-subject-dialog {
+  width: min(calc(100% - 2 * var(--tm-spacing-s20)), var(--tm-layout-prejoin-wide));
+  max-height: calc(100dvh - 2 * var(--tm-spacing-s20));
+  margin: auto;
+  overflow: auto;
+  overscroll-behavior: contain;
+  color: var(--text-secondary);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--card-radius);
+}
+.lesson-subject-dialog::backdrop { background: color-mix(in srgb, var(--tm-color-ink) 55%, transparent); }
+.lesson-subject-dialog-content { display: grid; gap: var(--space-3); padding: var(--tm-spacing-s20); }
+.lesson-subject-dialog-header { display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); }
+.lesson-subject-dialog-header h2 { font-size: var(--type-dialog); line-height: var(--line-dialog); font-weight: var(--weight-bold); }
+.lesson-subject-close { display: grid; place-items: center; min-width: var(--tm-spacing-s48); min-height: var(--tm-spacing-s48); border-radius: var(--tm-radius-r8); }
+.lesson-subject-close:hover { background: var(--surface-3); }
+.lesson-subject-grid { display: grid; gap: var(--space-3); }
+.lesson-subject-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  text-align: start;
+  border: 1px solid var(--line);
+  border-radius: var(--card-radius);
+}
+.lesson-subject-card:hover { border-color: var(--line-input); }
+.lesson-subject-card[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-subdued); }
+.lesson-subject-card-title { display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); font-size: var(--type-heading); line-height: var(--line-heading); overflow-wrap: anywhere; }
+.lesson-subject-card-title svg { flex-shrink: 0; color: var(--accent); }
+.lesson-subject-record { display: grid; flex: 1; gap: var(--space-1); padding: var(--space-3); background: var(--surface-3); border-radius: var(--tm-radius-r8); font-size: var(--type-support); color: var(--muted); overflow-wrap: anywhere; }
+.lesson-subject-record strong { color: var(--text-secondary); }
+.lesson-subject-status { color: var(--muted); }
+.lesson-subject-status button { margin-top: var(--space-2); }
+.lesson-subject-dialog footer { display: flex; justify-content: flex-end; }
+@media (min-width: design(layout.dashboardCompact + 1)) {
+  .lesson-subject-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 .participation-heading { margin-bottom: 22px; }
 .participation-heading h2 { margin-bottom: 6px; }
 .participation-heading p { color: var(--muted); font-size: var(--type-support); }

@@ -18,6 +18,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.TextUnit
@@ -92,6 +93,7 @@ internal val LocalLessonWidth = staticCompositionLocalOf { LayoutToken.PageMaxWi
                     add(Triple(if (lesson.isOpen) "globe" else "lock", "참여 방식", if (lesson.isOpen) "누구나 참여 가능" else "선택한 학생만 참여"))
                     if (capabilities.supports(ContractProtocol.FeatureIds.ClassroomSubjects)) lesson.subject?.let {
                         add(Triple("file", DesignContent.LessonSubjectLabel, it.name))
+                        completedLessonTime(lesson)?.let { time -> add(Triple("clock", DesignContent.LessonSubjectActualTime, time)) }
                     }
                 }
                 Column(verticalArrangement = Arrangement.spacedBy(Space.S24)) {
@@ -259,7 +261,8 @@ internal val LocalLessonWidth = staticCompositionLocalOf { LayoutToken.PageMaxWi
                 DesignTextField(title, { title = it.take(200) }, Modifier.fillMaxWidth(), label = "학습 제목 *", placeholder = "예: 분수의 덧셈과 뺄셈", isError = validation != null && title.isBlank())
                 Spacer(Modifier.height(Space.S24))
                 if (subjectsEnabled) {
-                    LessonSubjectField(controller.api, subject, !state.busy) { subject = it }
+                    LessonSubjectField(controller.api, subject, !state.busy, state.lessons, state.user?.id,
+                        wide = width > LayoutToken.DashboardCompact) { subject = it }
                     Spacer(Modifier.height(Space.S24))
                 }
                 DesignTextField(description, { description = it.take(5000) }, Modifier.fillMaxWidth(), label = "학습 내용", placeholder = "함께 배울 내용을 간단히 적어 주세요.", singleLine = false, minLines = 3)
@@ -343,13 +346,15 @@ internal val LocalLessonWidth = staticCompositionLocalOf { LayoutToken.PageMaxWi
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun LessonSubjectField(api: ThinkMeetApi, selected: TeacherSubject?, enabled: Boolean, onSelect: (TeacherSubject?) -> Unit) {
+private fun LessonSubjectField(
+    api: ThinkMeetApi, selected: TeacherSubject?, enabled: Boolean, lessons: List<Lesson>, teacherId: String?,
+    wide: Boolean, onSelect: (TeacherSubject?) -> Unit,
+) {
     var subjects by remember(api) { mutableStateOf<List<TeacherSubject>?>(null) }
     var failed by remember(api) { mutableStateOf(false) }
     var retry by remember(api) { mutableIntStateOf(0) }
-    var expanded by remember { mutableStateOf(false) }
+    var open by remember { mutableStateOf(false) }
     LaunchedEffect(api, retry) {
         failed = false
         try {
@@ -361,7 +366,6 @@ private fun LessonSubjectField(api: ThinkMeetApi, selected: TeacherSubject?, ena
         }
     }
     val rows = subjects
-    val canSelect = enabled && rows != null && (rows.isNotEmpty() || selected != null)
     val message = when {
         failed -> DesignContent.LessonSubjectsError
         rows == null -> DesignContent.LessonSubjectsLoading
@@ -370,34 +374,67 @@ private fun LessonSubjectField(api: ThinkMeetApi, selected: TeacherSubject?, ena
     }
     Column(verticalArrangement = Arrangement.spacedBy(Space.S8)) {
         LessonText(DesignContent.LessonSubjectOptional, color = Palette.TextSecondary, fontSize = Type.Support, fontWeight = DesignWeight.Medium)
-        ExposedDropdownMenuBox(expanded = canSelect && expanded, onExpandedChange = { expanded = it && canSelect }) {
-            Surface(
-                modifier = Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, enabled = canSelect)
-                    .semantics { contentDescription = DesignContent.LessonSubjectOptional }
-                    .alpha(if (canSelect) 1f else .45f),
-                color = Palette.White,
-                shape = RoundedCornerShape(ComponentToken.InputRadius),
-                border = BorderStroke(Space.S1, Palette.LineInput),
+        Surface(
+            onClick = { open = true },
+            modifier = Modifier.fillMaxWidth().alpha(if (enabled) 1f else .45f)
+                .semantics { contentDescription = DesignContent.LessonSubjectPickerTitle },
+            enabled = enabled,
+            color = Palette.White,
+            shape = RoundedCornerShape(ComponentToken.ButtonRadius),
+            border = BorderStroke(Space.S1, Palette.Line),
+        ) {
+            Row(
+                Modifier.heightIn(min = ComponentToken.ButtonHeight).padding(horizontal = ComponentToken.ButtonPaddingX),
+                horizontalArrangement = Arrangement.spacedBy(Space.S8), verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(
-                    Modifier.heightIn(min = ComponentToken.InputHeight).padding(horizontal = ComponentToken.InputPadding),
-                    horizontalArrangement = Arrangement.spacedBy(Space.S8),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(selected?.name ?: DesignContent.LessonSubjectNone, Modifier.weight(1f), maxLines = 1,
-                        overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
-                    DesignIcon("chevron", Modifier.size(Space.S16).rotate(90f), tint = Muted)
-                }
-            }
-            ExposedDropdownMenu(expanded = canSelect && expanded, onDismissRequest = { expanded = false }) {
-                DropdownMenuItem(text = { Text(DesignContent.LessonSubjectNone) }, onClick = { onSelect(null); expanded = false })
-                rows.orEmpty().forEach { subject ->
-                    DropdownMenuItem(text = { Text(subject.name) }, onClick = { onSelect(subject); expanded = false })
-                }
+                Text(selected?.name ?: DesignContent.LessonSubjectPickerTitle, Modifier.weight(1f), maxLines = 1,
+                    overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelLarge)
+                DesignIcon("chevron", Modifier.size(Space.S16).rotate(90f), tint = Muted)
             }
         }
-        message?.let { LessonText(it, color = Muted, fontSize = Type.Support) }
-        if (failed) TextButton(onClick = { retry++ }, enabled = enabled) { Text(DesignContent.LessonSubjectsRetry) }
+    }
+    if (open) {
+        val records = remember(lessons, teacherId) {
+            lessons.asSequence().filter { it.teacher.id == teacherId && it.subject != null }
+                .mapNotNull { lesson -> completedLessonTime(lesson)?.let { Triple(lesson, it, lesson.endedAt) } }
+                .sortedByDescending { it.third }.distinctBy { it.first.subject?.id }
+                .associate { it.first.subject?.id to (it.first.title to it.second) }
+        }
+        NoteDialog(DesignContent.LessonSubjectPickerTitle, onClose = { open = false }) {
+            if (message != null) LessonText(message, color = Muted, fontSize = Type.Support)
+            if (failed) DesignButton(DesignContent.LessonSubjectsRetry, { retry++ }, secondary = true)
+            rows.orEmpty().chunked(if (wide) 2 else 1).forEach { row ->
+                Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(Space.S12)) {
+                    row.forEach { subject ->
+                        val isSelected = selected?.id == subject.id
+                        Surface(onClick = { onSelect(subject); open = false },
+                            modifier = Modifier.weight(1f).fillMaxHeight().semantics { this.selected = isSelected },
+                            color = if (isSelected) Palette.Selection else Palette.White,
+                            shape = RoundedCornerShape(ComponentToken.CardRadius),
+                            border = BorderStroke(Space.S1, if (isSelected) Brand else Palette.Line)) {
+                            Column(Modifier.padding(Space.S16), verticalArrangement = Arrangement.spacedBy(Space.S12)) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.S8)) {
+                                    LessonText(subject.name, Modifier.weight(1f), fontSize = Type.Heading, fontWeight = DesignWeight.Bold)
+                                    if (isSelected) DesignIcon("check", Modifier.size(Space.S18), tint = Brand)
+                                }
+                                Column(Modifier.fillMaxWidth().background(Palette.Canvas, RoundedCornerShape(Corner.R8)).padding(Space.S12),
+                                    verticalArrangement = Arrangement.spacedBy(Space.S4)) {
+                                    LessonText(DesignContent.LessonSubjectRecord, color = Muted, fontSize = Type.Support)
+                                    val record = records[subject.id]
+                                    if (record == null) LessonText(DesignContent.LessonSubjectRecordEmpty, color = Muted, fontSize = Type.Support)
+                                    else {
+                                        LessonText(record.first, fontSize = Type.Support, fontWeight = DesignWeight.Bold)
+                                        LessonText(record.second, color = Muted, fontSize = Type.Support)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (wide && row.size == 1) Spacer(Modifier.weight(1f))
+                }
+            }
+            if (rows != null) DesignButton(DesignContent.LessonSubjectNone, { onSelect(null); open = false }, Modifier.align(Alignment.End), secondary = true)
+        }
     }
 }
 
@@ -565,6 +602,8 @@ fun attendanceText(lesson: Lesson, userId: String): String {
 @Composable fun EndedScreen(lesson: Lesson, user: User, state: AppUiState, controller: AppState) {
     val ended = lesson.status == "ENDED"
     val cancelled = lesson.status == "CANCELLED"
+    val capabilities = controller.capabilities.collectAsState().value
+    val subject = lesson.subject.takeIf { capabilities.supports(ContractProtocol.FeatureIds.ClassroomSubjects) }
     CenteredLessonCard {
         Surface(Modifier.size(Space.S48), color = Palette.Canvas, shape = CircleShape) { Box(contentAlignment = Alignment.Center) { DesignIcon("phone", Modifier.size(Space.S30), tint = Muted) } }
         Spacer(Modifier.height(Space.S24)); SmallBadge(if (cancelled) "수업 취소" else if (ended) "수업 종료 완료" else "수업에서 나감"); Spacer(Modifier.height(Space.S16))
@@ -573,7 +612,8 @@ fun attendanceText(lesson: Lesson, userId: String): String {
         Surface(Modifier.fillMaxWidth(), color = Palette.Canvas, shape = RoundedCornerShape(Corner.R8)) {
             Column(Modifier.padding(horizontal = Space.S20, vertical = Space.S2)) {
                 SummaryRow("학습 제목", lesson.title); HorizontalDivider(color = Palette.Line)
-                SummaryRow(if (!user.isTeacher) "내 참여 시간" else if (ended) "실제 진행 시간" else "현재까지 진행 시간", elapsedLesson(lesson, user)); HorizontalDivider(color = Palette.Line)
+                subject?.let { SummaryRow(DesignContent.LessonSubjectLabel, it.name); HorizontalDivider(color = Palette.Line) }
+                SummaryRow(if (!user.isTeacher) "내 참여 시간" else if (ended) DesignContent.LessonSubjectActualTime else "현재까지 진행 시간", elapsedLesson(lesson, user, subject != null)); HorizontalDivider(color = Palette.Line)
                 Row(Modifier.fillMaxWidth().padding(vertical = Space.S14), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.S16)) { LessonText("종료 상태", Modifier.weight(1f), fontSize = Type.Support, color = Muted); SmallBadge(if (cancelled) "취소" else if (ended) "정상 종료" else "개인 퇴장") }
             }
         }
@@ -602,10 +642,26 @@ internal fun lessonStartLabel(value: String) = "${lessonDay(value)} ${koreanTime
 private fun koreanTime(value: String): String = localDateTime(value)?.let { "${if (it.hour >= 12) "오후" else "오전"} ${(it.hour % 12).takeIf { hour -> hour != 0 } ?: 12}:${it.minute.toString().padStart(2, '0')}" } ?: value
 private fun lessonDuration(lesson: Lesson): String = lesson.endsAt?.let { end -> runCatching { "${((Instant.parse(end) - Instant.parse(lesson.startsAt)).inWholeSeconds / 60.0).roundToLong()}분" }.getOrNull() } ?: "종료 시간 없음"
 private fun lessonTimeRange(lesson: Lesson): String = "${koreanTime(lesson.startsAt)}${lesson.endsAt?.let { " – ${koreanTime(it)}" }.orEmpty()} · ${lessonDuration(lesson)}"
-private fun elapsedLesson(lesson: Lesson, user: User): String {
+private fun lessonRecordStart(lesson: Lesson): String? =
+    if (lesson.instruction != null) lesson.instruction.startedAt else lesson.startedAt
+private fun completedLessonTime(lesson: Lesson): String? {
+    if (lesson.status != "ENDED") return null
+    val start = lessonRecordStart(lesson)?.let { runCatching { Instant.parse(it) }.getOrNull() } ?: return null
+    val end = lesson.endedAt?.let { runCatching { Instant.parse(it) }.getOrNull() } ?: return null
+    if (end < start) return null
+    val startLocal = start.toLocalDateTime(Seoul)
+    val endLocal = end.toLocalDateTime(Seoul)
+    val finish = if (startLocal.date == endLocal.date) clockText(endLocal) else "${endLocal.date} ${clockText(endLocal)}"
+    return "${startLocal.date} ${clockText(startLocal)} – $finish · ${((end - start).inWholeMilliseconds / 60_000.0).roundToLong()}분"
+}
+private fun elapsedLesson(lesson: Lesson, user: User, bySubject: Boolean): String {
     val intervals = lesson.attendance.filter { it.userId == user.id }
     val personal = !user.isTeacher
-    val start = if (personal) intervals.minByOrNull { it.joinedAt }?.joinedAt else lesson.startedAt
+    val start = when {
+        personal -> intervals.minByOrNull { it.joinedAt }?.joinedAt
+        bySubject -> lessonRecordStart(lesson)
+        else -> lesson.startedAt
+    }
     if (start == null) return if (personal) "참여 기록이 없어요" else "수업이 시작되지 않았어요"
     val fallbackFinish = lesson.endedAt ?: Clock.System.now().toString()
     val finish = if (personal) intervals.maxOfOrNull { it.leftAt ?: fallbackFinish } ?: fallbackFinish else fallbackFinish

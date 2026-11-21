@@ -6,7 +6,7 @@ export const OPENAPI_DOCUMENT = {
     "version": "1.0.0",
     "description": "Canonical REST schemas shared by NestJS, React and KMP. Socket.IO is defined in realtime.json."
   },
-  "x-contract-revision": 11,
+  "x-contract-revision": 12,
   "servers": [
     {
       "url": "/api/v1"
@@ -1942,6 +1942,9 @@ export const OPENAPI_DOCUMENT = {
           },
           "subject": {
             "$ref": "#/components/schemas/TeacherSubject"
+          },
+          "instruction": {
+            "$ref": "#/components/schemas/LessonInstruction"
           },
           "students": {
             "type": "array",

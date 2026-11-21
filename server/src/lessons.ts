@@ -7,6 +7,7 @@ import { z } from 'zod'
 import { Database, publicUser } from './auth'
 import { ApiError } from './errors'
 import type { PublicUser, Share, Command } from './types'
+import type { LessonInstruction } from './generated/contracts'
 import { AssistanceSessions, assistanceGeometrySchema, type AssistanceBinding, type AssistanceCommandContext } from './assistance'
 const ids = z.array(z.string().uuid()).min(1).max(100)
 const screenShareRecoveryMs = 30_000
@@ -128,9 +129,13 @@ export class Lessons implements OnModuleInit, OnModuleDestroy {
     const users = await this.db.user.findMany({ where: { id: { in: [lesson.teacherId, ...members.map((m: any) => m.userId)] } } })
     const teacher = users.find(user => user.id === lesson.teacherId)!
     const attendance = await this.db.attendance.findMany({ where: { lessonId: lesson.id }, orderBy: { joinedAt: 'asc' } })
+    const instruction: LessonInstruction | undefined = lesson.instructionPhase
+      ? { phase: lesson.instructionPhase, startedAt: lesson.instructionStartedAt?.toISOString() ?? null }
+      : undefined
     return {
       id: lesson.id, title: lesson.title, description: lesson.description, accessMode: lesson.accessMode || 'INVITE_ONLY', teacher: publicUser(teacher),
       ...(lesson.subject ? { subject: lesson.subject } : {}),
+      ...(instruction && { instruction }),
       students: users.filter(user => user.id !== lesson.teacherId).map(publicUser),
       startsAt: lesson.startsAt.toISOString(), endsAt: lesson.endsAt?.toISOString() || null, status: lesson.status, code: lesson.code,
       startedAt: lesson.startedAt?.toISOString() || null, endedAt: lesson.endedAt?.toISOString() || null,
@@ -358,9 +363,10 @@ export class Lessons implements OnModuleInit, OnModuleDestroy {
     const messages = await this.db.message.findMany({ where: { lessonId: id }, orderBy: { createdAt: 'desc' }, take: 100 })
     const share = lesson.share as Share | null
     const strokes = share ? await this.db.stroke.findMany({ where: { lessonId: id, shareId: share.id }, orderBy: { createdAt: 'asc' } }) : []
+    const details = await this.dto(lesson)
     return {
-      lessonId: id, lesson: await this.dto(lesson), seq: lesson.seq, serverTime: new Date().toISOString(),
-      ...(lesson.instructionPhase && { instruction: { phase: lesson.instructionPhase, startedAt: lesson.instructionStartedAt?.toISOString() ?? null } }),
+      lessonId: id, lesson: details, seq: lesson.seq, serverTime: new Date().toISOString(),
+      ...(details.instruction && { instruction: details.instruction }),
       participants: lesson.members.filter(member => !member.banned).map(member => ({ user: publicUser(users.find(user => user.id === member.userId)!), online: member.online, raised: member.raised })),
       messages: messages.reverse().map(({ lessonId, ...message }) => message), share, assistance: this.assistance.publicState(id),
       strokes: strokes.map(({ id, authorId, shareId, page, tool, color, points, deleted }) => ({ id, authorId, shareId, page, tool, color, points, deleted })),

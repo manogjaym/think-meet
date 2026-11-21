@@ -1,5 +1,5 @@
 // Generated from contracts/openapi.json and realtime.json. Do not edit.
-export const CONTRACT_REVISION = 11 as const;
+export const CONTRACT_REVISION = 12 as const;
 export const API_BASE_PATH = "/api/v1" as const;
 export const SOCKET_PATH = "/socket.io" as const;
 export const SOCKET_EVENTS = {
@@ -19,7 +19,7 @@ export type User = { id: string; username: string; name: string; role: Role };
 export type LessonParticipant = { userId: string; joinedAt: string };
 export type Attendance = { userId: string; joinedAt: string; leftAt: (string) | null };
 export type TeacherSubject = { id: string; name: string };
-export type Lesson = { id: string; title: string; description: string; accessMode?: LessonAccessMode; teacher: User; subject?: TeacherSubject; students: Array<User>; startsAt: string; endsAt: (string) | null; status: "SCHEDULED" | "LIVE" | "ENDED" | "CANCELLED"; code: string; startedAt: (string) | null; endedAt: (string) | null; participants?: Array<LessonParticipant>; attendance?: Array<Attendance> };
+export type Lesson = { id: string; title: string; description: string; accessMode?: LessonAccessMode; teacher: User; subject?: TeacherSubject; instruction?: LessonInstruction; students: Array<User>; startsAt: string; endsAt: (string) | null; status: "SCHEDULED" | "LIVE" | "ENDED" | "CANCELLED"; code: string; startedAt: (string) | null; endedAt: (string) | null; participants?: Array<LessonParticipant>; attendance?: Array<Attendance> };
 export type LessonInput = { title: string; subjectId?: (string) | null; description?: string; startsAt: string; endsAt: (string) | null; accessMode?: LessonAccessMode; studentIds?: Array<string> };
 export type JoinResult = { waiting: boolean; lesson: Lesson; token?: string; livekitUrl?: string; admissionId?: string };
 export type Material = { id: string; name: string; type: "media" | "document"; size: number; duration?: (number) | null; pages?: (number) | null; createdAt: string };

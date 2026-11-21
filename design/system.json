@@ -27,9 +27,12 @@
     "lessonSubjectsRetry": "다시 불러오기",
     "meetingEnter": "화상미팅 입장",
     "meetingWaitForTeacher": "선생님이 화상미팅에 입장할 때까지 잠시 기다려 주세요.",
-    "meetingLessonStart": "수업 시작",
     "meetingLessonClassroom": "수업방 모드",
     "meetingLessonMirroring": "미러링 모드",
+    "meetingMirroringStudentTitle": "공유를 요청할 학생 선택",
+    "meetingMirroringNoStudents": "현재 연결된 학생이 없어요.",
+    "meetingMirroringRequest": "공유 요청",
+    "meetingMirroringRequestInProgress": "진행 중인 학생 화면 보기나 요청을 종료한 뒤 다시 요청해 주세요.",
     "meetingLessonSwitchTitle": "수업 모드를 바꿀까요?",
     "meetingLessonSwitchCopy": "진행 중인 공유 또는 화면 보기 요청을 종료하고 모드를 바꿔요.",
     "meetingLessonSwitchAction": "종료하고 전환",
@@ -222,7 +225,8 @@
       "native": "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/meeting/MeetingScreen.kt",
       "sections": [
         "dark-header",
-        "owner-lesson-start-or-mode-controls",
+        "owner-lesson-mode-actions",
+        "mirroring-student-dialog",
         "gallery-or-shared-stage",
         "shared-frame-capture",
         "white-side-panel",
@@ -258,7 +262,7 @@
           "pointer-pulse",
           "stop-and-cleanup"
         ],
-        "interaction": "수업 선생님이 Android 학생에게 요청하고 학생이 승인합니다. 웹은 더보기 → 학생 화면 보기 또는 참석자 패널에서 학생별 화면 보기 요청 버튼을 사용합니다. 기존 공유·승인 대기·캡처 준비·안내 진행 중에는 새 요청을 막습니다. OS 권한과 전체 화면 캡처가 성공한 세션만 PiP로 전환하며, 선생님이 영상을 누르면 학생의 원래 화면 위에 점을 표시합니다. 웹에서는 마우스를 누른 채 이동하면 포인터가 따라오고, 정지해도 누르는 동안 표시를 유지합니다. 놓으면 전송을 중단하며 마지막 좌표 수신 후 1.5초 뒤 숨깁니다.",
+        "interaction": "수업 선생님이 미러링 모드의 학생 선택 모달에서 Android 학생을 선택해 공유를 요청하고 학생이 승인합니다. 기존 방식의 방은 참석자 패널에서 요청합니다. 기존 공유·승인 대기·캡처 준비·안내 진행 중에는 새 요청을 막습니다. OS 권한과 전체 화면 캡처가 성공한 세션만 PiP로 전환하며, 선생님이 영상을 누르면 학생의 원래 화면 위에 점을 표시합니다. 웹에서는 마우스를 누른 채 이동하면 포인터가 따라오고, 정지해도 누르는 동안 표시를 유지합니다. 놓으면 전송을 중단하며 마지막 좌표 수신 후 1.5초 뒤 숨깁니다.",
         "scope": "선생님 웹·Android·iOS 지원. 학생 수신은 Android만 지원하며 보호 앱·시스템 UI는 오버레이 표시를 제한할 수 있습니다.",
         "tokens": [
           "component.remotePointerSize",

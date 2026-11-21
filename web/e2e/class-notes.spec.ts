@@ -40,7 +40,10 @@ async function enter(page: Page, id: string, teacher = false) {
   await page.goto(`/lessons/${id}/prejoin`)
   await page.getByRole("button", { name: teacher ? "화상미팅 입장" : "지금 참여하기", exact: true }).click()
   await expect(page.locator(".call-connected")).toHaveText("연결됨")
-  if (teacher) await page.getByRole("button", { name: "수업 시작", exact: true }).click()
+  if (teacher) {
+    await page.getByRole("button", { name: "수업방 모드", exact: true }).click()
+    await page.getByRole("dialog", { name: "화면 공유", exact: true }).getByRole("button", { name: "취소", exact: true }).click()
+  }
 }
 
 async function drawRedStroke(page: Page) {
@@ -154,7 +157,7 @@ test("class notes round trip preserves the submission target and capture privacy
     await enter(teacherPage, lesson.id, true)
     await enter(studentPage, lesson.id)
     expect((await target(student.request)).id).toBe(lesson.id)
-    await teacherPage.getByRole("button", { name: "화면 공유", exact: true }).click()
+    await teacherPage.getByRole("button", { name: "수업방 모드", exact: true }).click()
     await teacherPage.getByRole("button", { name: "화면 공유하기", exact: true }).click()
     await expect(studentPage.getByTestId("shared-screen")).toBeVisible()
     await drawRedStroke(studentPage)

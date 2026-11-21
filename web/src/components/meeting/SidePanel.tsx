@@ -18,7 +18,7 @@ export function SidePanel({ panel, activePanel, setPanel, user, lesson, room, sn
   const isHost = lesson.teacher.id === user.id
   const assistanceSupported = useFeature("meeting.remote-assistance")
   const phase = snapshot?.instruction?.phase
-  const remoteAssistanceEnabled = assistanceSupported && (phase === undefined || phase === "mirroring")
+  const remoteAssistanceEnabled = assistanceSupported && phase === undefined
   const showMaterials = isHost && (phase === undefined || phase === "classroom")
   const [requestingAssistance, setRequestingAssistance] = useState(false)
   const assistanceRequestPending = useRef(false)

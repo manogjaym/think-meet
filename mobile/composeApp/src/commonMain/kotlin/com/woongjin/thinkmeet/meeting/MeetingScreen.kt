@@ -21,6 +21,8 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -30,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -98,6 +101,7 @@ fun MeetingScreen(
         snapshot?.participants?.any { it.user.id == user.id && it.online } == true
     var modeConfirm by remember { mutableStateOf<LessonModeSetPayload?>(null) }
     var modeBusy by remember { mutableStateOf(false) }
+    var showMirroringStudents by remember { mutableStateOf(false) }
     val notesEnabled = capabilities.supports("classroom.notes") && (owner || user.role == "student")
     var capturePreview by remember { mutableStateOf<CapturePreview?>(null) }
     var captureBusy by remember { mutableStateOf(false) }
@@ -155,31 +159,49 @@ fun MeetingScreen(
     fun execute(block: suspend () -> Unit) { scope.launch { try { block() } catch (e: Throwable) { report(e) } } }
     val command: (String, JsonObject) -> Unit = { type, payload -> execute { realtime.command(type, payload) } }
 
-    fun updateInstruction(change: LessonModeSetPayload? = null) {
+    fun openMode(mode: String) {
+        panel = null
+        if (mode == "mirroring") showMirroringStudents = true
+        else if (ownScreen == null || phase != "classroom") screenShare.startCapture()
+    }
+
+    fun updateInstruction(mode: String, change: LessonModeSetPayload? = null) {
         if (!modeReady || modeBusy) return
         modeBusy = true
         execute {
             try {
-                val updated = if (change == null) realtime.command("lesson.start")
+                var updated = if (change == null) realtime.command("lesson.start")
                 else realtime.command("lesson.mode.set", ThinkMeetJson.encodeToJsonElement(change).jsonObject)
-                if (change?.mode == "mirroring" && updated.instruction?.phase == "mirroring") panel = Panel.People
+                if (change == null && mode == "mirroring" && updated.instruction?.phase == "classroom") {
+                    val initialMirroring = LessonModeSetPayload(mode, "classroom", null, null)
+                    updated = realtime.command("lesson.mode.set", ThinkMeetJson.encodeToJsonElement(initialMirroring).jsonObject)
+                }
+                if (updated.instruction?.phase == mode) openMode(mode)
             } finally { modeBusy = false }
         }
     }
 
     fun selectMode(mode: String) {
-        if (phase != "classroom" && phase != "mirroring") return
+        if (!modeReady || modeBusy) return
         if (phase == mode) {
-            if (mode == "mirroring") panel = Panel.People
+            openMode(mode)
             return
         }
+        if (phase == "preparing") {
+            updateInstruction(mode)
+            return
+        }
+        if (phase != "classroom" && phase != "mirroring") return
         val change = LessonModeSetPayload(mode, phase, snapshot.share?.id, assistance?.id)
         if (change.expectedShareId != null || change.expectedAssistanceId != null) modeConfirm = change
-        else updateInstruction(change)
+        else updateInstruction(mode, change)
     }
 
     LaunchedEffect(showMaterials, panel) {
         if (!showMaterials && panel == Panel.Materials) panel = null
+    }
+    LaunchedEffect(phase) {
+        if (phase != "mirroring") showMirroringStudents = false
     }
 
     DisposableEffect(session) {
@@ -237,10 +259,11 @@ fun MeetingScreen(
             CompositionLocalProvider(LocalMeetingCompact provides compact, LocalMeetingViewportWidth provides maxWidth, LocalMeetingShort provides (maxHeight <= LayoutToken.MeetingShortHeight && !compact)) {
             Column(Modifier.fillMaxSize()) {
                 MeetingHeader(currentLesson, mediaState, socketConnected, snapshot?.serverTime, grid, compact, windowWidth,
-                    instructionPhase = phase, instructionStartedAt = snapshot?.instruction?.startedAt, onLayout = { grid = !grid })
+                    instructionPhase = phase, instructionStartedAt = snapshot?.instruction?.startedAt,
+                    subjectName = currentLesson.subject?.name.takeIf { capabilities.supports(ContractProtocol.FeatureIds.ClassroomSubjects) },
+                    onLayout = { grid = !grid })
                 if (owner && lessonModes && phase != null && !compactSystemPip) {
-                    MeetingLessonModes(phase, modeReady && !modeBusy && !busy, assistanceEnabled,
-                        onStart = { updateInstruction() }, onMode = ::selectMode)
+                    MeetingLessonModes(phase, modeReady && !modeBusy && !busy, assistanceEnabled, onMode = ::selectMode)
                 }
                 if (assistanceEnabled && assistance != null && (owner || assistance.studentId == user.id)) {
                     RemoteAssistanceControls(assistance, user, remoteState.supported && pipState.supported, assistanceBusy,
@@ -302,8 +325,8 @@ fun MeetingScreen(
                     sharing = ownScreen != null || mediaState.screenCaptureId != 0L || (assistance?.studentId == user.id && mediaState.screenSharing),
                     raised = snapshot?.participants?.find { it.user.id == user.id }?.raised == true,
                     count = mediaState.participants.size.coerceAtLeast(1), panel = panel, unread = unread, busy = busy,
-                    showShare = canShare || ownScreen != null || mediaState.screenCaptureId != 0L ||
-                        (assistance?.studentId == user.id && mediaState.screenSharing), showMaterials = showMaterials,
+                    showShare = phase == null && (canShare || ownScreen != null || mediaState.screenCaptureId != 0L ||
+                        (assistance?.studentId == user.id && mediaState.screenSharing)), showMaterials = showMaterials,
                     onMicrophone = { execute { media.setMicrophone(!mediaState.microphone) } },
                     onCamera = { execute { media.setCamera(!mediaState.camera) } },
                     onHand = { command("hand.set", buildJsonObject { put("raised", snapshot?.participants?.find { it.user.id == user.id }?.raised != true) }) },
@@ -362,9 +385,26 @@ fun MeetingScreen(
                 text = { Text(DesignContent.MeetingLessonSwitchCopy) },
                 confirmButton = { TextButton(enabled = modeReady && !modeBusy, onClick = {
                     modeConfirm = null
-                    updateInstruction(change)
+                    updateInstruction(change.mode, change)
                 }) { Text(DesignContent.MeetingLessonSwitchAction) } },
                 dismissButton = { TextButton(onClick = { modeConfirm = null }) { Text("취소") } })
+        }
+    }
+    if (showMirroringStudents && owner && phase == "mirroring" && !compactSystemPip) {
+        MeetingLightTheme {
+            MirroringStudentDialog(
+                students = snapshot.participants.filter { it.online && it.user.role == "student" && it.user.id != user.id }.map { it.user },
+                connected = modeReady,
+                blocked = when {
+                    assistance != null -> DesignContent.MeetingMirroringRequestInProgress
+                    snapshot.share != null -> DesignContent.RemoteAssistStopShareFirst
+                    else -> null
+                },
+                onClose = { showMirroringStudents = false },
+                onRequest = { studentId ->
+                    realtime.command("assistance.request", ThinkMeetJson.encodeToJsonElement(AssistanceRequestPayload(studentId)).jsonObject)
+                },
+            )
         }
     }
     if (confirmLeave && !compactSystemPip) AlertDialog(
@@ -712,13 +752,71 @@ private fun MeetingPersonAvatar(person: User, size: androidx.compose.ui.unit.Dp)
 }
 
 @Composable
+private fun MirroringStudentDialog(
+    students: List<User>, connected: Boolean, blocked: String?, onClose: () -> Unit, onRequest: suspend (String) -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    var selectedId by remember { mutableStateOf<String?>(null) }
+    var pending by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val selected = students.firstOrNull { it.id == selectedId }
+    AlertDialog(
+        onDismissRequest = { if (!pending) onClose() },
+        title = { Text(DesignContent.MeetingMirroringStudentTitle) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(Space.S12)) {
+                Text(DesignContent.RemoteAssistRequestHelp)
+                blocked?.let { Text(it) }
+                if (students.isEmpty()) Text(DesignContent.MeetingMirroringNoStudents)
+                else Column(Modifier.heightIn(max = 240.dp).verticalScroll(rememberScrollState()).selectableGroup()) {
+                    for (student in students) {
+                        val checked = student.id == selected?.id
+                        Row(
+                            Modifier.fillMaxWidth().heightIn(min = Space.S44)
+                                .selectable(checked, enabled = !pending && blocked == null, role = Role.RadioButton) {
+                                    selectedId = student.id
+                                    error = null
+                                }.padding(horizontal = Space.S8),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(Space.S8),
+                        ) {
+                            MeetingPersonAvatar(student, Space.S32)
+                            Text(student.name, Modifier.weight(1f))
+                            RadioButton(checked, onClick = null)
+                        }
+                    }
+                }
+                error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            }
+        },
+        dismissButton = { TextButton(enabled = !pending, onClick = onClose) { Text("취소") } },
+        confirmButton = {
+            Button(enabled = selected != null && connected && !pending && blocked == null, onClick = {
+                val student = selected ?: return@Button
+                if (pending) return@Button
+                pending = true
+                error = null
+                scope.launch {
+                    try {
+                        onRequest(student.id)
+                        onClose()
+                    } catch (failure: CancellationException) { throw failure }
+                    catch (failure: Exception) { error = failure.message ?: "요청을 처리하지 못했어요." }
+                    finally { pending = false }
+                }
+            }) { Text(DesignContent.MeetingMirroringRequest) }
+        },
+    )
+}
+
+@Composable
 private fun ColumnScope.PeoplePanel(api: ThinkMeetApi, lesson: Lesson, user: User, snapshot: MeetingSnapshot?, media: MediaState, realtime: MeetingRealtime, report: (Throwable) -> Unit) {
     val owner = lesson.teacher.id == user.id
     val scope = rememberCoroutineScope()
     val capabilities by api.capabilities.collectAsState()
     val socketConnected by realtime.connected.collectAsState()
     val assistanceEnabled = capabilities.supports(ContractProtocol.FeatureIds.MeetingRemoteAssistance) &&
-        snapshot?.instruction?.phase.let { it == null || it == "mirroring" }
+        snapshot?.instruction == null
     var search by remember { mutableStateOf("") }
     var kickPerson by remember { mutableStateOf<User?>(null) }
     var pending by remember { mutableStateOf(false) }

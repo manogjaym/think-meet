@@ -12,6 +12,9 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.rule.GrantPermissionRule
+import androidx.test.uiautomator.By
+import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.Until
 import com.woongjin.thinkmeet.data.MeetingSnapshot
 import com.woongjin.thinkmeet.data.Stroke
 import com.woongjin.thinkmeet.data.ThinkMeetApi
@@ -79,8 +82,10 @@ class NativeSmokeTest {
                 exists(hasContentDescription("발표자 보기로 전환")) || exists(hasContentDescription("바둑판 보기로 전환"))
             }
             waitForSnapshot(api, lessonId) { it.participants.any { row -> row.user.id == teacher.id && row.online } }
-            val start = hasText("수업 시작") and hasClickAction()
-            if (exists(start)) compose.onNode(start).performClick()
+            val classroom = hasText("수업방 모드") and hasClickAction()
+            waitFor("classroom mode is ready") { exists(classroom and isEnabled()) }
+            compose.onNode(classroom).performClick()
+            dismissScreenCapturePrompt(UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()))
             waitForSnapshot(api, lessonId) { it.instruction?.phase == "classroom" }
 
             val materials = hasContentDescription("수업 자료") and hasClickAction()
@@ -161,9 +166,17 @@ class NativeSmokeTest {
         compose.onNode(join).performScrollTo().performClick()
         waitFor("native LiveKit and authenticated Socket.IO connection") { exists(hasText("실시간 수업", substring = false)) }
         compose.onNodeWithText("실시간 수업").assertIsDisplayed()
-        if (exists(hasText("수업 시작", substring = false))) {
-            compose.onNodeWithText("수업 시작").performClick()
-            waitFor("classroom mode") { exists(hasText("수업방 모드")) }
+        val mirroring = hasText("미러링 모드") and hasClickAction()
+        if (exists(mirroring)) {
+            compose.onNodeWithText("수업 시작", substring = false).assertDoesNotExist()
+            compose.onNodeWithContentDescription("화면 공유").assertDoesNotExist()
+            waitFor("mirroring mode is ready") { exists(mirroring and isEnabled()) }
+            compose.onNode(mirroring).performClick()
+            waitFor("mirroring student dialog") { exists(hasText("공유를 요청할 학생 선택")) }
+            compose.onNodeWithText("공유 요청").assertIsNotEnabled()
+            compose.onNodeWithText("취소").performClick()
+            compose.onNodeWithText("수업방 모드").performClick()
+            dismissScreenCapturePrompt(UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()))
         }
         screenshot("03-native-meeting")
 
@@ -292,4 +305,11 @@ class NativeSmokeTest {
         finally { bitmap.recycle() }
         instrumentation.sendStatus(0, Bundle().apply { putString("screenshot", output.absolutePath) })
     }
+}
+
+internal fun dismissScreenCapturePrompt(device: UiDevice) {
+    val dialog = device.wait(Until.findObject(By.pkg("com.android.systemui").res("android:id/button2")), 8_000)
+    if (dialog != null) dialog.click()
+    else if (device.currentPackageName == "com.android.systemui") device.pressBack()
+    else error("Android screen capture prompt did not appear")
 }

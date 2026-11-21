@@ -39,3 +39,16 @@ iPhone 미팅 화면, 실제 iOS 기기의 ReplayKit 송출, 원격 CI는 미검
 ## main 병합 검증
 
 입장 전 장치 점검이 포함된 병합 결과에서 `npm run verify`, 변경 파일 목록을 사용한 `npm run shared:check`, Android 단위 테스트·APK·테스트 APK, iOS 시뮬레이터 프레임워크 빌드가 통과했습니다. 검증 전용 서버를 사용해 `web/`에서 `SCREEN_SHARE_TEST_CAPTURE=synthetic npm run test:e2e -- e2e/devices.spec.ts e2e/prejoin.spec.ts` 3건을 통과했습니다.
+
+## 2026-11-21 모드 버튼과 학생 선택 모달
+
+동시에 진행 중인 다른 기능 변경을 제외한 검증용 소스에서 새 동작을 검사했습니다.
+
+| 대상 | 실행 결과 |
+|---|---|
+| 공통·서버·웹 | 루트에서 `npm run shared:check`, 변경 파일 목록 검사, `npm run verify` 통과. 공통 12개·서버 23개·웹 16개와 타입 검사·웹 빌드 통과 |
+| Chromium | 격리 서버에서 `web/`의 `SCREEN_SHARE_TEST_CAPTURE=synthetic npm run test:e2e -- e2e/devices.spec.ts e2e/meeting.spec.ts` 대상 2건 통과. 교사 전용 버튼, 별도 모달, 학생 선택 전 요청 비활성화, 웹 학생의 요청 제한 안내, 교사 공유 영상, 전환 확인·취소, 재입장과 교재·채팅을 확인. 교사와 학생의 390 × 844, 1024 × 820 화면을 비교 |
+| Android | `mobile/`에서 `:composeApp:testDebugUnitTest`, `:composeApp:assembleDebug`, `:composeApp:assembleDebugAndroidTest` 통과. 단위 테스트 40개 통과. API 35 에뮬레이터에서 `DesignParityCaptureTest`의 `captureUntil=meeting`으로 교사 모드 버튼, 학생이 없는 모달, OS 캡처 권한창과 교재 패널을 확인. 같은 교사와 수업에서 휴대폰 1080 × 2400과 태블릿 크기 1600 × 1200 실행 각 1건 통과 |
+| iOS | `mobile/`에서 `:composeApp:linkDebugFrameworkIosSimulatorArm64`와 ARM64 iPhone 시뮬레이터 대상 `xcodebuild` 통과 |
+
+이 변경에서 iOS 미팅 화면과 ReplayKit 송출, Android 학생의 실제 화면 송출은 미검증입니다. 기능 상태는 `in-progress`입니다.

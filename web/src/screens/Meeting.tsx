@@ -11,6 +11,7 @@ import { Confirm, Icon } from "../components/ui"
 import { BrandSymbol } from "../components/BrandSymbol"
 import { ScreenShareDialog } from "../components/ScreenShareDialog"
 import { CallControls } from "../components/meeting/CallControls"
+import { MirroringStudentDialog } from "../components/meeting/MirroringStudentDialog"
 import { RemoteAssistanceStatus } from "../components/meeting/RemoteAssistanceStatus"
 import { SharedParticipants, SharedStage, type SharedFrame } from "../components/meeting/SharedStage"
 import designLayout from "../generated/design-layout.json"
@@ -37,6 +38,7 @@ export function Meeting(props: { lesson: ApiLesson; user: User; initialDevices: 
   const [lastPanel, setLastPanel] = useState<Panel>(null)
   const [end, setEnd] = useState(false)
   const [shareConfirm, setShareConfirm] = useState(false)
+  const [showMirroringStudents, setShowMirroringStudents] = useState(false)
   const [modeConfirm, setModeConfirm] = useState<LessonModeSetPayload | null>(null)
   const [modeBusy, setModeBusy] = useState(false)
   const [layout, setLayout] = useState<"grid" | "speaker">("grid")
@@ -52,13 +54,21 @@ export function Meeting(props: { lesson: ApiLesson; user: User; initialDevices: 
   const audioBlocked = useAudioPlaybackBlocked(room)
   const { unreadCount, notification, dismissNotification } = useChatNotifications({ lessonId: lesson.id, userId: user.id, messages: snapshot?.messages, chatOpen: panel === "chat" })
   const activeLesson = snapshot?.lesson || lesson
+  const subjectsEnabled = useFeature("classroom.subjects")
+  const subjectName = subjectsEnabled ? activeLesson.subject?.name : undefined
+  const meetingSubtitle = subjectName
+    ? `${subjectName} · ${activeLesson.teacher.name} 선생님`
+    : `${activeLesson.teacher.name} 선생님과 함께하는 화상 수업`
   const isHost = activeLesson.teacher.id === user.id
   const share = snapshot?.share
+  const ownScreen = share?.ownerId === user.id && share.type === "screen" && !share.assistanceId
+  const assistance = snapshot?.assistance
+  const activeAssistance = currentAssistance(assistance) ? assistance : null
   const instruction = snapshot?.instruction
   const phase = instruction?.phase
   const lessonModes = useFeature("classroom.lesson-modes")
   const assistanceSupported = useFeature("meeting.remote-assistance")
-  const modeReady = live.appConnected && live.connection === ConnectionState.Connected && live.admissionId != null &&
+  const modeReady = live.appConnected && live.connection === ConnectionState.Connected &&
     snapshot?.participants.some(member => member.user.id === user.id && member.online)
   const canShare = !!snapshot && (phase === undefined || (isHost && phase === "classroom"))
   const showMaterials = isHost && canShare
@@ -123,29 +133,45 @@ export function Meeting(props: { lesson: ApiLesson; user: User; initialDevices: 
   useEffect(() => {
     if (!canShare) setShareConfirm(false)
   }, [canShare])
+  useEffect(() => {
+    if (phase !== "mirroring") setShowMirroringStudents(false)
+  }, [phase])
 
-  const updateInstruction = async (change?: LessonModeSetPayload) => {
+  const openMode = (mode: LessonModeSetPayload["mode"]) => {
+    changePanel(null)
+    if (mode === "mirroring") setShowMirroringStudents(true)
+    else if (!ownScreen || phase !== "classroom") setShareConfirm(true)
+  }
+
+  const updateInstruction = async (mode: LessonModeSetPayload["mode"], change?: LessonModeSetPayload) => {
     if (!modeReady || modeBusy) return
     setModeBusy(true)
     try {
-      const updated = change ? await command("lesson.mode.set", change) : await command("lesson.start")
-      if (change?.mode === "mirroring" && updated.instruction?.phase === "mirroring") changePanel("people")
+      let updated = change ? await command("lesson.mode.set", change) : await command("lesson.start")
+      if (!change && mode === "mirroring" && updated.instruction?.phase === "classroom") {
+        updated = await command("lesson.mode.set", { mode, expectedMode: "classroom", expectedShareId: null, expectedAssistanceId: null })
+      }
+      if (updated.instruction?.phase === mode) openMode(mode)
     } catch (error) {
       setError(friendlyError(error))
     } finally { setModeBusy(false) }
   }
 
   const selectMode = (mode: LessonModeSetPayload["mode"]) => {
-    if (phase !== "classroom" && phase !== "mirroring") return
+    if (!modeReady || modeBusy) return
     if (phase === mode) {
-      if (mode === "mirroring") changePanel("people")
+      openMode(mode)
       return
     }
-    const assistance = snapshot?.assistance
+    if (phase === "preparing") {
+      void updateInstruction(mode)
+      return
+    }
+    if (phase !== "classroom" && phase !== "mirroring") return
     const change = { mode, expectedMode: phase, expectedShareId: share?.id ?? null,
-      expectedAssistanceId: currentAssistance(assistance) ? assistance.id : null }
+      expectedAssistanceId: activeAssistance?.id ?? null }
     if (change.expectedShareId || change.expectedAssistanceId) setModeConfirm(change)
-    else void updateInstruction(change)
+    else void updateInstruction(mode, change)
   }
   useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(timer) }, [])
   useEffect(() => { const close = (event: KeyboardEvent) => { if (event.key === "Escape") { changePanel(null); setShareConfirm(false); setEnd(false) } }; document.addEventListener("keydown", close); return () => document.removeEventListener("keydown", close) }, [changePanel])
@@ -158,15 +184,12 @@ export function Meeting(props: { lesson: ApiLesson; user: User; initialDevices: 
   const startedAt = timerStart ? Date.parse(timerStart) : now + live.serverOffset
   const elapsed = formatDuration((now + live.serverOffset - startedAt) / 1000)
   const connectionText = live.connection === ConnectionState.Connected ? live.appConnected ? designContent.meetingConnected : "수업 상태 재연결 중" : live.connection === ConnectionState.Reconnecting || live.connection === ConnectionState.SignalReconnecting ? "재연결 중" : live.connection === ConnectionState.Disconnected ? "연결 끊김" : "연결 중"
-  const ownScreen = share?.ownerId === user.id && share.type === "screen"
   const captureControl = notesEnabled && <button className="share-save" disabled={!captureReady || captureBusy} onClick={() => void previewCapture()}>{designContent.notesCapture}</button>
   return <main className={`meeting ${panel ? "has-panel" : ""}`} data-testid="meeting">
-    <header className="meeting-head"><div className="meeting-title-group"><span className="meeting-brand" aria-label="웅진 씽크빅"><BrandSymbol /></span><div><h1>{activeLesson.title}</h1><span className="meeting-subtitle">{activeLesson.teacher.name} 선생님과 함께하는 화상 수업</span></div></div><div className="meeting-head-actions"><span className="call-connected" data-state={live.connection}><i />{connectionText}</span>{phase !== "preparing" && <span className="meeting-timer"><Icon name="clock" size={16} />{elapsed}</span>}<button className="layout-toggle" onClick={() => { captureLayout(); setLayout(layout === "grid" ? "speaker" : "grid") }} aria-label={layout === "grid" ? "발표자 보기로 전환" : "바둑판 보기로 전환"}><Icon name={layout === "grid" ? "screen" : "users"} size={18} /><span>{layout === "grid" ? "발표자 보기" : "바둑판 보기"}</span></button></div></header>
+    <header className="meeting-head"><div className="meeting-title-group"><span className="meeting-brand" aria-label="웅진 씽크빅"><BrandSymbol /></span><div><h1>{activeLesson.title}</h1><span className="meeting-subtitle">{meetingSubtitle}</span></div></div><div className="meeting-head-actions"><span className="call-connected" data-state={live.connection}><i />{connectionText}</span>{phase !== "preparing" && <span className="meeting-timer"><Icon name="clock" size={16} />{elapsed}</span>}<button className="layout-toggle" onClick={() => { captureLayout(); setLayout(layout === "grid" ? "speaker" : "grid") }} aria-label={layout === "grid" ? "발표자 보기로 전환" : "바둑판 보기로 전환"}><Icon name={layout === "grid" ? "screen" : "users"} size={18} /><span>{layout === "grid" ? "발표자 보기" : "바둑판 보기"}</span></button></div></header>
     {isHost && lessonModes && instruction && <div className="meeting-lesson-modes" role="group" aria-label={designContent.meetingLessonModesLabel}>
-      {phase === "preparing" ? <button className="selected" disabled={!modeReady || modeBusy} onClick={() => void updateInstruction()}>{designContent.meetingLessonStart}</button> : <>
-        <button aria-pressed={phase === "classroom"} disabled={!modeReady || modeBusy} onClick={() => selectMode("classroom")}>{designContent.meetingLessonClassroom}</button>
-        <button aria-pressed={phase === "mirroring"} disabled={!modeReady || modeBusy || (!assistanceSupported && phase !== "mirroring")} onClick={() => selectMode("mirroring")}>{designContent.meetingLessonMirroring}</button>
-      </>}
+      <button aria-pressed={phase === "classroom"} aria-haspopup="dialog" disabled={!modeReady || modeBusy} onClick={() => selectMode("classroom")}>{designContent.meetingLessonClassroom}</button>
+      <button aria-pressed={phase === "mirroring"} aria-haspopup="dialog" disabled={!modeReady || modeBusy || !assistanceSupported} onClick={() => selectMode("mirroring")}>{designContent.meetingLessonMirroring}</button>
     </div>}
     {live.error && <div className="live-error" role="alert"><span>{live.error}</span><button aria-label="알림 닫기" onClick={() => setError("")}>닫기</button></div>}
     {(audioBlocked || audioUnlock) && <button className="audio-unlock" onClick={() => { void room?.startAudio().then(() => setAudioUnlock(false)).catch(e => setError(friendlyError(e))) }}>수업 소리 켜기</button>}
@@ -181,7 +204,7 @@ export function Meeting(props: { lesson: ApiLesson; user: User; initialDevices: 
       <SidePanel panel={panel || lastPanel} activePanel={panel} textbookEnabled={textbookEnabled} textbookConnected={Boolean(modeReady)}
         onTextbookOpened={() => { if (window.matchMedia(overlayQuery).matches) changePanel(null) }} setPanel={changePanel} user={user} lesson={activeLesson} room={room} snapshot={snapshot} command={command} onOutputChange={setOutputDevice} unreadChatCount={unreadCount} /></div></div>
     {notification && <ChatNotification message={notification} onOpen={() => changePanel("chat")} onDismiss={dismissNotification} />}
-    <CallControls role={isHost ? "teacher" : "student"} raised={raised} setRaised={value => { void command("hand.set", { raised: value }).catch(e => setError(friendlyError(e))) }} panel={panel} setPanel={changePanel} mic={mic} cam={cam} setMic={value => void live.setMic(value)} setCam={value => void live.setCam(value)} participantCount={participants.length} screenSharing={ownScreen} showShare={canShare || ownScreen} showMaterials={showMaterials} onShareScreen={() => { if (ownScreen) void live.stopShare(share); else { changePanel(null); setShareConfirm(true) } }} onEnd={() => setEnd(true)} unreadChatCount={unreadCount} />
+    <CallControls role={isHost ? "teacher" : "student"} raised={raised} setRaised={value => { void command("hand.set", { raised: value }).catch(e => setError(friendlyError(e))) }} panel={panel} setPanel={changePanel} mic={mic} cam={cam} setMic={value => void live.setMic(value)} setCam={value => void live.setCam(value)} participantCount={participants.length} screenSharing={ownScreen} showShare={phase === undefined && (canShare || ownScreen)} showMaterials={showMaterials} onShareScreen={() => { if (ownScreen) void live.stopShare(share); else { changePanel(null); setShareConfirm(true) } }} onEnd={() => setEnd(true)} unreadChatCount={unreadCount} />
     <span className="sr-only" role="status">{captureNotice}</span>
     {notesEnabled && capture && <NoteDialog title={designContent.notesCapture} onClose={() => setCapture(undefined)} busy={captureBusy}>
       <NotePreview draft={capture.draft} label="저장할 수업 화면" />
@@ -192,9 +215,13 @@ export function Meeting(props: { lesson: ApiLesson; user: User; initialDevices: 
     <RemoteAudioTracks room={room} muted={outputDevice === "muted"} onBlocked={() => setAudioUnlock(true)} />
     <AnimatedPresence show={end}><Confirm title={isHost ? "모두의 수업을 종료할까요?" : "수업에서 나갈까요?"} copy={isHost ? "참여 중인 모든 사람의 수업이 함께 종료됩니다." : "다른 참여자는 수업을 계속할 수 있어요."} cancel={() => setEnd(false)} confirm={() => { setEnd(false); void live.leave() }} confirmText={isHost ? "모두 종료" : "수업 나가기"} /></AnimatedPresence>
     <AnimatedPresence show={modeConfirm !== null}><Confirm title={designContent.meetingLessonSwitchTitle} copy={designContent.meetingLessonSwitchCopy}
-      cancel={() => setModeConfirm(null)} confirm={() => { if (modeConfirm) void updateInstruction(modeConfirm); setModeConfirm(null) }}
+      cancel={() => setModeConfirm(null)} confirm={() => { if (modeConfirm) void updateInstruction(modeConfirm.mode, modeConfirm); setModeConfirm(null) }}
       confirmText={designContent.meetingLessonSwitchAction} /></AnimatedPresence>
     <AnimatedPresence show={shareConfirm && canShare}><ScreenShareDialog cancel={() => setShareConfirm(false)} confirm={target => { setShareConfirm(false); void live.startScreen(target) }} /></AnimatedPresence>
+    {showMirroringStudents && isHost && phase === "mirroring" && snapshot && <MirroringStudentDialog
+      students={snapshot.participants.filter(member => member.online && member.user.role === "student" && member.user.id !== user.id).map(member => member.user)}
+      connected={Boolean(modeReady)} blocked={activeAssistance ? designContent.meetingMirroringRequestInProgress : share ? designContent.remoteAssistStopShareFirst : undefined}
+      onClose={() => setShowMirroringStudents(false)} onRequest={async studentId => { await command("assistance.request", { studentId }) }} />}
   </main>
 }
 function RemoteAudioTracks({ room, muted, onBlocked }: { room: Room | null; muted: boolean; onBlocked: () => void }) {

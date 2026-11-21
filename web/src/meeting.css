@@ -224,6 +224,12 @@ body.meeting-viewport .topbar { display:none; }
 .share-security-note { display:flex; align-items:flex-start; gap:var(--space-2); padding:0; font-size:var(--type-caption); line-height:1.5; color:var(--muted);  margin-top:var(--space-4);}
 .share-security-note svg { flex-shrink:0; margin-top:2px; }
 .screen-share-dialog footer { display:flex; justify-content:flex-end; gap:var(--space-2); margin-top:var(--space-6);  padding-top:var(--tm-spacing-s20); border-top:1px solid var(--line);}
+.screen-share-dialog.mirroring-student-dialog { width:min(520px,calc(100% - var(--space-6))); max-height:calc(100dvh - var(--space-6)); margin:auto; border:0; overflow:auto; }
+.mirroring-student-dialog::backdrop { background:rgb(13 37 61 / 52%); backdrop-filter:blur(8px); }
+.mirroring-students { max-height:40dvh; overflow:auto; padding:2px; }
+.mirroring-students > button { min-height:var(--tm-spacing-s44); }
+.mirroring-students strong { overflow-wrap:anywhere; }
+.mirroring-student-dialog [role="alert"] { color:var(--danger); }
 @media (max-width:design(layout.meetingMediumBreakpoint)) {
   .meeting { --panel-width:var(--tm-layout-meeting-panel-narrow-width); --panel-gap:var(--space-3); }
   .meeting-head { padding:0 var(--tm-spacing-s20); }.meeting-head-actions { gap:14px; }

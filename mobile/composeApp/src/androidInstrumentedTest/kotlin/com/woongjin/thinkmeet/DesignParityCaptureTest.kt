@@ -96,33 +96,35 @@ class DesignParityCaptureTest {
             }
             val self = runBlocking { api.me() }.id
 
-            stage("opening-history")
-            revealAndClick("지난 수업")
-            val firstPast = runBlocking { api.lessons() }
-                .filter { it.status in listOf("ENDED", "CANCELLED") }.maxByOrNull { it.startsAt }
-            if (firstPast != null) {
-                // Locate a visible row, then verify its complete title after opening the detail.
-                val title = By.textStartsWith(firstPast.title.take(10))
-                revealSelector(title)
-                capture("03-history", title)
-                revealSelector(title).click()
-                eventually("lesson detail") { visible(By.text("수업 상세")) != null }
-                eventually("expected lesson detail") { visible(By.text(firstPast.title)) != null }
-                capture("04-detail", By.text("수업 상세"))
-                clickDescription("이전 화면으로 돌아가기")
-                eventually("dashboard navigation") { visible(By.text("수업 상세")) == null && visible(By.text("내 수업")) != null }
-            } else {
-                capture("03-history", By.text("지난 수업"))
-                stage("detail-not-captured-no-past-lessons")
-            }
+            if (arguments.getString("captureUntil") != "meeting") {
+                stage("opening-history")
+                revealAndClick("지난 수업")
+                val firstPast = runBlocking { api.lessons() }
+                    .filter { it.status in listOf("ENDED", "CANCELLED") }.maxByOrNull { it.startsAt }
+                if (firstPast != null) {
+                    // Locate a visible row, then verify its complete title after opening the detail.
+                    val title = By.textStartsWith(firstPast.title.take(10))
+                    revealSelector(title)
+                    capture("03-history", title)
+                    revealSelector(title).click()
+                    eventually("lesson detail") { visible(By.text("수업 상세")) != null }
+                    eventually("expected lesson detail") { visible(By.text(firstPast.title)) != null }
+                    capture("04-detail", By.text("수업 상세"))
+                    clickDescription("이전 화면으로 돌아가기")
+                    eventually("dashboard navigation") { visible(By.text("수업 상세")) == null && visible(By.text("내 수업")) != null }
+                } else {
+                    capture("03-history", By.text("지난 수업"))
+                    stage("detail-not-captured-no-past-lessons")
+                }
 
-            stage("opening-booking-form")
-            revealAndClick("수업 예약")
-            eventually("booking form") { visible(By.text("수업 정보")) != null }
-            capture("05-form", By.text("수업 정보"))
-            if (arguments.getString("captureUntil") == "form") { stage("capture-complete"); return }
-            // Only inspect the form; no reservation or existing lesson is changed.
-            revealAndClick("내 수업")
+                stage("opening-booking-form")
+                revealAndClick("수업 예약")
+                eventually("booking form") { visible(By.text("수업 정보")) != null }
+                capture("05-form", By.text("수업 정보"))
+                if (arguments.getString("captureUntil") == "form") { stage("capture-complete"); return }
+                // Only inspect the form; no reservation or existing lesson is changed.
+                revealAndClick("내 수업")
+            }
 
             if (lessonCode != null && lessonId != null) {
                 stage("opening-fixture-prejoin")
@@ -144,10 +146,15 @@ class DesignParityCaptureTest {
                     val meeting = visible(By.desc("발표자 보기로 전환")) != null || visible(By.desc("바둑판 보기로 전환")) != null
                     meeting && runBlocking { api.snapshot(lessonId) }.participants.any { it.user.id == self && it.online }
                 }
-                if (visible(By.text("수업 시작")) != null) {
-                    capture("08-meeting-preparing", By.text("수업 시작"))
-                    reveal("수업 시작").click()
-                    eventually("classroom mode") { visible(By.text("수업방 모드")) != null }
+                if (visible(By.text("수업방 모드")) != null) {
+                    capture("08-meeting-preparing", By.text("수업방 모드"))
+                    eventually("mirroring action enabled") { visible(By.text("미러링 모드"))?.isEnabled == true }
+                    reveal("미러링 모드").click()
+                    capture("08-mirroring-students", By.text("공유를 요청할 학생 선택"))
+                    reveal("취소").click()
+                    reveal("수업방 모드").click()
+                    dismissScreenCapturePrompt(device)
+                    eventually("classroom mode") { runBlocking { api.snapshot(lessonId) }.instruction?.phase == "classroom" }
                 }
                 capture("08-meeting", By.desc("카메라 켜기"))
                 clickDescription("채팅")

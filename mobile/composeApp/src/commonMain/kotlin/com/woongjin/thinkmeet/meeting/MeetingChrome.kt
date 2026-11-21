@@ -69,7 +69,7 @@ internal fun MeetingLightPanel(modifier: Modifier, overlay: Boolean = false, con
 @Composable
 internal fun MeetingHeader(
     lesson: Lesson, state: MediaState, socketConnected: Boolean, serverTime: String?, grid: Boolean,
-    compact: Boolean, width: Dp, instructionPhase: String? = null, instructionStartedAt: String? = null, onLayout: () -> Unit,
+    compact: Boolean, width: Dp, instructionPhase: String? = null, instructionStartedAt: String? = null, subjectName: String? = null, onLayout: () -> Unit,
 ) {
     val short = LocalMeetingShort.current
     val height = if (short) 62.dp else if (compact) LayoutToken.MeetingHeaderCompact else if (width <= LayoutToken.MeetingOverlayBreakpoint) LayoutToken.MeetingHeaderMedium else LayoutToken.MeetingHeader
@@ -80,7 +80,8 @@ internal fun MeetingHeader(
         Column(Modifier.weight(1f)) {
             Text(lesson.title, style = MaterialTheme.typography.titleMedium.copy(fontSize = Type.Heading, lineHeight = Type.Heading * 1.45f),
                 fontWeight = DesignWeight.SemiBold, color = Palette.MeetingSubtle, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (!short) Text("${lesson.teacher.name} 선생님과 함께하는 화상 수업", style = MaterialTheme.typography.bodySmall.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f),
+            val subtitle = subjectName?.let { "$it · ${lesson.teacher.name} 선생님" } ?: "${lesson.teacher.name} 선생님과 함께하는 화상 수업"
+            if (!short) Text(subtitle, style = MaterialTheme.typography.bodySmall.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f),
                 color = Palette.MeetingDim, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         if (width > LayoutToken.MeetingOverlayBreakpoint) {
@@ -106,17 +107,12 @@ internal fun MeetingHeader(
 
 @Composable
 internal fun MeetingLessonModes(
-    phase: String, enabled: Boolean, assistanceSupported: Boolean, onStart: () -> Unit, onMode: (String) -> Unit,
+    phase: String, enabled: Boolean, assistanceSupported: Boolean, onMode: (String) -> Unit,
 ) {
     Row(Modifier.fillMaxWidth().padding(start = Space.S14, end = Space.S14, bottom = Space.S8),
         horizontalArrangement = Arrangement.spacedBy(Space.S8, Alignment.CenterHorizontally)) {
-        if (phase == "preparing") {
-            LessonModeButton(DesignContent.MeetingLessonStart, active = true, enabled = enabled, onClick = onStart)
-        } else {
-            LessonModeButton(DesignContent.MeetingLessonClassroom, phase == "classroom", enabled) { onMode("classroom") }
-            LessonModeButton(DesignContent.MeetingLessonMirroring, phase == "mirroring",
-                enabled && (assistanceSupported || phase == "mirroring")) { onMode("mirroring") }
-        }
+        LessonModeButton(DesignContent.MeetingLessonClassroom, phase == "classroom", enabled) { onMode("classroom") }
+        LessonModeButton(DesignContent.MeetingLessonMirroring, phase == "mirroring", enabled && assistanceSupported) { onMode("mirroring") }
     }
 }
 

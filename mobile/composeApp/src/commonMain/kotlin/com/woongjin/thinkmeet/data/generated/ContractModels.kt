@@ -82,6 +82,8 @@ data class JoinResult(
     val token: String? = null,
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     val livekitUrl: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val admissionId: String? = null,
 )
 
 @Serializable
@@ -275,6 +277,12 @@ data class LessonModeSetPayload(
 )
 
 @Serializable
+data class DocumentOpenPayload(
+    val materialId: String,
+    val page: Int,
+)
+
+@Serializable
 data class ShareStartPayload(
     val type: String,
     @EncodeDefault(EncodeDefault.Mode.NEVER)
@@ -372,16 +380,37 @@ data class AssistanceStopPayload(
 )
 
 @Serializable
-data class PrejoinStudent(
+data class ClassNoteLesson(
     val id: String,
-    val name: String,
+    val title: String,
+    val startsAt: String,
+    val teacherName: String,
 )
 
 @Serializable
-data class PrejoinStatus(
-    val status: String,
-    @EncodeDefault(EncodeDefault.Mode.NEVER)
-    val waitingStudents: List<PrejoinStudent>? = null,
+data class ClassNoteTarget(
+    val lesson: ClassNoteLesson?,
+)
+
+@Serializable
+data class ClassNoteImage(
+    val id: String,
+    val createdAt: String,
+)
+
+@Serializable
+data class ClassNoteWorksheet(
+    val lesson: ClassNoteLesson,
+    val studentName: String,
+    val original: ClassNoteImage,
+    val correction: ClassNoteImage?,
+)
+
+@Serializable
+data class ClassNoteCapture(
+    val lesson: ClassNoteLesson,
+    val image: ClassNoteImage,
+    val source: String,
 )
 
 typealias StudentAttendanceStatus = String
@@ -428,4 +457,17 @@ data class StudentAttendanceInput(
     val status: StudentAttendanceStatus,
     val reason: StudentAttendanceReason? = null,
     val memo: String? = null,
+)
+
+@Serializable
+data class PrejoinStudent(
+    val id: String,
+    val name: String,
+)
+
+@Serializable
+data class PrejoinStatus(
+    val status: String,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val waitingStudents: List<PrejoinStudent>? = null,
 )

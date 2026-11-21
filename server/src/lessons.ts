@@ -247,7 +247,7 @@ export class Lessons implements OnModuleInit, OnModuleDestroy {
       } else await admit
       const token = new AccessToken(process.env.LIVEKIT_API_KEY, process.env.LIVEKIT_API_SECRET, { identity: user.id, name: user.name, ttl: '2m', metadata: JSON.stringify({ admissionId, userId: user.id, role: user.id === lesson.teacherId ? 'teacher' : 'student' }) })
       token.addGrant({ roomJoin: true, room: lesson.roomName, canPublish: true, canSubscribe: true, canPublishData: false })
-      return { waiting: false, lesson: await this.dto(lesson), token: await token.toJwt(), livekitUrl: process.env.LIVEKIT_PUBLIC_URL || `${process.env.PUBLIC_ORIGIN?.replace(/^http/, 'ws')}/livekit` }
+      return { waiting: false, lesson: await this.dto(lesson), admissionId, token: await token.toJwt(), livekitUrl: process.env.LIVEKIT_PUBLIC_URL || `${process.env.PUBLIC_ORIGIN?.replace(/^http/, 'ws')}/livekit` }
     })
   }
   async connected(id: string, user: PublicUser) {
@@ -431,6 +431,29 @@ export class Lessons implements OnModuleInit, OnModuleDestroy {
           })
         }
         this.assistance.remove(id)
+      } else if (type === 'document.open') {
+        teacher()
+        if (!lesson.members.some(member => member.userId === user.id && member.online && member.admissionId)) {
+          throw new ApiError('NOT_CONNECTED', '화상미팅에 연결한 후 다시 시도해 주세요.', 409)
+        }
+        if (lesson.instructionPhase && lesson.instructionPhase !== 'classroom') {
+          throw new ApiError('LESSON_MODE_REQUIRED', '수업방 모드에서 교재를 불러올 수 있어요.', 409)
+        }
+        const { materialId, page } = z.object({ materialId: z.string().uuid(), page: z.number().int().min(1) }).parse(p)
+        await this.locked(`material:${materialId}`, async () => {
+          const material = await this.db.material.findUnique({ where: { id: materialId } })
+          if (!material || material.ownerId !== user.id || material.kind !== 'document') {
+            throw new ApiError('INVALID_MATERIAL', '공유할 교재를 찾을 수 없습니다.', 404)
+          }
+          if (page > (material.pages || 1)) throw new ApiError('VALIDATION', '문서 페이지를 확인해 주세요.')
+          const updatedAt = new Date().toISOString()
+          if (share?.type === 'document' && share.materialId === materialId) {
+            if (share.page !== page) await writeShare({ ...share, page, updatedAt })
+          } else {
+            await writeShare({ id: randomUUID(), type: 'document', ownerId: user.id, materialId, material: this.materialDto(material), page, playing: false, position: 0, updatedAt })
+            this.assistance.remove(id)
+          }
+        })
       } else if (type === 'share.stop') {
         // An old capture can end after a different share has already taken its place.
         if (command.expectedShareId && share?.id !== command.expectedShareId) return this.snapshotUnlocked(id)

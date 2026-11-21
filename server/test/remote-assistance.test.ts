@@ -21,6 +21,7 @@ async function fixture(features = new FeaturePolicy()) {
   const lesson: any = { id, teacherId: teacher.id, title: 'Class', description: '', accessMode: 'INVITE_ONLY', status: 'LIVE', roomName: 'room',
     startsAt: new Date(), startedAt: new Date(), seq: 0, code: 'code', share: null,
     members: [teacher, student, other].map(user => ({ userId: user.id, banned: false, online: true, raised: false, admissionId: randomUUID() })) }
+  const materials = new Map<string, { id: string; ownerId: string; kind: string; pages?: number; size: number; name: string; createdAt: Date }>()
   const db: any = {
     lesson: {
       findUnique: async () => lesson, findMany: async () => [lesson],
@@ -37,6 +38,7 @@ async function fixture(features = new FeaturePolicy()) {
       updateMany: async ({ where, data }: any) => { for (const m of lesson.members) if (!where.userId || m.userId === where.userId) Object.assign(m, data) },
     },
     user: { findMany: async () => [teacher, student, other] }, message: { findMany: async () => [] }, stroke: { findMany: async () => [] },
+    material: { findUnique: async ({ where }: { where: { id: string } }) => materials.get(where.id) },
     attendance: { findMany: async () => [], findFirst: async () => null, updateMany: async () => ({ count: 1 }) },
     loginSession: { deleteMany: async () => {} }, webhookEvent: { deleteMany: async () => {} },
     $transaction: async (operations: Promise<any>[]) => Promise.all(operations),
@@ -81,10 +83,66 @@ async function fixture(features = new FeaturePolicy()) {
     return (started as any).snapshot.assistance
   }
   const pointer = (session: any, overrides = {}) => ({ lessonId: id, sessionId: session.id, shareId: session.shareId, geometryVersion: session.geometry.version, x: .25, y: .75, ...overrides })
-  return { id, teacher, student, other, lesson, lessons, gateway, features, identities, media, clock, sockets, teacherSocket, studentSocket, otherSocket, makeSocket, command, request, activate, pointer }
+  return { id, teacher, student, other, lesson, lessons, gateway, features, identities, media, clock, sockets, teacherSocket, studentSocket, otherSocket, makeSocket, command, request, activate, pointer, materials }
 }
 const code = (response: any) => response.error?.code
 const pointers = (socket: { events: Array<{ event: string; payload: any }> }) => socket.events.filter(entry => entry.event === 'assistance.pointer')
+
+test('textbook sharing publishes the selected first page to legacy students and preserves an open document', async () => {
+  const f = await fixture()
+  f.teacherSocket.handshake.auth.contractRevision = 11
+  f.lesson.instructionPhase = 'classroom'
+  const add = (ownerId: string, kind = 'document') => {
+    const id = randomUUID()
+    f.materials.set(id, { id, ownerId, kind, pages: 4, name: 'Class material', size: 16000, createdAt: new Date() })
+    return id
+  }
+  const first = add(f.teacher.id)
+  const second = add(f.teacher.id)
+  const foreign = add(randomUUID())
+  const video = add(f.teacher.id, 'media')
+  const open = (materialId: string, page: number, socket = f.teacherSocket) =>
+    f.command(socket, 'document.open', { materialId, page })
+  const legacySnapshot = () => f.studentSocket.events.filter(event => event.event === 'snapshot').at(-1)?.payload
+
+  const unavailable = f.makeSocket('teacher', f.teacher, 'web')
+  unavailable.handshake.auth.contractRevision = 10
+  assert.equal(code(await open(first, 3, unavailable)), 'CLIENT_UPDATE_REQUIRED')
+  unavailable.handshake.auth.contractRevision = 11
+  assert.equal(code(await open(first, 3, unavailable)), 'FORBIDDEN')
+  f.otherSocket.handshake.auth.contractRevision = 11
+  assert.equal(code(await open(first, 3, f.otherSocket)), 'FORBIDDEN')
+
+  assert.equal((await open(first, 3)).ok, true)
+  const shared = f.lesson.share
+  assert.equal(shared.page, 3)
+  assert.equal(legacySnapshot()?.share?.page, 3)
+  assert.equal(legacySnapshot()?.share?.id, shared.id)
+  for (const phase of ['preparing', 'mirroring']) {
+    f.lesson.instructionPhase = phase
+    assert.equal(code(await open(second, 1)), 'LESSON_MODE_REQUIRED')
+    assert.equal(f.lesson.share.id, shared.id)
+  }
+  f.lesson.instructionPhase = 'classroom'
+  f.lesson.members[0].online = false
+  assert.equal(code(await open(second, 1)), 'NOT_CONNECTED')
+  f.lesson.members[0].online = true
+  assert.equal(code(await open(foreign, 1)), 'INVALID_MATERIAL')
+  assert.equal(code(await open(video, 1)), 'INVALID_MATERIAL')
+  assert.equal(code(await open(first, 5)), 'VALIDATION')
+  assert.deepEqual(f.lesson.share, shared)
+
+  assert.equal((await open(first, 4)).ok, true)
+  assert.equal(f.lesson.share.id, shared.id)
+  assert.equal(legacySnapshot()?.share?.page, 4)
+  assert.equal((await open(second, 2)).ok, true)
+  assert.notEqual(f.lesson.share.id, shared.id)
+  assert.equal(legacySnapshot()?.share?.page, 2)
+
+  f.lesson.instructionPhase = null
+  assert.equal((await open(first, 1)).ok, true)
+  assert.equal(legacySnapshot()?.share?.page, 1)
+})
 
 test('lesson modes require a connected owner and preserve the start time and legacy rooms', async () => {
   const f = await fixture()

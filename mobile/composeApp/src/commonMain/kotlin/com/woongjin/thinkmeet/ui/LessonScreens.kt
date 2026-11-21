@@ -46,7 +46,7 @@ import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
 
-private val LocalLessonWidth = staticCompositionLocalOf { LayoutToken.PageMaxWidth }
+internal val LocalLessonWidth = staticCompositionLocalOf { LayoutToken.PageMaxWidth }
 
 /** Web .page dimensions; the host owns OS safe areas. */
 @Composable fun PageColumn(verticalArrangement: Arrangement.Vertical = Arrangement.spacedBy(Space.S24), content: @Composable ColumnScope.() -> Unit) {
@@ -72,6 +72,7 @@ private val LocalLessonWidth = staticCompositionLocalOf { LayoutToken.PageMaxWid
     var copied by remember(lesson.id) { mutableStateOf(false) }
     val owner = lesson.teacher.id == state.user?.id
     val capabilities = controller.capabilities.collectAsState().value
+    val notesEnabled = capabilities.supports("classroom.notes")
     val link = "$origin/join/${lesson.code}"
     PageColumn {
         val width = LocalLessonWidth.current
@@ -172,6 +173,7 @@ private val LocalLessonWidth = staticCompositionLocalOf { LayoutToken.PageMaxWid
         }
         if (width > LayoutToken.FormWide) Row(horizontalArrangement = Arrangement.spacedBy(Space.S24)) { main(Modifier.weight(1f)); aside(Modifier.width(if (width <= LayoutToken.PageCompactBreakpoint) LayoutToken.LessonAsideCompactWidth else LayoutToken.LessonAsideWidth)) }
         else Column(verticalArrangement = Arrangement.spacedBy(Space.S24)) { main(Modifier.fillMaxWidth()); aside(Modifier.fillMaxWidth()) }
+        if (owner && notesEnabled) TeacherWorksheets(controller.api, lesson.id)
         state.error?.let { ErrorCard(it) }
     }
     if (cancelling) AlertDialog(onDismissRequest = { cancelling = false }, title = { LessonText("이 수업을 취소할까요?") }, text = { LessonText("취소한 수업은 예정된 수업에서 더 이상 참여할 수 없습니다.") }, confirmButton = { TextButton({ cancelling = false; controller.cancel() }) { LessonText("수업 취소", color = Palette.DangerText) } }, dismissButton = { TextButton({ cancelling = false }) { LessonText("돌아가기") } })
@@ -513,10 +515,9 @@ private fun LessonSubjectField(api: ThinkMeetApi, selected: TeacherSubject?, ena
 }
 
 @Composable fun WaitingScreen(lesson: Lesson, user: User, state: AppUiState, controller: AppState) {
-    val capabilities = controller.capabilities.collectAsState().value
-    val enhanced = capabilities.supports(ContractProtocol.FeatureIds.ClassroomPrejoin)
-    val lessonModes = capabilities.supports(ContractProtocol.FeatureIds.ClassroomLessonModes)
+    val lessonModes = controller.capabilities.collectAsState().value.supports(ContractProtocol.FeatureIds.ClassroomLessonModes)
     val waitingCopy = if (lessonModes) DesignContent.MeetingWaitForTeacher else "선생님이 수업을 시작할 때까지 잠시 기다려 주세요."
+    val enhanced = controller.capabilities.collectAsState().value.supports(ContractProtocol.FeatureIds.ClassroomPrejoin)
     CenteredLessonCard(LayoutToken.WaitingCardMaxWidth, waiting = true) {
         Surface(Modifier.size(ComponentToken.WaitingIconSize), shape = CircleShape, color = Palette.Selection) { Box(contentAlignment = Alignment.Center) { DesignIcon("clock", Modifier.size(Space.S28), tint = Brand) } }
         Spacer(Modifier.height(Space.S24)); SmallBadge("입장 대기 중", selected = true); Spacer(Modifier.height(Space.S16))

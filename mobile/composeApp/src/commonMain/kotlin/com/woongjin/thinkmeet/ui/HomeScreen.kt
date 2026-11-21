@@ -41,6 +41,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import com.woongjin.thinkmeet.data.ClassNoteLesson
 import com.woongjin.thinkmeet.data.Lesson
 import com.woongjin.thinkmeet.data.ContractProtocol
 import com.woongjin.thinkmeet.design.*
@@ -62,7 +63,20 @@ import kotlin.time.Instant
 /** Native rendering of the same dashboard sections and breakpoints as web Home/home.css. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen(state: AppUiState, controller: AppState) {
+fun HomeScreen(state: AppUiState, controller: AppState, onWorksheetCamera: (ClassNoteLesson) -> Unit) {
+    val capabilities = controller.capabilities.collectAsState().value
+    val student = state.user?.takeIf { it.role == "student" }
+    if (student != null) {
+        val noteLessons = remember(state.lessons) { state.lessons.map { Triple(it.id, it.status, it.startsAt) } }
+        ClassNotesHome(controller.api, noteLessons, capabilities.supports("classroom.notes"), controller::notes, onWorksheetCamera) { noteCard ->
+            DashboardBody(state, controller, noteCard)
+        }
+    } else DashboardBody(state, controller)
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DashboardBody(state: AppUiState, controller: AppState, noteCard: (@Composable () -> Unit)? = null) {
     val subjectsEnabled = controller.capabilities.collectAsState().value.supports(ContractProtocol.FeatureIds.ClassroomSubjects)
     var tab by rememberSaveable { mutableStateOf("upcoming") }
     var search by rememberSaveable { mutableStateOf("") }
@@ -110,8 +124,14 @@ fun HomeScreen(state: AppUiState, controller: AppState) {
                             onJoin = controller::prejoin, onSchedule = { scope.launch { scroll.animateScrollToItem(2) } })
                     }
                     val quick: @Composable (Modifier) -> Unit = { modifier ->
-                        QuickJoin(code, { code = it; codeError = null; submittedCode = false }, codeError ?: state.error?.takeIf { submittedCode },
-                            !state.busy, !compact && !featureWide, featureWide, compact, large, modifier, submitCode)
+                        val join: @Composable (Modifier) -> Unit = { joinModifier ->
+                            QuickJoin(code, { code = it; codeError = null; submittedCode = false }, codeError ?: state.error?.takeIf { submittedCode },
+                                !state.busy, !compact && !featureWide, featureWide, compact, large, joinModifier, submitCode)
+                        }
+                        if (noteCard != null) Column(modifier, verticalArrangement = Arrangement.spacedBy(gap)) {
+                            noteCard()
+                            join(Modifier.fillMaxWidth())
+                        } else join(modifier)
                     }
                     if (featureWide) Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(gap)) {
                         if (viewport <= LayoutToken.DashboardIntermediate) {

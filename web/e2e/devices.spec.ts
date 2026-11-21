@@ -1,6 +1,6 @@
 import { test, expect, type WebSocketRoute } from '@playwright/test'
 import { PDFDocument } from 'pdf-lib'
-import { login, createLesson } from './helpers'
+import { login, createLesson, shareTextbook } from './helpers'
 
 test('screen sharing transfers real frames and mode changes stop only a confirmed capture', async ({ browser, baseURL }, info) => {
   test.setTimeout(210000)
@@ -120,8 +120,7 @@ test('screen sharing transfers real frames and mode changes stop only a confirme
     const uploaded = await teacherContext.request.post('/api/v1/materials', { multipart: { file: { name: 'screen-replacement.pdf', mimeType: 'application/pdf', buffer: Buffer.from(await pdf.save()) } } })
     expect(uploaded.ok()).toBe(true); materialId = (await uploaded.json()).id
     await teacher.locator('.call-controls').getByRole('button', { name: '수업 자료', exact: true }).click()
-    await teacher.getByRole('button', { name: '문서', exact: true }).click()
-    await teacher.locator('.content-share').filter({ hasText: 'screen-replacement.pdf' }).first().click()
+    await shareTextbook(teacher, materialId!)
     await expect(student.getByLabel('screen-replacement.pdf 1페이지', { exact: true })).toBeVisible()
     await expect(teacher.locator('.call-controls').getByRole('button', { name: '화면 공유', exact: true })).toBeVisible()
     // Browser end/share replacement must stop the actual capture track, not just hide it.

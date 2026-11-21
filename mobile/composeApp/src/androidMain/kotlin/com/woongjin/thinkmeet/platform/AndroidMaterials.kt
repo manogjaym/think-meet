@@ -1,6 +1,12 @@
 package com.woongjin.thinkmeet.platform
 
 import android.graphics.Bitmap
+import android.os.Handler
+import android.os.Looper
+import android.view.PixelCopy
+import android.view.SurfaceView
+import kotlin.coroutines.resume
+import kotlinx.coroutines.suspendCancellableCoroutine
 import android.graphics.Color
 import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
@@ -34,7 +40,7 @@ import kotlin.math.abs
 import kotlin.time.Clock
 import kotlin.time.Instant
 
-@Composable actual fun MaterialSurface(api: ThinkMeetApi, share: Share, lessonId: String, modifier: Modifier, onAspectRatio: (Float) -> Unit) {
+@Composable actual fun MaterialSurface(api: ThinkMeetApi, share: Share, lessonId: String, modifier: Modifier, noteFrame: NoteFrameSource?, onAspectRatio: (Float) -> Unit) {
     val id = share.materialId ?: return
     val context = LocalContext.current
     val aspect by rememberUpdatedState(onAspectRatio)
@@ -69,6 +75,7 @@ import kotlin.time.Instant
                     .onFailure { if (it is CancellationException) throw it; error = "PDF를 표시하지 못했어요: ${it.message}" }
             }
             DisposableEffect(id) { onDispose { file?.delete() } }
+            BindNoteFrame(noteFrame, bitmap != null && renderedPage == share.page) { bitmap?.asImageBitmap() }
             val image = bitmap
             if (image != null) Image(image.asImageBitmap(), "${share.material?.name ?: "공유 PDF"} ${renderedPage}페이지", Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
             else if (error == null) CircularProgressIndicator()
@@ -82,11 +89,19 @@ import kotlin.time.Instant
                         setMediaItem(MediaItem.fromUri(api.materialContentUrl(id, lessonId))); prepare()
                     }
                 }
+                var playerView by remember(player) { mutableStateOf<PlayerView?>(null) }
+                var frameReady by remember(player) { mutableStateOf(false) }
+                var seeking by remember(player) { mutableStateOf(false) }
+                BindNoteFrame(noteFrame, frameReady && !seeking) {
+                    (playerView?.videoSurfaceView as? SurfaceView)?.captureNoteFrame()
+                }
                 DisposableEffect(player) {
                     val listener = object : Player.Listener {
                         override fun onVideoSizeChanged(videoSize: VideoSize) {
                             if (videoSize.height > 0) aspect(videoSize.width * videoSize.pixelWidthHeightRatio / videoSize.height)
                         }
+                        override fun onRenderedFirstFrame() { frameReady = true }
+                        override fun onPlaybackStateChanged(playbackState: Int) { seeking = playbackState == Player.STATE_BUFFERING }
                         override fun onPlayerError(e: androidx.media3.common.PlaybackException) { error = "영상을 재생하지 못했어요: ${e.localizedMessage}" }
                     }
                     player.addListener(listener)
@@ -97,12 +112,26 @@ import kotlin.time.Instant
                         val elapsed = if (share.playing) runCatching { (Clock.System.now() - Instant.parse(share.updatedAt)).inWholeMilliseconds }.getOrDefault(0) else 0
                         return (share.position * 1000 + elapsed).toLong().coerceAtLeast(0)
                     }
+                    if (noteFrame != null) seeking = true
                     player.seekTo(expected()); player.playWhenReady = share.playing
+                    if (noteFrame != null && player.playbackState == Player.STATE_READY) seeking = false
                     while (true) { delay(2000); if (share.playing && abs(player.currentPosition - expected()) > 1500) player.seekTo(expected()) }
                 }
-                AndroidView(factory = { PlayerView(it).apply { this.player = player; useController = false } }, modifier = Modifier.fillMaxSize())
+                AndroidView(factory = { PlayerView(it).apply { this.player = player; useController = false; playerView = this } }, modifier = Modifier.fillMaxSize())
             } else CircularProgressIndicator()
         }
         error?.let { Text(it) }
     }
+}
+
+private suspend fun SurfaceView.captureNoteFrame() = suspendCancellableCoroutine<androidx.compose.ui.graphics.ImageBitmap?> { continuation ->
+    if (!holder.surface.isValid || width <= 0 || height <= 0) { continuation.resume(null); return@suspendCancellableCoroutine }
+    val scale = minOf(1f, NoteImageEdge.toFloat() / maxOf(width, height))
+    val bitmap = Bitmap.createBitmap((width * scale).toInt().coerceAtLeast(1), (height * scale).toInt().coerceAtLeast(1), Bitmap.Config.ARGB_8888)
+    try {
+        PixelCopy.request(this, bitmap, { status ->
+            if (continuation.isActive && status == PixelCopy.SUCCESS) continuation.resume(bitmap.asImageBitmap())
+            else { bitmap.recycle(); if (continuation.isActive) continuation.resume(null) }
+        }, Handler(Looper.getMainLooper()))
+    } catch (_: IllegalArgumentException) { bitmap.recycle(); continuation.resume(null) }
 }

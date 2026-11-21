@@ -1,5 +1,7 @@
+import { ClassNotes } from "./screens/ClassNotes"
 import { AttendanceStudents, StudentAttendance, attendanceFeature } from "./screens/StudentAttendance"
 import { designContent } from "./generated/design-content"
+import { notesFeature } from "./lib/classNotes"
 import {
   lazy,
   Suspense,
@@ -103,7 +105,9 @@ function Application() {
   const location = useLocation(),
     navigate = useNavigate()
   const parts = location.pathname.split("/").filter(Boolean)
+  const notesEnabled = useFeature(notesFeature)
   const attendanceEnabled = useFeature(attendanceFeature) && user?.role === "teacher"
+  const notesTab = new URLSearchParams(location.search).get("tab") === "records" ? "records" : "worksheets"
   const lessonId =
     parts[0] === "lessons" && parts[1] !== "new"
       ? parts[1]
@@ -121,6 +125,7 @@ function Application() {
             : "detail"
       : parts[0] === "error"
         ? "exception"
+        : parts[0] === "class-notes" ? "class-notes"
         : parts[0] === "students" ? (parts[1] && parts[2] === "attendance" ? "attendance" : "students")
         : "home"
   const { lessons, students, loading, error, refresh } = useLessonDirectory(
@@ -427,6 +432,10 @@ function Application() {
       <Home
         role={user.role}
         user={user}
+        onNotes={notesEnabled && user.role === "student" ? tab => {
+          scrollPositions.current[location.pathname] = window.scrollY
+          navigate(`/class-notes?tab=${tab}`)
+        } : undefined}
         lessons={lessons.map(displayLesson)}
         view={homeView}
         onViewChange={setHomeView}
@@ -457,6 +466,8 @@ function Application() {
         }}
       />
     )
+  else if (screen === "class-notes")
+    content = user.role === "student" && notesEnabled ? <ClassNotes tab={notesTab} onTab={tab => navigate(`/class-notes?tab=${tab}`, { replace: true })} /> : <Status error="수업 노트를 이용할 수 없어요." />
   else if (screen === "students" || screen === "attendance")
     content = !attendanceEnabled ? <Status error={designContent.attendanceUnavailable} />
       : screen === "students" ? <AttendanceStudents key={user.id} unauthorized={auth.retry} />
@@ -495,6 +506,7 @@ function Application() {
       <Detail
         lesson={lesson}
         role={lessonRole}
+        notesEnabled={notesEnabled}
         setScreen={setScreen}
         onEdit={() => navigate(`/lessons/${lesson.id}/edit`)}
         onCancel={async () => {

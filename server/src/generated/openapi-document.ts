@@ -6,7 +6,7 @@ export const OPENAPI_DOCUMENT = {
     "version": "1.0.0",
     "description": "Canonical REST schemas shared by NestJS, React and KMP. Socket.IO is defined in realtime.json."
   },
-  "x-contract-revision": 10,
+  "x-contract-revision": 11,
   "servers": [
     {
       "url": "/api/v1"
@@ -1255,6 +1255,421 @@ export const OPENAPI_DOCUMENT = {
         "description": "Raw signed LiveKit body; authentication remains signature-based."
       }
     },
+    "/class-notes/target": {
+      "get": {
+        "operationId": "getClassNoteTarget",
+        "tags": [
+          "class notes"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassNoteTarget"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "x-feature": "classroom.notes"
+      }
+    },
+    "/class-notes/worksheets": {
+      "get": {
+        "operationId": "listClassNoteWorksheets",
+        "tags": [
+          "class notes"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ClassNoteWorksheet"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "x-feature": "classroom.notes",
+        "parameters": [
+          {
+            "name": "month",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "lessonId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
+    },
+    "/class-notes/lessons/{id}/worksheets": {
+      "post": {
+        "operationId": "submitClassNoteWorksheet",
+        "tags": [
+          "class notes"
+        ],
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassNoteImage"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "x-feature": "classroom.notes",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  },
+                  "requestId": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                },
+                "required": [
+                  "file",
+                  "requestId"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/class-notes/worksheets/{id}/correction": {
+      "post": {
+        "operationId": "submitClassNoteCorrection",
+        "tags": [
+          "class notes"
+        ],
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassNoteImage"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "x-feature": "classroom.notes",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  },
+                  "requestId": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                },
+                "required": [
+                  "file",
+                  "requestId"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/class-notes/captures": {
+      "get": {
+        "operationId": "listClassNoteCaptures",
+        "tags": [
+          "class notes"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ClassNoteCapture"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "x-feature": "classroom.notes"
+      }
+    },
+    "/class-notes/lessons/{id}/captures": {
+      "post": {
+        "operationId": "saveClassNoteCapture",
+        "tags": [
+          "class notes"
+        ],
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassNoteImage"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "x-feature": "classroom.notes",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  },
+                  "requestId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "shareId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "page": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "admissionId": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                },
+                "required": [
+                  "file",
+                  "requestId",
+                  "shareId",
+                  "page",
+                  "admissionId"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/class-notes/images/{id}": {
+      "get": {
+        "operationId": "getClassNoteImage",
+        "tags": [
+          "class notes"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "x-feature": "classroom.notes",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
+    },
     "/lessons/{id}/prejoin": {
       "get": {
         "operationId": "getPrejoinStatus",
@@ -1665,6 +2080,10 @@ export const OPENAPI_DOCUMENT = {
           },
           "livekitUrl": {
             "type": "string"
+          },
+          "admissionId": {
+            "type": "string",
+            "format": "uuid"
           }
         },
         "required": [
@@ -2316,6 +2735,23 @@ export const OPENAPI_DOCUMENT = {
           "expectedAssistanceId"
         ]
       },
+      "DocumentOpenPayload": {
+        "type": "object",
+        "properties": {
+          "materialId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "materialId",
+          "page"
+        ]
+      },
       "ShareStartPayload": {
         "type": "object",
         "properties": {
@@ -2627,43 +3063,114 @@ export const OPENAPI_DOCUMENT = {
           "sessionId"
         ]
       },
-      "PrejoinStudent": {
+      "ClassNoteLesson": {
         "type": "object",
-        "required": [
-          "id",
-          "name"
-        ],
         "properties": {
           "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
             "type": "string"
           },
-          "name": {
+          "startsAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "teacherName": {
             "type": "string"
           }
-        }
-      },
-      "PrejoinStatus": {
-        "type": "object",
+        },
         "required": [
-          "status"
-        ],
+          "id",
+          "title",
+          "startsAt",
+          "teacherName"
+        ]
+      },
+      "ClassNoteTarget": {
+        "type": "object",
         "properties": {
-          "status": {
+          "lesson": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ClassNoteLesson"
+              }
+            ],
+            "nullable": true
+          }
+        },
+        "required": [
+          "lesson"
+        ]
+      },
+      "ClassNoteImage": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "createdAt"
+        ]
+      },
+      "ClassNoteWorksheet": {
+        "type": "object",
+        "properties": {
+          "lesson": {
+            "$ref": "#/components/schemas/ClassNoteLesson"
+          },
+          "studentName": {
+            "type": "string"
+          },
+          "original": {
+            "$ref": "#/components/schemas/ClassNoteImage"
+          },
+          "correction": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ClassNoteImage"
+              }
+            ],
+            "nullable": true
+          }
+        },
+        "required": [
+          "lesson",
+          "studentName",
+          "original",
+          "correction"
+        ]
+      },
+      "ClassNoteCapture": {
+        "type": "object",
+        "properties": {
+          "lesson": {
+            "$ref": "#/components/schemas/ClassNoteLesson"
+          },
+          "image": {
+            "$ref": "#/components/schemas/ClassNoteImage"
+          },
+          "source": {
             "type": "string",
             "enum": [
-              "SCHEDULED",
-              "LIVE",
-              "ENDED",
-              "CANCELLED"
+              "self",
+              "teacher"
             ]
-          },
-          "waitingStudents": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/PrejoinStudent"
-            }
           }
-        }
+        },
+        "required": [
+          "lesson",
+          "image",
+          "source"
+        ]
       },
       "StudentAttendanceStatus": {
         "type": "string",
@@ -2840,6 +3347,44 @@ export const OPENAPI_DOCUMENT = {
         "required": [
           "status"
         ]
+      },
+      "PrejoinStudent": {
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "PrejoinStatus": {
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "SCHEDULED",
+              "LIVE",
+              "ENDED",
+              "CANCELLED"
+            ]
+          },
+          "waitingStudents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PrejoinStudent"
+            }
+          }
+        }
       }
     }
   }

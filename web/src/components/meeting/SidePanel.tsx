@@ -11,9 +11,10 @@ import { AnimatedPresence } from "../AnimatedPresence"
 import { useFeature } from "../../lib/useFeature"
 import { currentAssistance } from "../../lib/remoteAssistance"
 import { useMediaStreamTrack, useParticipantTrack, useRoomParticipants } from "../../lib/livekitMedia"
+import { TextbookPicker } from "./TextbookPicker"
 
-type PanelProps = { panel: Panel; setPanel: (panel: Panel) => void; user: User; lesson: ApiLesson; room: Room | null; snapshot: MeetingSnapshot | null; command: Command; onOutputChange: (id: string) => void; unreadChatCount?: number }
-export function SidePanel({ panel, setPanel, user, lesson, room, snapshot, command, onOutputChange, unreadChatCount = 0 }: PanelProps) {
+type PanelProps = { panel: Panel; activePanel: Panel; setPanel: (panel: Panel) => void; user: User; lesson: ApiLesson; room: Room | null; snapshot: MeetingSnapshot | null; command: Command; onOutputChange: (id: string) => void; unreadChatCount?: number; textbookEnabled: boolean; textbookConnected: boolean; onTextbookOpened: () => void }
+export function SidePanel({ panel, activePanel, setPanel, user, lesson, room, snapshot, command, onOutputChange, unreadChatCount = 0, textbookEnabled, textbookConnected, onTextbookOpened }: PanelProps) {
   const isHost = lesson.teacher.id === user.id
   const assistanceSupported = useFeature("meeting.remote-assistance")
   const phase = snapshot?.instruction?.phase
@@ -34,7 +35,16 @@ export function SidePanel({ panel, setPanel, user, lesson, room, snapshot, comma
   const [students, setStudents] = useState<User[]>([])
   const [selected, setSelected] = useState<string[]>([])
   const [materials, setMaterials] = useState<Material[]>([])
-  const [contentTab, setContentTab] = useState<"media" | "document">("media")
+  const [contentTab, setContentTab] = useState<"media" | "document">(textbookEnabled ? "document" : "media")
+  const [listing, setListing] = useState(true)
+  const [listError, setListError] = useState(false)
+  const [listAttempt, setListAttempt] = useState(0)
+  const [textbookBusy, setTextbookBusy] = useState(false)
+  const textbookRequest = useRef(false)
+  const contentOpen = activePanel === "content" && showMaterials
+  const textbookTab = textbookEnabled && contentTab === "document"
+  const latestPanel = useRef({ contentOpen, onTextbookOpened })
+  latestPanel.current = { contentOpen, onTextbookOpened }
   const [upload, setUpload] = useState<{ name: string; progress: number } | null>(null)
   const [failedFile, setFailedFile] = useState<File | null>(null)
   const uploadRef = useRef<XMLHttpRequest | null>(null)
@@ -42,7 +52,7 @@ export function SidePanel({ panel, setPanel, user, lesson, room, snapshot, comma
   const fileInput = useRef<HTMLInputElement>(null)
   const endMessages = useRef<HTMLDivElement>(null)
   const messages = snapshot?.messages || []
-  const title = { people: designContent.meetingPeoplePanel, more: "더보기", chat: designContent.meetingChatPanel, invite: isOpen ? "참여 링크 공유" : "다른 참석자 추가", settings: "설정", content: "콘텐츠 공유" }[panel || "more"]
+  const title = { people: designContent.meetingPeoplePanel, more: "더보기", chat: designContent.meetingChatPanel, invite: isOpen ? "참여 링크 공유" : "다른 참석자 추가", settings: "설정", content: textbookTab ? designContent.textbookPicker : "콘텐츠 공유" }[panel || "more"]
   const roster = snapshot?.participants || [lesson.teacher, ...lesson.students].map(person => ({ user: person, online: false, raised: false }))
   const participants = useRoomParticipants(panel === "people" || panel === "chat" ? room : null)
   const connected = new Map(participants.map(person => [person.identity, person]))
@@ -50,15 +60,50 @@ export function SidePanel({ panel, setPanel, user, lesson, room, snapshot, comma
   const offline = roster.filter(person => !connected.has(person.user.id))
   useEffect(() => { setSearch(""); setError(""); setNotice("") }, [panel])
   useEffect(() => { endMessages.current?.scrollIntoView({ block: "end", behavior: "smooth" }) }, [messages.length, panel])
+  useEffect(() => setContentTab(textbookEnabled ? "document" : "media"), [textbookEnabled])
   useEffect(() => {
     if (!isHost) return
     if (panel === "invite" && !isOpen) void api<User[]>("/students").then(setStudents).catch(e => setError(friendlyError(e)))
-    if (panel === "content" && showMaterials) void api<Material[]>("/materials").then(setMaterials).catch(e => setError(friendlyError(e)))
-  }, [panel, isHost, isOpen, showMaterials])
+  }, [panel, isHost, isOpen])
+  useEffect(() => {
+    if (!contentOpen) {
+      if (textbookEnabled) setContentTab("document")
+      setListing(true)
+      setListError(false)
+      return
+    }
+    setError("")
+    setNotice("")
+  }, [contentOpen, textbookEnabled])
+  useEffect(() => {
+    if (!contentOpen) return
+    const request = new AbortController()
+    setListing(true)
+    setListError(false)
+    void api<Material[]>("/materials", { signal: request.signal }).then(files => {
+      if (!request.signal.aborted) setMaterials(files)
+    }).catch(() => {
+      if (!request.signal.aborted) setListError(true)
+    }).finally(() => {
+      if (!request.signal.aborted) setListing(false)
+    })
+    return () => request.abort()
+  }, [contentOpen, listAttempt])
   useEffect(() => () => { uploadGateRef.current?.abort(); uploadRef.current?.abort() }, [])
   const run = async (action: () => Promise<unknown>, success?: string) => {
     setError("")
     try { await action(); if (success) setNotice(success) } catch(e) { setError(friendlyError(e)) }
+  }
+  const changeTextbook = async (action: () => Promise<unknown>) => {
+    if (textbookRequest.current) return
+    textbookRequest.current = true
+    setTextbookBusy(true)
+    try { await run(action) } finally { textbookRequest.current = false; setTextbookBusy(false) }
+  }
+  const removeMaterial = async (material: Material) => {
+    await api(`/materials/${material.id}`, { method: "DELETE" })
+    setMaterials(current => current.filter(item => item.id !== material.id))
+    setNotice("파일을 삭제했어요.")
   }
   const requestAssistance = (studentId: string) => {
     if (!isHost || !remoteAssistanceEnabled || assistanceRequestBlocked || assistanceRequestPending.current) return
@@ -119,7 +164,7 @@ export function SidePanel({ panel, setPanel, user, lesson, room, snapshot, comma
       {isHost && person.id !== lesson.teacher.id && <button aria-label={`${person.name} 퇴장`} onClick={() => setKick(person)}><Icon name="more" size={20} /></button>}
     </div>
   }
-  return <aside className="side-panel">
+  return <aside className={`side-panel ${panel === "content" && textbookTab ? "textbook-panel" : ""}`}>
     <header><div><h2>{title}</h2>{panel === "people" && <span>{online.length}명 입장</span>}</div><button onClick={() => setPanel(null)} aria-label="패널 닫기"><Icon name="close" /></button></header>
     {(panel === "people" || panel === "chat") && <nav className="participant-tabs" aria-label="참석자 패널 보기"><button className={panel === "people" ? "active" : ""} onClick={() => setPanel("people")}><Icon name="users" size={17} />참석자<span>{online.length}</span></button><button className={panel === "chat" ? "active" : ""} onClick={() => setPanel("chat")} aria-label={unreadChatCount ? `채팅, 읽지 않은 메시지 ${unreadChatCount}개` : "채팅"}><Icon name="chat" size={17} />채팅{unreadChatCount > 0 && <span className="chat-unread-badge" aria-hidden="true">{unreadChatCount > 99 ? "99+" : unreadChatCount}</span>}</button></nav>}
     <div className="panel-view">
@@ -139,7 +184,42 @@ export function SidePanel({ panel, setPanel, user, lesson, room, snapshot, comma
         <button className="copy-link" onClick={() => void run(() => navigator.clipboard.writeText(joinLink(lesson)), "참여 링크를 복사했어요.")}><Icon name="copy" size={17} />참여 링크 복사</button><p className="content-note">{joinLink(lesson)}</p>
       </div>}
       {panel === "settings" && <Settings room={room} onError={setError} onOutputChange={onOutputChange} />}
-      {panel === "content" && showMaterials && <div className="panel-body content-body"><div className="tabs"><button className={contentTab === "media" ? "active" : ""} onClick={() => setContentTab("media")}>미디어</button><button className={contentTab === "document" ? "active" : ""} onClick={() => setContentTab("document")}>문서</button></div><input ref={fileInput} type="file" hidden accept={contentTab === "media" ? ".mp4,video/mp4" : ".pdf,application/pdf"} onChange={e => { const file = e.target.files?.[0]; if (file) uploadFile(file); e.target.value = "" }} /><button className="upload" disabled={Boolean(upload)} onClick={() => fileInput.current?.click()}><Icon name="plus" />{contentTab === "media" ? "미디어 파일 업로드" : "문서 파일 업로드"}</button>{upload && <div className="upload-progress"><div><strong>{upload.name}</strong><button onClick={cancelUpload}>취소</button></div><span><i style={{ width: `${upload.progress}%` }} /></span><small>{upload.progress >= 99 ? "파일을 확인하는 중" : `업로드 중 · ${upload.progress}%`}</small></div>}{failedFile && <button className="upload" onClick={() => uploadFile(failedFile)}>업로드 다시 시도</button>}<p className="panel-label">내 파일</p>{materials.filter(material => material.type === contentTab).map(material => <div className={`content-item ${snapshot?.share?.materialId === material.id ? "active" : ""}`} key={material.id}><div className="file-thumb"><Icon name={material.type === "media" ? "video" : "file"} /></div><button className="content-share" onClick={() => void run(async () => { await command("share.start", { type: material.type, materialId: material.id }); setPanel(null) })}><strong>{material.name}</strong><span>{material.type === "media" ? `${formatDuration(material.duration || 0)} · MP4` : `${material.pages || ""}페이지 · PDF`} · {(material.size / 1024 / 1024).toFixed(1)}MiB</span></button><button className="content-delete" disabled={snapshot?.share?.materialId === material.id} title={snapshot?.share?.materialId === material.id ? "공유를 중지한 후 삭제할 수 있어요." : "파일 삭제"} aria-label={`${material.name} 삭제`} onClick={() => void run(async () => { await api(`/materials/${material.id}`, { method: "DELETE" }); setMaterials(current => current.filter(item => item.id !== material.id)) }, "파일을 삭제했어요.")}><Icon name="trash" size={17} /></button></div>)}{!materials.some(material => material.type === contentTab) && <p className="chat-notice">업로드한 자료가 없어요.</p>}<div className="content-note"><Icon name="alert" size={17} /><span>새 자료 또는 화면을 공유하면 기존 공유가 전환됩니다. PDF 50MiB, MP4 500MiB까지 지원합니다.</span></div></div>}
+      {panel === "content" && contentOpen && <div className={`panel-body content-body ${textbookTab ? "textbook-body" : ""}`}>
+        <div className="tabs">
+          {(textbookEnabled ? ["document", "media"] as const : ["media", "document"] as const).map(tab =>
+            <button key={tab} className={contentTab === tab ? "active" : ""} aria-pressed={contentTab === tab}
+              disabled={textbookBusy} onClick={() => setContentTab(tab)}>
+              {tab === "media" ? "미디어" : textbookEnabled ? designContent.textbookTab : "문서"}
+            </button>)}
+        </div>
+        <input ref={fileInput} type="file" hidden accept={contentTab === "media" ? ".mp4,video/mp4" : ".pdf,application/pdf"} onChange={e => { const file = e.target.files?.[0]; if (file) uploadFile(file); e.target.value = "" }} />
+        <button className="upload" disabled={listing || Boolean(upload) || textbookBusy} onClick={() => fileInput.current?.click()}>
+          <Icon name="plus" />{contentTab === "media" ? "미디어 파일 업로드" : textbookTab ? designContent.textbookAdd : "문서 파일 업로드"}
+        </button>
+        {upload && <div className="upload-progress"><div><strong>{upload.name}</strong><button onClick={cancelUpload}>취소</button></div><span><i style={{ width: `${upload.progress}%` }} /></span><small>{upload.progress >= 99 ? "파일을 확인하는 중" : `업로드 중 · ${upload.progress}%`}</small></div>}
+        {failedFile && <button className="upload" disabled={listing || textbookBusy} onClick={() => uploadFile(failedFile)}>업로드 다시 시도</button>}
+        {listError && <div className="panel-error" role="alert"><p>{textbookTab ? designContent.textbookListError : "자료 목록을 불러오지 못했어요."}</p><button className="textbook-retry" onClick={() => setListAttempt(value => value + 1)}>{designContent.textbookRetry}</button></div>}
+        {listing ? <p className="chat-notice" role="status">자료 목록을 불러오는 중이에요.</p> : !listError && (textbookTab ?
+          <TextbookPicker materials={materials.filter(item => item.type === "document")} share={snapshot?.share}
+            busy={textbookBusy || Boolean(upload)} connected={textbookConnected}
+            onOpen={(materialId, page) => changeTextbook(async () => {
+              await command("document.open", { materialId, page })
+              if (latestPanel.current.contentOpen) latestPanel.current.onTextbookOpened()
+            })}
+            onDelete={material => changeTextbook(() => removeMaterial(material))} />
+          : <>
+            <p className="panel-label">내 파일</p>
+            {materials.filter(material => material.type === contentTab).map(material => <div className={`content-item ${snapshot?.share?.materialId === material.id ? "active" : ""}`} key={material.id}>
+              <div className="file-thumb"><Icon name={material.type === "media" ? "video" : "file"} /></div>
+              <button className="content-share" onClick={() => void run(async () => { await command("share.start", { type: material.type, materialId: material.id }); setPanel(null) })}>
+                <strong>{material.name}</strong><span>{material.type === "media" ? `${formatDuration(material.duration || 0)} · MP4` : `${material.pages || ""}페이지 · PDF`} · {(material.size / 1024 / 1024).toFixed(1)}MiB</span>
+              </button>
+              <button className="content-delete" disabled={snapshot?.share?.materialId === material.id} title={snapshot?.share?.materialId === material.id ? "공유를 중지한 후 삭제할 수 있어요." : "파일 삭제"} aria-label={`${material.name} 삭제`} onClick={() => void run(() => removeMaterial(material))}><Icon name="trash" size={17} /></button>
+            </div>)}
+            {!materials.some(material => material.type === contentTab) && <p className="chat-notice">업로드한 자료가 없어요.</p>}
+            <div className="content-note"><Icon name="alert" size={17} /><span>새 자료 또는 화면을 공유하면 기존 공유가 전환됩니다. PDF 50MiB, MP4 500MiB까지 지원합니다.</span></div>
+          </>)}
+      </div>}
     </div>
     <AnimatedPresence show={Boolean(kick)}><Confirm title={`${kick?.name || "참여자"} 님을 퇴장시킬까요?`} copy="이 참여자는 이 수업에 다시 입장할 수 없습니다." cancel={() => setKick(null)} confirm={() => { if (kick) void run(() => api(`/lessons/${lesson.id}/kick`, { method: "POST", body: JSON.stringify({ userId: kick.id }) }), "참여자를 퇴장시켰어요."); setKick(null) }} confirmText="퇴장시키기" /></AnimatedPresence>
   </aside>

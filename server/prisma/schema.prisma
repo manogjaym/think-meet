@@ -73,6 +73,7 @@ model Lesson {
   strokes Stroke[]
   attendance Attendance[]
   attendanceOverrides StudentAttendanceOverride[]
+  noteImages ClassNoteImage[]
   @@index([teacherId, startsAt])
   @@index([subjectId])
   @@index([accessMode, status, startsAt])
@@ -186,4 +187,24 @@ model AnnotationOperation {
   createdAt DateTime @default(now())
   touchedAt DateTime @updatedAt
   @@index([lessonId, actorId, shareId, page, undone])
+}
+
+model ClassNoteImage {
+  id String @id @default(uuid()) @db.Uuid
+  lessonId String @db.Uuid
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  authorId String @db.Uuid
+  studentId String? @db.Uuid
+  kind String
+  requestId String @db.Uuid
+  originalId String? @unique @db.Uuid
+  original ClassNoteImage? @relation("ClassNoteCorrection", fields: [originalId], references: [id], onDelete: Cascade)
+  correction ClassNoteImage? @relation("ClassNoteCorrection")
+  objectKey String @unique
+  contentType String
+  size Int
+  createdAt DateTime @default(now())
+  @@unique([authorId, requestId])
+  @@index([studentId, kind, createdAt])
+  @@index([lessonId, kind, createdAt])
 }

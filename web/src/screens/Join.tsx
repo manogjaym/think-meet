@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, type ReactNode } from "react"
-import { useFeature } from "../lib/useFeature"
 import type { Lesson } from "./Home"
 import type { Role, Screen } from "../models"
 import type { User } from "../lib/api"
@@ -12,6 +11,7 @@ import {
 } from "../lib/prejoin"
 import { readDevicePreferences, saveDevicePreferences } from "../lib/meeting"
 import { Avatar, Badge, Icon } from "../components/ui"
+import { useFeature } from "../lib/useFeature"
 
 export type JoinDevices = {
   mic: boolean

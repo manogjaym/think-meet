@@ -13,6 +13,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.rule.GrantPermissionRule
 import com.woongjin.thinkmeet.data.MeetingSnapshot
+import com.woongjin.thinkmeet.data.Stroke
 import com.woongjin.thinkmeet.data.ThinkMeetApi
 import com.woongjin.thinkmeet.platform.AppLinks
 import com.woongjin.thinkmeet.platform.createHttpClient
@@ -21,6 +22,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import java.io.File
+import org.junit.Assume.assumeTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -41,6 +43,94 @@ class NativeSmokeTest {
     fun loginAndJoinRealLesson() {
         try { runSmoke() }
         catch (error: Throwable) { runCatching { screenshot("99-failure") }; throw error }
+    }
+
+    @Test
+    fun teacherSharesTextbookAndAnnotates() {
+        val arguments = InstrumentationRegistry.getArguments()
+        val filename = arguments.getString("textbookName").orEmpty()
+        assumeTrue("The textbook fixture was not supplied", filename.isNotEmpty())
+        val lessonCode = requireNotNull(arguments.getString("lessonCode"))
+        val lessonId = requireNotNull(arguments.getString("lessonId"))
+        val tablet = arguments.getString("textbookTablet") == "true"
+        val client = createHttpClient()
+        val api = ThinkMeetApi(client, ServerConfig.ORIGIN)
+        try {
+            waitFor("login screen or restored dashboard") {
+                exists(hasText("로그인")) || exists(hasText("내 수업"))
+            }
+            if (exists(hasText("로그인"))) {
+                val fields = compose.onAllNodes(hasSetTextAction())
+                fields[0].performTextReplacement(arguments.getString("username") ?: "teacher1")
+                fields[1].performTextReplacement(arguments.getString("password") ?: "test123")
+                compose.onNodeWithText("로그인").performClick()
+            }
+            waitFor("signed in as the teacher") { exists(hasText("내 수업")) }
+            val teacher = runBlocking { withTimeout(15_000) { api.me() } }
+            compose.runOnIdle { AppLinks.receive("thinkmeet://join/$lessonCode") }
+            val join = hasText("화상미팅 입장") or hasText("지금 참여하기")
+            waitFor("prejoin") { exists(join) }
+            for (label in listOf("카메라 끄기", "마이크 끄기")) {
+                val switch = hasContentDescription(label) and hasClickAction()
+                if (exists(switch)) compose.onNode(switch).performClick()
+            }
+            compose.onNode(join).performScrollTo().performClick()
+            waitFor("joined lesson screen") {
+                exists(hasContentDescription("발표자 보기로 전환")) || exists(hasContentDescription("바둑판 보기로 전환"))
+            }
+            waitForSnapshot(api, lessonId) { it.participants.any { row -> row.user.id == teacher.id && row.online } }
+            val start = hasText("수업 시작") and hasClickAction()
+            if (exists(start)) compose.onNode(start).performClick()
+            waitForSnapshot(api, lessonId) { it.instruction?.phase == "classroom" }
+
+            val materials = hasContentDescription("수업 자료") and hasClickAction()
+            waitFor("materials button") { exists(materials) }
+            compose.onNode(materials).performClick()
+            val grid = compose.onNodeWithTag("textbook-pages")
+            waitFor("loaded textbook previews") { exists(hasTestTag("textbook-pages")) }
+            compose.onNodeWithText(filename).assertIsDisplayed()
+            grid.performScrollToIndex(2)
+            compose.onNode(hasText("3쪽") and hasClickAction()).performClick().assertIsSelected()
+            screenshot("textbook-picker")
+
+            compose.onNodeWithText("3쪽 화면에 불러오기").assertIsEnabled().performClick()
+            val shared = waitForSnapshot(api, lessonId) { it.share?.page == 3 && it.share.material?.name == filename }
+            val shareId = checkNotNull(shared.share).id
+            val existingStrokeIds = shared.strokes.map { it.id }.toSet()
+            val pdf = hasContentDescription("$filename 3페이지")
+            waitFor("native PDF page 3") { exists(pdf) }
+            val panel = compose.onNodeWithText("교재 불러오기")
+            if (tablet) panel.assertIsDisplayed() else panel.assertDoesNotExist()
+            val stage = compose.onNodeWithContentDescription("수업 판서 영역")
+            val pen = compose.onNodeWithText("판서 시작")
+            check(pen.getUnclippedBoundsInRoot().top >= stage.getUnclippedBoundsInRoot().bottom)
+            screenshot("textbook-shared")
+
+            pen.performClick()
+            stage.performTouchInput {
+                swipe(Offset(width * .2f, height * .35f), Offset(width * .7f, height * .6f), 600)
+            }
+            val newTeacherStroke: (Stroke) -> Boolean = {
+                it.id !in existingStrokeIds && it.shareId == shareId && it.authorId == teacher.id && it.page == 3 && !it.deleted
+            }
+            val drawn = waitForSnapshot(api, lessonId) { it.strokes.any(newTeacherStroke) }
+            val stroke = drawn.strokes.first(newTeacherStroke)
+            check(stroke.points.size >= 2 && stroke.points.all { it.x in 0.0..1.0 && it.y in 0.0..1.0 })
+            val clear = hasContentDescription("전체 지우기") and hasClickAction()
+            waitFor("teacher canvas updated after the stroke") { exists(clear and isEnabled()) }
+            screenshot("textbook-annotation")
+
+            compose.onNode(hasContentDescription("실행 취소") and hasClickAction()).performClick()
+            waitFor("teacher canvas updated after undo") { exists(clear and isNotEnabled()) }
+            compose.onNode(hasContentDescription("다시 실행") and hasClickAction()).performClick()
+            waitFor("teacher canvas updated after redo") { exists(clear and isEnabled()) }
+        } catch (error: Throwable) {
+            runCatching { screenshot("textbook-failure") }
+            throw error
+        } finally {
+            runBlocking { runCatching { withTimeout(10_000) { api.leave(lessonId) } } }
+            client.close()
+        }
     }
 
     private fun runSmoke() {

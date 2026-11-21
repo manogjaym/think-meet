@@ -47,6 +47,118 @@
 .share-status-bar .share-save + button { margin-inline-start: 0; }
 .share-status-bar .share-save:disabled { opacity: .5; }
 
+.meeting .meeting-panel-container.textbook-dock {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  background: transparent;
+  overflow: visible;
+}
+.textbook-dock .side-panel {
+  flex: 1 1 0;
+  height: auto;
+  border-radius: var(--tm-radius-r12);
+  overflow: hidden;
+}
+.textbook-participants { flex: none; }
+.textbook-participants .shared-participants { flex-direction: row; gap: var(--space-2); }
+.textbook-participants .video-tile { flex: 1; min-width: 0; }
+.textbook-participants .shared-participants-empty { width: 100%; }
+
+.side-panel.textbook-panel > header {
+  flex-basis: var(--tm-spacing-s56);
+  padding-block: var(--space-1);
+}
+.panel-body.textbook-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+}
+.textbook-body > :not(.textbook-pages) { flex-shrink: 0; }
+.textbook-body .upload, .textbook-body .tabs { margin: 0; }
+.textbook-select { display: flex; align-items: center; gap: var(--space-1); }
+.textbook-select select {
+  flex: 1;
+  min-width: 0;
+  min-height: var(--tm-spacing-s44);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--tm-radius-r8);
+  background: var(--tm-color-meeting-subtle);
+  color: var(--text);
+}
+.textbook-pages {
+  flex: 1 1 0;
+  min-height: var(--tm-spacing-s96);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+  align-content: start;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: var(--space-1);
+}
+.textbook-page {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  border: 1px solid var(--line);
+  border-radius: var(--tm-radius-r8);
+  background: var(--tm-color-white);
+  color: var(--text-secondary);
+  font-size: var(--type-caption);
+  line-height: 1.5;
+}
+.textbook-page[aria-pressed="true"] {
+  border-color: var(--tm-color-primary);
+  box-shadow: inset 0 0 0 1px var(--tm-color-primary);
+  background: var(--tm-color-selection);
+  color: var(--tm-color-primary-pressed);
+  font-weight: var(--weight-semibold);
+}
+.textbook-thumbnail {
+  position: relative;
+  height: var(--tm-spacing-s96);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: var(--tm-color-meeting-subtle);
+  border-radius: var(--tm-radius-r4);
+}
+.textbook-thumbnail canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.textbook-open { margin-top: auto; min-height: var(--tm-spacing-s44); border-radius: var(--tm-radius-r8); }
+.textbook-retry { min-height: var(--tm-spacing-s36); text-decoration: underline; }
+
+.shared-stage.textbook-stage { grid-template-rows: minmax(0, 1fr) auto; gap: var(--space-2); }
+.shared-stage.textbook-stage-docked { grid-template-columns: minmax(0, 1fr); }
+.textbook-stage .live-shared-content { grid-column: 1; grid-row: 1; padding: var(--space-2); }
+.textbook-stage > .shared-participant-gallery { grid-column: 2; grid-row: 1 / span 2; }
+.textbook-stage-footer {
+  grid-column: 1;
+  grid-row: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1);
+}
+.textbook-stage .textbook-stage-footer > :is(.document-controls, .annotate-entry, .annotation-bar) {
+  position: static;
+  min-width: 0;
+  max-width: 100%;
+  z-index: auto;
+}
+.textbook-stage .annotation-bar { justify-content: flex-end; }
+.textbook-stage .annotate-entry, .textbook-stage .annotation-bar { margin-inline-start: auto; }
+.textbook-stage .share-save { white-space: nowrap; }
+@media (max-width: design(layout.meetingCompactBreakpoint)) {
+  .shared-stage.textbook-stage { grid-template-rows: minmax(0, 1fr) auto auto; }
+  .textbook-stage > .shared-participant-gallery { grid-column: 1; grid-row: 3; max-height: var(--tm-spacing-s96); }
+  .textbook-stage .shared-participants .video-tile { height: var(--tm-spacing-s64); min-height: var(--tm-spacing-s64); }
+  .textbook-stage .document-controls button { min-height: var(--tm-spacing-s36); }
+}
+
 .meeting-lesson-modes {
   display: flex;
   flex: none;

@@ -173,6 +173,9 @@ kotlin {
         }
         androidMain.dependencies {
             implementation("androidx.activity:activity-compose:1.10.1")
+            implementation("androidx.camera:camera-camera2:1.4.2")
+            implementation("androidx.camera:camera-lifecycle:1.4.2")
+            implementation("androidx.camera:camera-view:1.4.2")
             implementation("io.ktor:ktor-client-okhttp:3.3.1")
             implementation("io.livekit:livekit-android:2.29.1")
             implementation("androidx.media3:media3-exoplayer:1.8.0")
@@ -214,5 +217,12 @@ android {
     }
     packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
     sourceSets.getByName("debug").res.srcDir(debugServerTrustDirectory)
+}
+androidComponents {
+    onVariants(selector().withBuildType("debug")) { variant ->
+        // Let ART map DEX directly during instrumentation startup on emulators.
+        variant.packaging.dex.useLegacyPackaging.set(false)
+        variant.androidTest?.packaging?.dex?.useLegacyPackaging?.set(false)
+    }
 }
 tasks.matching { it.name == "preDebugBuild" }.configureEach { dependsOn(generateDebugServerTrust) }

@@ -125,7 +125,7 @@ export class Gateway implements OnGatewayConnection, OnGatewayDisconnect, OnModu
       const command: CommandEnvelope = commandSchema.parse(input)
       const user = command.type.startsWith('assistance.') ? await this.assistanceUser(socket) : await this.auth.userFromCookie(socket.handshake.headers.cookie)
       this.features.assertEvent(SOCKET_EVENTS.Command, command, socket.handshake.headers, socket.handshake.auth)
-      if (command.type === 'lesson.start' || command.type === 'lesson.mode.set') this.assertLessonSocket(socket, command.lessonId, user.id)
+      if (command.type === 'lesson.start' || command.type === 'lesson.mode.set' || command.type === 'document.open') this.assertLessonSocket(socket, command.lessonId, user.id)
       let context: AssistanceCommandContext | undefined
       if (command.type.startsWith('assistance.')) {
         this.assertLessonSocket(socket, command.lessonId, user.id)

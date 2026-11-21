@@ -3,6 +3,8 @@ package com.woongjin.thinkmeet.platform
 import android.Manifest
 import android.app.Activity
 import android.content.Context
+import android.graphics.SurfaceTexture
+import androidx.compose.ui.graphics.asImageBitmap
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Rect
@@ -516,9 +518,36 @@ internal class AndroidMediaController(private val context: Context) : MediaContr
     return controller
 }
 
-@Composable private fun TrackSurface(controller: AndroidMediaController, track: VideoTrack?, mirror: Boolean, modifier: Modifier, identity: String? = null, screen: Boolean = false) {
+private class NoteTextureView(context: Context) : TextureViewRenderer(context) {
+    var onFrameReady: ((Boolean) -> Unit)? = null
+    override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {
+        super.onSurfaceTextureUpdated(surface)
+        onFrameReady?.invoke(true)
+    }
+    override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean {
+        onFrameReady?.invoke(false)
+        return super.onSurfaceTextureDestroyed(surface)
+    }
+}
+
+@Composable private fun TrackSurface(controller: AndroidMediaController, track: VideoTrack?, mirror: Boolean, modifier: Modifier, identity: String? = null, screen: Boolean = false, noteFrame: NoteFrameSource? = null) {
     val context = LocalContext.current
-    val renderer = remember(controller) { TextureViewRenderer(context).also { controller.room.initVideoRenderer(it); it.setMirror(mirror) } }
+    val renderer = remember(controller, noteFrame) {
+        (if (noteFrame != null) NoteTextureView(context) else TextureViewRenderer(context)).also { controller.room.initVideoRenderer(it); it.setMirror(mirror) }
+    }
+    if (renderer is NoteTextureView) {
+        var frameReady by remember(track, renderer) { mutableStateOf(false) }
+        DisposableEffect(track, renderer) {
+            renderer.onFrameReady = if (track != null) ({ ready -> frameReady = ready }) else null
+            onDispose { renderer.onFrameReady = null }
+        }
+        BindNoteFrame(noteFrame, frameReady) {
+            if (!renderer.isAvailable || renderer.width <= 0 || renderer.height <= 0) null else {
+                val scale = minOf(1f, NoteImageEdge.toFloat() / maxOf(renderer.width, renderer.height))
+                renderer.getBitmap((renderer.width * scale).toInt().coerceAtLeast(1), (renderer.height * scale).toInt().coerceAtLeast(1))?.asImageBitmap()
+            }
+        }
+    }
     DisposableEffect(track, renderer) { track?.addRenderer(renderer); onDispose { track?.removeRenderer(renderer) } }
     DisposableEffect(controller, renderer, identity, screen) {
         if (identity != null) controller.registerVideoRenderer(identity, screen, renderer)
@@ -529,10 +558,10 @@ internal class AndroidMediaController(private val context: Context) : MediaContr
         context.findMainActivity()?.pictureInPictureController?.onMediaChanged()
     }, update = { it.setMirror(mirror) })
 }
-@Composable actual fun VideoSurface(controller: MediaController, identity: String, screen: Boolean, modifier: Modifier) {
+@Composable actual fun VideoSurface(controller: MediaController, identity: String, screen: Boolean, modifier: Modifier, noteFrame: NoteFrameSource?) {
     val media = controller as AndroidMediaController
     val state by media.state.collectAsState()
-    TrackSurface(media, media.track(identity, screen), state.participants.any { it.identity == identity && it.local } && !screen, modifier, identity, screen)
+    TrackSurface(media, media.track(identity, screen), state.participants.any { it.identity == identity && it.local } && !screen, modifier, identity, screen, noteFrame)
 }
 @Composable actual fun CameraPreview(controller: MediaController, enabled: Boolean, modifier: Modifier) {
     val media = controller as AndroidMediaController

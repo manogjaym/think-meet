@@ -74,6 +74,10 @@
       "payload": "DocumentPagePayload",
       "feature": "classroom.core"
     },
+    "document.open": {
+      "payload": "DocumentOpenPayload",
+      "feature": "classroom.textbook-picker"
+    },
     "stroke.add": {
       "payload": "StrokeAddPayload",
       "feature": "classroom.core"

@@ -198,7 +198,7 @@ export const screenContract = {
     "sections": [
       "hierarchical-appbar",
       "lesson-or-form-card-with-optional-subject",
-      "subject-picker-dialog-with-latest-completed-lesson",
+      "subject-button-and-picker-dialog-with-latest-completed-lesson",
       "roster-or-invitation",
       "primary-action",
       "teacher-worksheet-list"

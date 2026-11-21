@@ -1,7 +1,7 @@
 .form-page .form-grid { align-items: start; }
-.lesson-subject-trigger { justify-content: space-between; min-width: 0; }
-.lesson-subject-trigger span { overflow: hidden; text-overflow: ellipsis; }
-.lesson-subject-trigger svg { flex-shrink: 0; color: var(--muted); transform: rotate(90deg); }
+.lesson-subject-action { display: flex; align-items: center; gap: var(--space-3); }
+.lesson-subject-action > button { flex-shrink: 0; }
+.lesson-subject-action > span { min-width: 0; overflow-wrap: anywhere; font-weight: var(--weight-semibold); }
 .lesson-subject-dialog {
   width: min(calc(100% - 2 * var(--tm-spacing-s20)), var(--tm-layout-prejoin-wide));
   max-height: calc(100dvh - 2 * var(--tm-spacing-s20));

@@ -14,10 +14,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -25,7 +22,6 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import com.woongjin.thinkmeet.ErrorCard
 import com.woongjin.thinkmeet.data.*
@@ -374,22 +370,11 @@ private fun LessonSubjectField(
     }
     Column(verticalArrangement = Arrangement.spacedBy(Space.S8)) {
         LessonText(DesignContent.LessonSubjectOptional, color = Palette.TextSecondary, fontSize = Type.Support, fontWeight = DesignWeight.Medium)
-        Surface(
-            onClick = { open = true },
-            modifier = Modifier.fillMaxWidth().alpha(if (enabled) 1f else .45f)
-                .semantics { contentDescription = DesignContent.LessonSubjectPickerTitle },
-            enabled = enabled,
-            color = Palette.White,
-            shape = RoundedCornerShape(ComponentToken.ButtonRadius),
-            border = BorderStroke(Space.S1, Palette.Line),
-        ) {
-            Row(
-                Modifier.heightIn(min = ComponentToken.ButtonHeight).padding(horizontal = ComponentToken.ButtonPaddingX),
-                horizontalArrangement = Arrangement.spacedBy(Space.S8), verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(selected?.name ?: DesignContent.LessonSubjectPickerTitle, Modifier.weight(1f), maxLines = 1,
-                    overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelLarge)
-                DesignIcon("chevron", Modifier.size(Space.S16).rotate(90f), tint = Muted)
+        Row(horizontalArrangement = Arrangement.spacedBy(Space.S12), verticalAlignment = Alignment.CenterVertically) {
+            DesignButton(DesignContent.LessonSubjectPickerTitle, { open = true }, enabled = enabled,
+                icon = { DesignIcon("file", Modifier.size(Space.S16), tint = Palette.White) })
+            selected?.let {
+                LessonText(it.name, Modifier.weight(1f), Palette.TextSecondary, Type.Support, DesignWeight.SemiBold)
             }
         }
     }

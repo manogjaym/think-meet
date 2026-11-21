@@ -2,7 +2,7 @@
 
 선생님은 새 수업 예약과 예정된 수업의 수정 화면에서 본인에게 등록된 과목을 한 개 고를 수 있습니다. 과목 없이 예약할 수 있고, 수정에서 `선택 안 함`을 고르면 과목이 해제됩니다. 홈의 수업 목록과 수업 상세에서 저장한 과목을 확인할 수 있습니다.
 
-**과목 선택** 버튼을 누르면 과목 카드와 선생님 본인의 과목별 최근 완료 수업이 보입니다. 카드를 누르면 선택값을 예약 폼에 적용합니다. 진행 중인 수업과 종료 요약에서 과목을 표시하고, 종료 후 **지난 수업 → 수업 상세**에서 과목과 실제 진행 시간을 볼 수 있습니다.
+보라색 **과목 선택** 버튼을 누르면 과목 카드와 선생님 본인의 과목별 최근 완료 수업이 보입니다. 카드를 누르면 선택한 과목이 버튼 옆에 표시됩니다. 진행 중인 수업과 종료 요약에서 과목을 표시하고, 종료 후 **지난 수업 → 수업 상세**에서 과목과 실제 진행 시간을 볼 수 있습니다.
 
 수업 시작과 종료 기록은 기존 수업에 저장합니다. 수업방 모드를 지원하는 방은 수업을 시작한 시각을 사용하며, 이전 방식으로 진행한 수업에는 입장 시각을 사용합니다. 준비 상태에서 종료하거나 취소한 예약은 과목 카드의 완료 기록으로 집계하지 않습니다.
 
@@ -41,3 +41,9 @@ Android 태블릿 화면 검증은 에뮬레이터가 입력과 APK 설치에 �
 |---|---|
 | [웹 402×874](evidence/lesson-subjects/picker/web-phone.png) | [웹 834×1194](evidence/lesson-subjects/picker/web-tablet.png) |
 | [Android 1080×2400, 420dpi](evidence/lesson-subjects/picker/android-phone.png) | [Android 태블릿 폭 1080×2400, 180dpi](evidence/lesson-subjects/picker/android-tablet.png) |
+
+## 과목 버튼 검증
+
+로컬 웹에서 같은 선생님 계정으로 과목 버튼, 팝업, 선택한 과목 표시를 확인했습니다. [웹 휴대폰 402×874](evidence/lesson-subjects/picker/button-web-phone.png) · [웹 태블릿 834×1194](evidence/lesson-subjects/picker/button-web-tablet.png)
+
+`web/`에서 타입 검사와 빌드가 통과했습니다. `mobile/`에서 `./gradlew :composeApp:compileDebugKotlinAndroid :composeApp:compileKotlinIosSimulatorArm64 --offline`이 통과했습니다. 변경된 Android·iOS 화면 실행은 검증하지 못했습니다.

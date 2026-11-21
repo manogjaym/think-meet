@@ -13,6 +13,7 @@
     "npm run shared:check, npm run verify 및 종료 기록 API 검증 통과",
     "Chromium 과목 팝업·수업 시작·종료 기록 검증 2건 통과",
     "웹·Android 휴대폰과 태블릿 폭에서 같은 수업 기록 확인",
-    "Android 핵심 테스트·APK와 iOS 시뮬레이터 앱 빌드 통과. iOS 팝업 실행 미검증"
+    "Android 핵심 테스트·APK와 iOS 시뮬레이터 앱 빌드 통과. iOS 팝업 실행 미검증",
+    "과목 버튼 변경 후 로컬 웹 휴대폰·태블릿에서 팝업과 선택 표시 확인. Android·iOS 컴파일 통과, 변경된 네이티브 화면 미검증"
   ]
 }

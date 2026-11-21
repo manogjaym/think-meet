@@ -485,14 +485,16 @@ export function Form({
             {subjectsEnabled && (
               <div className="field min-w-0">
                 <span>{designContent.lessonSubjectOptional}</span>
-                <button type="button" className="secondary lesson-subject-trigger"
-                  aria-label={designContent.lessonSubjectPickerTitle}
-                  aria-describedby={selectedSubjectName ? "selected-lesson-subject" : undefined}
-                  aria-haspopup="dialog" aria-expanded={subjectPickerOpen} disabled={saving}
-                  onClick={() => setSubjectPickerOpen(true)}>
-                  <span id="selected-lesson-subject">{selectedSubjectName ?? designContent.lessonSubjectPickerTitle}</span>
-                  <Icon name="chevron" size={16} />
-                </button>
+                <div className="lesson-subject-action">
+                  <button type="button" className="primary"
+                    aria-describedby={selectedSubjectName ? "selected-lesson-subject" : undefined}
+                    aria-haspopup="dialog" aria-expanded={subjectPickerOpen} disabled={saving}
+                    onClick={() => setSubjectPickerOpen(true)}>
+                    <Icon name="file" size={16} />
+                    {designContent.lessonSubjectPickerTitle}
+                  </button>
+                  {selectedSubjectName && <span id="selected-lesson-subject">{selectedSubjectName}</span>}
+                </div>
                 {subjectPickerOpen && (
                   <LessonSubjectDialog subjects={subjects} selectedId={selectedSubjectId} failed={subjectsFailed}
                     lessons={lessons} teacherId={teacherId} onRetry={() => setSubjectRetry(attempt => attempt + 1)}

@@ -85,15 +85,7 @@ THINK_MEET_SERVER_ORIGIN=https://meet.example.com ./gradlew :composeApp:installD
 
 주소를 바꾸면 Android는 다시 빌드·설치하고, iOS는 Xcode에서 다시 빌드·실행합니다. `SKIP_KOTLIN_BUILD=YES`를 쓰는 iOS 빌드는 먼저 Kotlin 프레임워크를 다시 생성해야 합니다. 기존 앱에 저장된 주소는 사용하지 않으며, 참여 링크도 빌드에 설정된 서버 주소를 기준으로 확인합니다. `.env`는 Git에서 제외되고 공개 주소만 앱에 포함됩니다. 비밀번호·LiveKit API secret·서버 `.env`는 앱에 넣지 않습니다.
 
-Mac IP가 서버 `.env`의 주소와 다르면 다음 명령을 사용합니다. `.env`의 공개 주소는 유지하고 실행 시 현재 LAN 주소를 적용합니다.
-
-```sh
-./scripts/start-local-server.sh
-# 사용할 LAN 주소를 직접 지정할 때
-THINK_MEET_LAN_IP=192.168.0.64 ./scripts/start-local-server.sh
-```
-
-`infra/local/`의 공통 시작 스크립트로 PostgreSQL·MinIO부터 자동 준비하고 API·웹·LiveKit을 빌드·실행합니다. 기존 계정·볼륨을 재사용하며 첫 스토리지 이전 절차는 [로컬 실행 안내](../infra/local/README.md#서비스-실행접속)를 따릅니다. 모든 컨테이너는 `think-meet` 그룹에서 관리합니다. Mac 방화벽에서 443/TCP·7881/TCP·7882/UDP를 허용합니다.
+로컬 서버는 `infra/local/`에서 `./scripts/start.sh`로 실행합니다. 현재 Mac IP를 적용하려면 `./scripts/start.sh --lan`을 사용하세요. 실행 결과에 표시된 HTTPS 주소를 `mobile/.env`에 넣고 앱을 다시 빌드합니다. [로컬 실행 안내](../infra/local/README.md#서비스-실행접속)
 
 자체 서명 개발 서버는 해당 서버의 공개 루트 CA를 신뢰해야 합니다. 로컬 서버의 공개 CA는 `../infra/local/certs/think-meet-root.crt`입니다.
 

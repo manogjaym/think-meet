@@ -36,8 +36,12 @@ Docker Desktop과 Python 3를 준비한 뒤 실행합니다. PostgreSQL·MinIO�
 
 ```sh
 cd /Users/pang/Project/woongjin/think-meet/infra/local
-./scripts/start.sh
+./scripts/start.sh                       # 저장된 주소 사용
+./scripts/start.sh --lan                 # 현재 Mac의 LAN IPv4 사용
+./scripts/start.sh --lan-ip 192.168.0.64  # 사용할 LAN IPv4 지정
 ```
+
+LAN 옵션은 이번 실행의 HTTPS 주소와 LiveKit 접속 주소에 적용합니다. 기존 `.env`의 주소는 그대로 두며 계정과 데이터 볼륨을 재사용합니다. 완료 후 출력되는 `Think Meet: https://...` 주소로 접속하세요.
 
 시작 스크립트는 다음을 처리합니다.
 
@@ -55,7 +59,7 @@ cd /Users/pang/Project/woongjin/think-meet/infra/local
 
 | 항목 | 주소·계정 |
 |---|---|
-| 서비스 | `PUBLIC_ORIGIN` 값 — `.env`에서 확인 |
+| 서비스 | 시작 명령이 출력하는 HTTPS 주소. 기본 실행에서는 `.env`의 `PUBLIC_ORIGIN` |
 | API 설명 | `<PUBLIC_ORIGIN>/api/docs` |
 | 상태 확인 | `<PUBLIC_ORIGIN>/api/v1/health` |
 | 공개 루트 인증서 | `<PUBLIC_ORIGIN>/local-ca.crt` 또는 `certs/think-meet-root.crt` |
@@ -98,9 +102,9 @@ Compose의 bind 경로를 바꿨다면 이 폴더에서 `docker compose up -d`�
 
 Mac 방화벽에서 Docker의 `443/TCP`, `7881/TCP`, `7882/UDP`를 허용하세요. Wi-Fi 기기 간 격리가 켜져 있으면 연결되지 않습니다. 모바일 브라우저의 화면 송출·출력 장치 선택은 브라우저 지원 여부에 따라 안내합니다.
 
-LAN 주소 변경 시 `.env`의 `LAN_IP`, `PUBLIC_ORIGIN`, `LIVEKIT_PUBLIC_URL`을 함께 수정하고 `./scripts/start.sh`를 실행하세요. CA 볼륨을 유지하면 인증서를 다시 설치할 필요는 없습니다. 인터넷 공개에는 별도 도메인·공인 인증서·방화벽·TURN 배포가 필요합니다.
+IP가 바뀐 환경에서 잠시 실행하려면 `./scripts/start.sh --lan`을 사용하세요. 기본 주소를 바꾸려면 `.env`의 `LAN_IP`, `PUBLIC_ORIGIN`, `LIVEKIT_PUBLIC_URL`을 함께 수정하고 `./scripts/start.sh`를 실행하세요. CA 볼륨을 유지하면 인증서를 다시 설치할 필요는 없습니다. 인터넷 공개에는 별도 도메인·공인 인증서·방화벽·TURN 배포가 필요합니다.
 
-`LAN_IP`는 브라우저가 접근할 수 있는 미디어 서버 주소여야 합니다. 인터넷 접속에는 공인 IP를 지정합니다. LiveKit은 실행 시 `--rtc.node_ip.ipv4`로 이 값을 읽으므로, 생성된 `livekit.yaml`에 이전 주소가 남아 있어도 현재 `.env` 값을 사용합니다. 주소만 바꿨다면 이 폴더에서 `docker compose up -d --no-build --force-recreate livekit api web`으로 세 서비스를 함께 재생성합니다. 로컬 IP 보조 설정 `compose.lan.yaml`도 같은 실행 옵션을 사용합니다.
+`LAN_IP`는 브라우저가 접근할 수 있는 미디어 서버 주소여야 합니다. 인터넷 접속에는 공인 IP를 지정합니다. LiveKit은 실행 시 `--rtc.node_ip.ipv4`로 적용된 주소를 읽습니다. `.env`의 주소만 바꿨다면 이 폴더에서 `docker compose up -d --no-build --force-recreate livekit api web`으로 세 서비스를 함께 재생성할 수 있습니다.
 
 ## 계정 관리
 
@@ -187,3 +191,7 @@ Android/iOS 앱 빌드·실행과 화면 비교, 실제 가상 학생 영상 송
 활성 참가자 0명을 확인하고 서버 Compose를 백업한 뒤 LiveKit만 빌드 없이 재생성했습니다. 실제 시작 로그의 `nodeIP:115.68.2.13`, TCP 7881·UDP 7882 설정, 내부 LiveKit API, 외부 HTTPS 상태와 TCP 7881 접근을 확인했습니다. API·웹·DB·스토리지는 재시작하지 않았습니다. 실제 브라우저 재입장·음성/영상 송수신과 UDP 패킷 왕복은 사용자 확인이 필요합니다.
 
 루트에서 `python3 -m unittest discover -s infra/local/tests -p test_local_stack.py -v` 14/14와 `npm run shared:check -- --changed-files <이번 변경 파일 목록>`를 통과했습니다. 기본 Compose와 LAN 보조 설정에서 환경 변수 변경이 실행 주소에 반영되는 검사를 추가했습니다. 앱·웹 UI·통신 계약은 변경하지 않아 네이티브 빌드와 화면 비교는 제외했습니다.
+
+## LAN 시작 옵션 검증
+
+2026-11-21, 저장소 루트에서 `python3 -m unittest discover -s infra/local/tests -p test_local_stack.py -v` 15/15와 `sh -n infra/local/scripts/start.sh`를 통과했습니다. 임시 설정에서 기본 주소, 자동 감지 주소, 직접 지정 주소가 출력되는지 확인했습니다. Compose 구성에서 HTTPS 포트, API·Caddy·LiveKit에 적용되는 주소를 확인했습니다. 기존 서버를 재시작하지 않았으며 네이티브 앱과 화면은 이번 인프라 작업 범위에서 제외했습니다.

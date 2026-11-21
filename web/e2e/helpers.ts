@@ -15,6 +15,11 @@ export async function apiLogin(request: APIRequestContext, username: string) {
   const response=await request.post('/api/v1/auth/login',{data:{username,password}})
   expect(response.ok(), await response.text()).toBeTruthy()
 }
+export async function shareTextbook(page: Page, materialId: string) {
+  await page.getByLabel("PDF 교재 선택", { exact: true }).selectOption(materialId)
+  await page.getByRole("button", { name: "1쪽", exact: true }).click()
+  await page.getByRole("button", { name: "1쪽 화면에 불러오기", exact: true }).click()
+}
 export async function createLesson(request: APIRequestContext, studentCount=2) {
   const roster=await (await request.get('/api/v1/students')).json()
   const fixtureStudents=roster.filter((student:{username:string})=>/^student[1-4]$/.test(student.username)).sort((a:{username:string},b:{username:string})=>a.username.localeCompare(b.username))

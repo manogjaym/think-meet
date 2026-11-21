@@ -43,7 +43,7 @@ interface PreviewAudio {
     suspend fun playPreviewTone()
 }
 @Composable expect fun rememberMediaController(): MediaController
-@Composable expect fun VideoSurface(controller: MediaController, identity: String, screen: Boolean = false, modifier: Modifier = Modifier)
+@Composable expect fun VideoSurface(controller: MediaController, identity: String, screen: Boolean = false, modifier: Modifier = Modifier, noteFrame: NoteFrameSource? = null)
 @Composable expect fun CameraPreview(controller: MediaController, enabled: Boolean, modifier: Modifier = Modifier)
 @Composable expect fun prejoinInForeground(): Boolean
 
@@ -55,7 +55,7 @@ data class PickedFile(
 @Composable expect fun rememberFilePicker(onResult: (PickedFile?) -> Unit): () -> Unit
 @Composable expect fun MaterialSurface(
     api: ThinkMeetApi, share: Share, lessonId: String,
-    modifier: Modifier = Modifier, onAspectRatio: (Float) -> Unit = {},
+    modifier: Modifier = Modifier, noteFrame: NoteFrameSource? = null, onAspectRatio: (Float) -> Unit = {},
 )
 expect fun createHttpClient(): HttpClient
 expect fun readPreference(key: String, fallback: String = ""): String

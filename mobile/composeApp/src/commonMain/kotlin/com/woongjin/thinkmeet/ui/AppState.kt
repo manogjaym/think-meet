@@ -13,6 +13,7 @@ import kotlin.uuid.Uuid
 sealed interface Route {
     data object Home : Route
     data object Create : Route
+    data class Notes(val tab: NotesTab) : Route
     data object Students : Route
     data class Attendance(val student: User) : Route
 
@@ -207,6 +208,7 @@ class AppState(val api: ThinkMeetApi, private val scope: CoroutineScope) {
         currentCoroutineContext().ensureActive()
         mutable.update { it.copy(route = destination(fetched)) }
     }
+    internal fun notes(tab: NotesTab) = show(Route.Notes(tab))
     internal fun attendanceStudents() = show(Route.Students)
     internal fun studentAttendance(student: User) = show(Route.Attendance(student))
     fun form() = show(Route.Create)

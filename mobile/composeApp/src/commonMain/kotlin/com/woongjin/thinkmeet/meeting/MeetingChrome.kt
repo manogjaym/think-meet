@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -68,7 +69,7 @@ internal fun MeetingLightPanel(modifier: Modifier, overlay: Boolean = false, con
 @Composable
 internal fun MeetingHeader(
     lesson: Lesson, state: MediaState, socketConnected: Boolean, serverTime: String?, grid: Boolean,
-    compact: Boolean, width: Dp, onLayout: () -> Unit,
+    compact: Boolean, width: Dp, instructionPhase: String? = null, instructionStartedAt: String? = null, onLayout: () -> Unit,
 ) {
     val short = LocalMeetingShort.current
     val height = if (short) 62.dp else if (compact) LayoutToken.MeetingHeaderCompact else if (width <= LayoutToken.MeetingOverlayBreakpoint) LayoutToken.MeetingHeaderMedium else LayoutToken.MeetingHeader
@@ -90,7 +91,7 @@ internal fun MeetingHeader(
             }
         }
         if (width > LayoutToken.MeetingOverlayBreakpoint) Spacer(Modifier.width(if (width <= LayoutToken.MeetingMediumBreakpoint) Space.S2 else Space.S12))
-        MeetingElapsed(lesson.startedAt, serverTime)
+        if (instructionPhase != "preparing") MeetingElapsed(instructionStartedAt ?: lesson.startedAt, serverTime)
         if (!compact) Spacer(Modifier.width(if (width <= LayoutToken.MeetingMediumBreakpoint) Space.S2 else Space.S12))
         Surface(onClick = onLayout, modifier = if (compact) Modifier.widthIn(min = 42.dp) else Modifier, shape = RoundedCornerShape(Corner.R8), color = Color.Transparent,
             border = BorderStroke(Space.S1, Palette.MeetingBorder)) {
@@ -99,6 +100,35 @@ internal fun MeetingHeader(
                 DesignIcon(if (grid) "screen" else "users", Modifier.size(Space.S18), Palette.MeetingText, if (grid) "발표자 보기로 전환" else "바둑판 보기로 전환")
                 if (!compact) Text(if (grid) "발표자 보기" else "바둑판 보기", style = MaterialTheme.typography.bodyMedium.copy(fontSize = Type.Support, lineHeight = Type.Support * 1.5f), color = Palette.MeetingText)
             }
+        }
+    }
+}
+
+@Composable
+internal fun MeetingLessonModes(
+    phase: String, enabled: Boolean, assistanceSupported: Boolean, onStart: () -> Unit, onMode: (String) -> Unit,
+) {
+    Row(Modifier.fillMaxWidth().padding(start = Space.S14, end = Space.S14, bottom = Space.S8),
+        horizontalArrangement = Arrangement.spacedBy(Space.S8, Alignment.CenterHorizontally)) {
+        if (phase == "preparing") {
+            LessonModeButton(DesignContent.MeetingLessonStart, active = true, enabled = enabled, onClick = onStart)
+        } else {
+            LessonModeButton(DesignContent.MeetingLessonClassroom, phase == "classroom", enabled) { onMode("classroom") }
+            LessonModeButton(DesignContent.MeetingLessonMirroring, phase == "mirroring",
+                enabled && (assistanceSupported || phase == "mirroring")) { onMode("mirroring") }
+        }
+    }
+}
+
+@Composable
+private fun LessonModeButton(label: String, active: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    val background = if (active) Palette.PrimaryOnDark else Palette.MeetingControl
+    val foreground = if (active) Palette.MeetingCanvas else Palette.MeetingText
+    Surface(onClick = onClick, enabled = enabled, modifier = Modifier.semantics { selected = active },
+        shape = RoundedCornerShape(Corner.R8), color = background.copy(alpha = if (enabled) 1f else .55f),
+        contentColor = foreground, border = BorderStroke(Space.S1, if (active) Palette.PrimaryOnDark else Palette.MeetingBorder)) {
+        Box(Modifier.heightIn(min = Space.S44).padding(horizontal = Space.S14), contentAlignment = Alignment.Center) {
+            Text(label, style = MaterialTheme.typography.bodyMedium.copy(fontSize = Type.Support, lineHeight = Type.Support * 1.5f))
         }
     }
 }
@@ -121,7 +151,7 @@ private fun MeetingElapsed(startedAt: String?, serverTime: String?) {
 @Composable
 internal fun MeetingControls(
     compact: Boolean, owner: Boolean, microphone: Boolean, camera: Boolean, sharing: Boolean, raised: Boolean,
-    count: Int, panel: Panel?, unread: Int, busy: Boolean,
+    count: Int, panel: Panel?, unread: Int, busy: Boolean, showShare: Boolean, showMaterials: Boolean,
     onMicrophone: () -> Unit, onCamera: () -> Unit, onHand: () -> Unit,
     onPanel: (Panel) -> Unit, onShare: () -> Unit, onExit: () -> Unit,
 ) {
@@ -145,12 +175,12 @@ internal fun MeetingControls(
         }
         Box(Modifier.padding(horizontal = Space.S2).width(Space.S1).height(if (compact) Space.S28 else 35.dp).background(Palette.MeetingBorder))
         Row(horizontalArrangement = Arrangement.spacedBy(innerGap)) {
-            MeetingControl("screen", if (sharing) "공유 중지" else "화면 공유", if (sharing) "화면 공유 중지" else "화면 공유", compact, itemWidth, selected = sharing, onClick = onShare)
+            if (showShare) MeetingControl("screen", if (sharing) "공유 중지" else "화면 공유", if (sharing) "화면 공유 중지" else "화면 공유", compact, itemWidth, selected = sharing, onClick = onShare)
             MeetingControl("users", DesignContent.MeetingPeopleControl, "${DesignContent.MeetingPeopleControl} ${count}명", compact, itemWidth, selected = panel == Panel.People, badge = count, onClick = { onPanel(Panel.People) })
             MeetingControl("chat", "채팅", if (unread > 0 && panel != Panel.Chat) "채팅, 읽지 않은 메시지 ${unread}개" else "채팅", compact, itemWidth,
                 selected = panel == Panel.Chat, badge = unread.takeIf { panel != Panel.Chat } ?: 0, onClick = { onPanel(Panel.Chat) })
-            if (owner) MeetingControl("folder", "수업 자료", "수업 자료", compact, itemWidth, selected = panel == Panel.Materials, onClick = { onPanel(Panel.Materials) })
-            else MeetingControl("hand", if (raised) "손 내리기" else "손들기", if (raised) "손 내리기" else "손들기", compact, itemWidth, selected = raised, onClick = onHand)
+            if (showMaterials) MeetingControl("folder", "수업 자료", "수업 자료", compact, itemWidth, selected = panel == Panel.Materials, onClick = { onPanel(Panel.Materials) })
+            if (!owner) MeetingControl("hand", if (raised) "손 내리기" else "손들기", if (raised) "손 내리기" else "손들기", compact, itemWidth, selected = raised, onClick = onHand)
             MeetingControl("more", "더보기", "더보기", compact, itemWidth, selected = panel == Panel.More, onClick = { onPanel(Panel.More) })
         }
         Surface(onClick = onExit, enabled = !busy, color = Palette.MeetingHangup, contentColor = Palette.White,

@@ -17,18 +17,23 @@ import com.woongjin.thinkmeet.design.generated.DesignTokens.Radius as Corner
 internal fun RemoteAssistanceControls(
     session: AssistanceSession, user: User, supported: Boolean, busy: Boolean, modifier: Modifier = Modifier,
     onApprove: () -> Unit, onDecline: () -> Unit, onStop: () -> Unit,
+    requestCancel: Boolean = false, studentName: String? = null,
 ) {
     val student = session.studentId == user.id
     Surface(modifier, color = Palette.MeetingTile, shape = RoundedCornerShape(Corner.R8)) {
         Row(Modifier.padding(horizontal = Space.S12, vertical = Space.S8), verticalAlignment = Alignment.CenterVertically) {
-            Text(when {
+            val status = when {
                 student && !supported -> DesignContent.RemoteAssistUnsupported
                 session.status == "pending" -> DesignContent.RemoteAssistWaiting
                 session.status == "approved" -> DesignContent.RemoteAssistPreparing
                 student -> DesignContent.RemoteAssistActiveStudent
                 else -> DesignContent.RemoteAssistActive
-            }, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = Palette.MeetingText)
-            TextButton(onClick = onStop, enabled = !busy || student) { Text(DesignContent.RemoteAssistStop, color = Palette.PrimaryOnDark) }
+            }
+            Text(if (!student && studentName != null) "$studentName · $status" else status,
+                Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = Palette.MeetingText)
+            TextButton(onClick = onStop, enabled = !busy || student) {
+                Text(if (requestCancel) DesignContent.MeetingLessonCancelRequest else DesignContent.RemoteAssistStop, color = Palette.PrimaryOnDark)
+            }
         }
     }
     if (student && session.status == "pending") MeetingLightTheme {

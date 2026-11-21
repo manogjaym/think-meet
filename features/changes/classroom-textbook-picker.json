@@ -1,0 +1,22 @@
+{
+  "id": "classroom-textbook-picker",
+  "summary": "선생님이 PDF와 쪽을 미리 보고 공유 PDF 하단에서 판서합니다. Android 계측 시작과 iOS 디버그 시뮬레이터 로그인 문제도 수정했습니다.",
+  "scope": "shared",
+  "featureIds": ["classroom.textbook-picker"],
+  "platforms": {
+    "server": {"status": "implemented"},
+    "web": {"status": "implemented"},
+    "android": {"status": "implemented"},
+    "ios": {"status": "implemented"}
+  },
+  "verification": [
+    "npm run shared:check 및 npm run verify",
+    "web/에서 npm run test:e2e -- e2e/meeting.spec.ts e2e/devices.spec.ts",
+    "web/에서 THINK_MEET_NOTES_TEST=1 npm run test:e2e -- e2e/class-notes.spec.ts",
+    "mobile/에서 ./gradlew :composeApp:testDebugUnitTest :composeApp:assembleDebug :composeApp:assembleDebugAndroidTest",
+    "검증 수업과 PDF를 지정해 NativeSmokeTest#teacherSharesTextbookAndAnnotates를 Android 휴대폰·태블릿 크기에서 실행",
+    "mobile/에서 ./gradlew :composeApp:linkDebugFrameworkIosSimulatorArm64 및 ThinkMeet ARM64 시뮬레이터 앱 xcodebuild",
+    "iPhone TextbookSmoke.testSelectShareAndAnnotate와 iPad 수동 화면·실시간 판서 검사, 두 기기의 로그인과 학생 수신 확인",
+    "features/evidence/classroom-textbook-picker.md"
+  ]
+}

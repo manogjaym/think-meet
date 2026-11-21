@@ -1,0 +1,27 @@
+.notes-page { display: grid; gap: var(--space-4); }
+.note-home-stack { display: grid; align-content: start; gap: var(--space-4); }
+.note-card, .note-dialog { padding: var(--space-4); border: 1px solid var(--line); border-radius: var(--card-radius); background: var(--tm-color-white); color: var(--text-secondary); }
+.note-card h2, .note-dialog h2 { font-size: var(--type-heading); line-height: var(--line-heading); font-weight: var(--weight-bold); }
+.note-card h3, .note-dialog h3 { font-size: var(--type-label); font-weight: var(--weight-semibold); }
+.note-card p, .note-dialog p { font-size: var(--type-support); color: var(--muted); }
+.note-card [role=alert], .note-dialog [role=alert] { color: var(--danger); }
+.note-home { display: grid; gap: var(--space-3); }
+.note-home h2 { display: flex; align-items: center; gap: var(--space-2); }
+.note-home h2 svg { color: var(--accent); }
+.note-home-group { display: grid; justify-items: start; gap: var(--space-2); padding: var(--space-3); background: var(--surface-3); border-radius: var(--dashboard-control-radius); }
+.note-actions, .note-tabs { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.note-actions button, .note-tabs button { max-width: 100%; overflow-wrap: anywhere; }
+.note-tabs [aria-pressed=true] { background: var(--accent-subdued); color: var(--accent); border-color: var(--accent); }
+.note-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
+.note-group { display: grid; gap: var(--space-2); text-align: start; overflow-wrap: anywhere; }
+button.note-group:hover { border-color: var(--accent); }
+.note-group > span { color: var(--muted); font-size: var(--type-support); }
+.note-count, .note-month, .note-dialog-title { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.note-count { width: 100%; }
+.note-teacher { display: grid; gap: var(--space-3); justify-items: start; margin-top: var(--space-4); }
+.note-teacher .note-grid { width: 100%; }
+.note-dialog { width: min(92vw, var(--tm-layout-prejoin-wide)); max-height: calc(100dvh - var(--space-6)); margin: auto; overflow: auto; color-scheme: light; }
+.note-dialog[open] { display: grid; gap: var(--space-4); }
+.note-dialog::backdrop { background: color-mix(in srgb, var(--tm-color-ink) 55%, transparent); }
+.note-image { width: 100%; max-height: 58dvh; object-fit: contain; border-radius: var(--dashboard-control-radius); background: var(--surface-3); }
+@media (max-width: design(layout.dashboardCompact)) { .note-grid { grid-template-columns: minmax(0, 1fr); } }

@@ -33,9 +33,14 @@ final class NativeBridge: NSObject, IosNativeBridge, RoomDelegate, BroadcastMana
     private var screenCaptureId: Int64 = 0
     private var captureGeneration: Int64 = 0
     private var lastError: String?
+    private var noteImageCompletion: ((Data?, String?) -> Void)?
     private var pickerCompletion: ((String?, String?, String?, KotlinLong) -> Void)?
     private var videoViews: [WeakVideoView] = []
     private weak var callRootView: UIView?
+    #if DEBUG && targetEnvironment(simulator)
+    private let simulatorSessionLock = NSLock()
+    private var simulatorSessions: [String: String] = [:]
+    #endif
     @MainActor private lazy var pictureInPicture = VideoCallPictureInPicture(
         sourceView: { [weak self] in self?.callRootView },
         videoTrack: { [weak self] target in
@@ -490,22 +495,77 @@ final class NativeBridge: NSObject, IosNativeBridge, RoomDelegate, BroadcastMana
     }
     func disposeMaterial(view: UIView) { (view as? MaterialView)?.dispose() }
 
+    func isNoteFrameReady(view: UIView, page: Int32) -> Bool {
+        if let material = view as? MaterialView { return material.noteFrameReady(page: Int(page)) }
+        return (view as? VideoView)?.track?.videoFrame != nil
+    }
+    func readNoteFrame(view: UIView, page: Int32) -> Data? {
+        if let material = view as? MaterialView { return material.noteFrame(page: Int(page)) }
+        guard let frame = (view as? VideoView)?.track?.videoFrame else { return nil }
+        let buffer = (frame.buffer as? CVPixelVideoBuffer)?.pixelBuffer ?? (frame.buffer as? I420VideoBuffer)?.toPixelBuffer()
+        guard let buffer else { return nil }
+        return MaterialView.noteJPEG(buffer: buffer, rotation: frame.rotation.rawValue)
+    }
+
+    func worksheetCameraView(onReady: @escaping (String?) -> Void) -> UIView {
+        WorksheetCameraView(onReady: onReady)
+    }
+    func captureWorksheetPhoto(view: UIView, completion: @escaping (Data?, String?) -> Void) {
+        guard let camera = view as? WorksheetCameraView else { completion(nil, "카메라를 열지 못했어요."); return }
+        camera.capturePhoto(completion: completion)
+    }
+    func disposeWorksheetCamera(view: UIView) { (view as? WorksheetCameraView)?.stop() }
+
+    func pickNoteImage(completion: @escaping (Data?, String?) -> Void) {
+        guard noteImageCompletion == nil, pickerCompletion == nil, let presenter = topController() else {
+            completion(nil, "이미지 선택 화면을 열 수 없어요."); return
+        }
+        noteImageCompletion = completion
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.jpeg, .png], asCopy: false)
+        picker.delegate = self
+        presenter.present(picker, animated: true)
+    }
+
     func read(key: String, fallback: String) -> String {
         guard key.hasPrefix("session:") else { return UserDefaults.standard.string(forKey: key) ?? fallback }
         let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: "com.woongjin.thinkmeet", kSecAttrAccount as String: key, kSecReturnData as String: true, kSecMatchLimit as String: kSecMatchLimitOne]
         var item: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess, let data = item as? Data else { return fallback }
+        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        #if DEBUG && targetEnvironment(simulator)
+        if status == errSecMissingEntitlement {
+            return simulatorSessionLock.withLock { simulatorSessions[key] ?? fallback }
+        }
+        #endif
+        guard status == errSecSuccess, let data = item as? Data else { return fallback }
         return String(data: data, encoding: .utf8) ?? fallback
     }
     func write(key: String, value: String) {
         guard key.hasPrefix("session:") else { UserDefaults.standard.set(value, forKey: key); return }
         let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: "com.woongjin.thinkmeet", kSecAttrAccount as String: key]
-        SecItemDelete(query as CFDictionary)
+        let deletion = SecItemDelete(query as CFDictionary)
+        #if DEBUG && targetEnvironment(simulator)
+        // Locally built simulator apps may have no Keychain access group. Keep their session in memory.
+        if deletion == errSecMissingEntitlement {
+            simulatorSessionLock.withLock { simulatorSessions[key] = value.isEmpty ? nil : value }
+            return
+        }
+        #endif
+        guard deletion == errSecSuccess || deletion == errSecItemNotFound else {
+            NSLog("ThinkMeet session Keychain delete failed (%d)", deletion)
+            return
+        }
         if !value.isEmpty {
             var attributes = query
             attributes[kSecValueData as String] = Data(value.utf8)
             attributes[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-            SecItemAdd(attributes as CFDictionary, nil)
+            let status = SecItemAdd(attributes as CFDictionary, nil)
+            #if DEBUG && targetEnvironment(simulator)
+            if status == errSecMissingEntitlement {
+                simulatorSessionLock.withLock { simulatorSessions[key] = value }
+                return
+            }
+            #endif
+            if status != errSecSuccess { NSLog("ThinkMeet session Keychain write failed (%d)", status) }
         }
     }
     func share(url: String) {
@@ -523,9 +583,28 @@ final class NativeBridge: NSObject, IosNativeBridge, RoomDelegate, BroadcastMana
         picker.delegate = self
         topController()?.present(picker, animated: true)
     }
-    func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) { _ = pickerCompletion?(nil, nil, nil, KotlinLong(longLong: 0)); pickerCompletion = nil }
+    func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+        if let completion = noteImageCompletion { noteImageCompletion = nil; completion(nil, nil); return }
+        _ = pickerCompletion?(nil, nil, nil, KotlinLong(longLong: 0)); pickerCompletion = nil
+    }
     func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
         guard let url = urls.first else { documentPickerWasCancelled(controller); return }
+        if let completion = noteImageCompletion {
+            noteImageCompletion = nil
+            Task.detached {
+                let permitted = url.startAccessingSecurityScopedResource()
+                defer { if permitted { url.stopAccessingSecurityScopedResource() } }
+                do {
+                    let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+                    guard size > 0 && size <= 10 * 1024 * 1024 else { throw NativeError.fileSize }
+                    let data = try Data(contentsOf: url, options: .mappedIfSafe)
+                    await MainActor.run { completion(data, nil) }
+                } catch {
+                    await MainActor.run { completion(nil, "JPEG·PNG 이미지는 10MiB까지 선택할 수 있어요.") }
+                }
+            }
+            return
+        }
         let completion = pickerCompletion; pickerCompletion = nil
         Task {
             let permitted = url.startAccessingSecurityScopedResource(); defer { if permitted { url.stopAccessingSecurityScopedResource() } }

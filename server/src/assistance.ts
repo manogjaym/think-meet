@@ -8,7 +8,7 @@ export const assistanceGeometrySchema = z.object({
   rotation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]),
   version: z.number().int().min(1).max(2147483647),
 })
-export type AssistanceBinding = AssistanceSession & { lessonId: string; teacherSocketId: string; studentSocketId: string }
+export type AssistanceBinding = AssistanceSession & { lessonId: string; teacherSocketId: string; studentSocketId: string; trackSid?: string }
 export type AssistanceCommandContext = { socketId: string; studentSocketId?: string }
 
 /** Consent exists only for these two live sockets; it is never restored from storage. */
@@ -23,7 +23,7 @@ export class AssistanceSessions {
   publicState(lessonId: string): AssistanceSession | null {
     const session = this.current(lessonId)
     if (!session) return null
-    const { lessonId: _, teacherSocketId: __, studentSocketId: ___, ...state } = session
+    const { lessonId: _, teacherSocketId: __, studentSocketId: ___, trackSid: ____, ...state } = session
     return { ...state, ...(state.geometry ? { geometry: { ...state.geometry } } : {}) }
   }
   private expired(session: AssistanceBinding) { return session.expiresAt !== null && Date.parse(session.expiresAt) <= this.now() }
@@ -51,8 +51,9 @@ export class AssistanceSessions {
     if (!approved) { this.remove(session.lessonId); return }
     session.status = 'approved'; session.expiresAt = new Date(this.now() + 120000).toISOString()
   }
-  activate(session: AssistanceBinding, shareId: string, geometry: AssistanceGeometry) {
+  activate(session: AssistanceBinding, shareId: string, geometry: AssistanceGeometry, trackSid: string) {
     session.status = 'active'; session.expiresAt = null; session.shareId = shareId; session.geometry = { ...geometry }
+    session.trackSid = trackSid
   }
   geometry(session: AssistanceBinding, geometry: AssistanceGeometry) {
     if (session.status !== 'active' || !session.geometry) throw new ApiError('CONFLICT', '화면 공유를 시작한 후 위치 정보를 갱신해 주세요.', 409)

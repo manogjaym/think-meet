@@ -41,6 +41,8 @@ import com.woongjin.thinkmeet.design.generated.DesignTokens.Typography as Type
 import com.woongjin.thinkmeet.design.generated.DesignTokens.FontSize as FontSize
 import com.woongjin.thinkmeet.data.*
 import com.woongjin.thinkmeet.platform.*
+import com.woongjin.thinkmeet.ui.NoteDialog
+import com.woongjin.thinkmeet.ui.NotePreview
 import kotlinx.datetime.toLocalDateTime
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
@@ -56,6 +58,8 @@ private class MeetingChatDraft {
     var text by mutableStateOf("")
     var pendingId by mutableStateOf<String?>(null)
 }
+
+private data class CapturePreview(val shareId: String, val page: Int, val draft: NoteDraft)
 
 /** Uses the same authenticated HTTP and Socket.IO session as the existing web client. */
 @Composable
@@ -79,10 +83,25 @@ fun MeetingScreen(
     val realtime = remember(api, lesson.id) { MeetingRealtime(api, scope, lesson.id) }
     val liveSnapshot by realtime.snapshot.collectAsState()
     val socketConnected by realtime.connected.collectAsState()
+    val subscribed by realtime.subscribed.collectAsState()
     val snapshot = liveSnapshot
     val currentLesson = snapshot?.lesson ?: lesson
     val owner = currentLesson.teacher.id == user.id
     val assistance = snapshot?.assistance
+    val phase = snapshot?.instruction?.phase
+    val lessonModes = capabilities.supports(ContractProtocol.FeatureIds.ClassroomLessonModes)
+    val canShare = snapshot != null && (phase == null || (owner && phase == "classroom"))
+    val showMaterials = owner && canShare
+    val textbookEnabled = showMaterials && capabilities.supports(ContractProtocol.FeatureIds.ClassroomTextbookPicker)
+    val textbookLayout = textbookEnabled && snapshot.share?.type == "document"
+    val modeReady = subscribed && mediaState.connected &&
+        snapshot?.participants?.any { it.user.id == user.id && it.online } == true
+    var modeConfirm by remember { mutableStateOf<LessonModeSetPayload?>(null) }
+    var modeBusy by remember { mutableStateOf(false) }
+    val notesEnabled = capabilities.supports("classroom.notes") && (owner || user.role == "student")
+    var capturePreview by remember { mutableStateOf<CapturePreview?>(null) }
+    var captureBusy by remember { mutableStateOf(false) }
+    var captureError by remember { mutableStateOf<String?>(null) }
     val assistanceEnabled = capabilities.supports(ContractProtocol.FeatureIds.MeetingRemoteAssistance)
     val snackbar = remember { SnackbarHostState() }
     var panel by remember { mutableStateOf<Panel?>(null) }
@@ -136,6 +155,33 @@ fun MeetingScreen(
     fun execute(block: suspend () -> Unit) { scope.launch { try { block() } catch (e: Throwable) { report(e) } } }
     val command: (String, JsonObject) -> Unit = { type, payload -> execute { realtime.command(type, payload) } }
 
+    fun updateInstruction(change: LessonModeSetPayload? = null) {
+        if (!modeReady || modeBusy) return
+        modeBusy = true
+        execute {
+            try {
+                val updated = if (change == null) realtime.command("lesson.start")
+                else realtime.command("lesson.mode.set", ThinkMeetJson.encodeToJsonElement(change).jsonObject)
+                if (change?.mode == "mirroring" && updated.instruction?.phase == "mirroring") panel = Panel.People
+            } finally { modeBusy = false }
+        }
+    }
+
+    fun selectMode(mode: String) {
+        if (phase != "classroom" && phase != "mirroring") return
+        if (phase == mode) {
+            if (mode == "mirroring") panel = Panel.People
+            return
+        }
+        val change = LessonModeSetPayload(mode, phase, snapshot.share?.id, assistance?.id)
+        if (change.expectedShareId != null || change.expectedAssistanceId != null) modeConfirm = change
+        else updateInstruction(change)
+    }
+
+    LaunchedEffect(showMaterials, panel) {
+        if (!showMaterials && panel == Panel.Materials) panel = null
+    }
+
     DisposableEffect(session) {
         session.start(admission, camera, microphone)
         onDispose { session.close() }
@@ -185,17 +231,25 @@ fun MeetingScreen(
             val windowWidth = maxWidth
             val compact = windowWidth <= LayoutToken.MeetingCompactBreakpoint
             val overlayPanel = maxWidth <= LayoutToken.MeetingOverlayBreakpoint
+            val dockedTextbook = !overlayPanel && textbookLayout && panel == Panel.Materials
             val sideWidth = if (overlayPanel) LayoutToken.MeetingPanelWidth else if (maxWidth <= LayoutToken.MeetingMediumBreakpoint) LayoutToken.MeetingPanelNarrowWidth else LayoutToken.MeetingPanelWidth
             val bodyPadding = if (compact) Space.S10 else if (maxWidth <= LayoutToken.MeetingMediumBreakpoint) Space.S16 else Space.S20
             CompositionLocalProvider(LocalMeetingCompact provides compact, LocalMeetingViewportWidth provides maxWidth, LocalMeetingShort provides (maxHeight <= LayoutToken.MeetingShortHeight && !compact)) {
             Column(Modifier.fillMaxSize()) {
-                MeetingHeader(currentLesson, mediaState, socketConnected, snapshot?.serverTime, grid, compact, windowWidth, onLayout = { grid = !grid })
+                MeetingHeader(currentLesson, mediaState, socketConnected, snapshot?.serverTime, grid, compact, windowWidth,
+                    instructionPhase = phase, instructionStartedAt = snapshot?.instruction?.startedAt, onLayout = { grid = !grid })
+                if (owner && lessonModes && phase != null && !compactSystemPip) {
+                    MeetingLessonModes(phase, modeReady && !modeBusy && !busy, assistanceEnabled,
+                        onStart = { updateInstruction() }, onMode = ::selectMode)
+                }
                 if (assistanceEnabled && assistance != null && (owner || assistance.studentId == user.id)) {
                     RemoteAssistanceControls(assistance, user, remoteState.supported && pipState.supported, assistanceBusy,
                         Modifier.fillMaxWidth().padding(horizontal = bodyPadding, vertical = Space.S4),
                         onApprove = { assistanceSession.approve(assistance.id) },
                         onDecline = { execute { realtime.command("assistance.respond", ThinkMeetJson.encodeToJsonElement(AssistanceRespondPayload(assistance.id, false)).jsonObject) } },
-                        onStop = { execute { assistanceSession.stop(assistance.id) } })
+                        onStop = { execute { assistanceSession.stop(assistance.id) } },
+                        requestCancel = owner && phase != null && assistance.status == "pending",
+                        studentName = people.firstOrNull { it.id == assistance.studentId }?.name)
                 }
                 if (!socketConnected && snapshot != null) {
                     Text("실시간 상태를 다시 연결하고 있어요. 연결 후 자동으로 복원됩니다.",
@@ -206,7 +260,10 @@ fun MeetingScreen(
                     Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(Space.S16)) {
                         Box(Modifier.weight(1f).fillMaxHeight()) {
                             val current = snapshot
-                            if (current?.share != null) SharedStage(api, current, user, media, realtime, Modifier.fillMaxSize(), report, screenShare::stop)
+                            if (current?.share != null) SharedStage(api, current, user, media, realtime, Modifier.fillMaxSize(), report, screenShare::stop,
+                                captureEnabled = notesEnabled && admission.admissionId != null && !compactSystemPip,
+                                onCapture = { shareId, page, bytes -> captureError = null; capturePreview = CapturePreview(shareId, page, NoteDraft(bytes)) },
+                                textbookLayout = textbookLayout, dockedParticipants = dockedTextbook)
                             else ParticipantGallery(current, currentLesson, user, media, mediaState, grid, Modifier.fillMaxSize())
                             if (miniVisible && miniTarget != null && !pipState.active && !pipState.transitioning && fatalError == null && !exited && !busy) {
                                 FloatingMiniVideo(media, mediaState, miniTarget, videoName(miniTarget), !compact, miniPosition,
@@ -214,11 +271,17 @@ fun MeetingScreen(
                             }
                         }
                         if (!overlayPanel && panel != null) {
-                            MeetingLightPanel(Modifier.width(sideWidth).fillMaxHeight()) {
-                                MeetingPanel(panel!!, api, currentLesson, user, snapshot, realtime, onClose = { panel = null }, report = report,
-                                    chatDraft = chatDraft, media = media, mediaState = mediaState, onPanel = { panel = it }, unread = unread,
-                                    miniVisible = miniVisible, onMini = { miniPreference = !miniVisible }, pipState = pipState, pipEnabled = pipEnabled,
-                                    onPip = { execute { api.requireFeature(ContractProtocol.FeatureIds.MeetingPip); try { pip.enter() } catch (error: Throwable) { if (error is CancellationException || pip.state.value.error == null) throw error } } })
+                            Column(Modifier.width(sideWidth).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(Space.S8)) {
+                                if (dockedTextbook) {
+                                    SharedParticipants(snapshot, user, media, mediaState, Modifier.fillMaxWidth(), horizontal = true, docked = true)
+                                }
+                                MeetingLightPanel(Modifier.weight(1f).fillMaxWidth()) {
+                                    MeetingPanel(panel!!, api, currentLesson, user, snapshot, realtime, onClose = { panel = null }, report = report,
+                                        chatDraft = chatDraft, media = media, mediaState = mediaState, onPanel = { panel = it }, unread = unread,
+                                        miniVisible = miniVisible, onMini = { miniPreference = !miniVisible }, pipState = pipState, pipEnabled = pipEnabled,
+                                        textbookEnabled = textbookEnabled, textbookConnected = modeReady, closeAfterTextbook = false,
+                                        onPip = { execute { api.requireFeature(ContractProtocol.FeatureIds.MeetingPip); try { pip.enter() } catch (error: Throwable) { if (error is CancellationException || pip.state.value.error == null) throw error } } })
+                                }
                             }
                         }
                     }
@@ -229,6 +292,7 @@ fun MeetingScreen(
                             MeetingPanel(panel!!, api, currentLesson, user, snapshot, realtime, onClose = { panel = null }, report = report,
                                 chatDraft = chatDraft, media = media, mediaState = mediaState, onPanel = { panel = it }, unread = unread,
                                 miniVisible = miniVisible, onMini = { miniPreference = !miniVisible }, pipState = pipState, pipEnabled = pipEnabled,
+                                textbookEnabled = textbookEnabled, textbookConnected = modeReady, closeAfterTextbook = true,
                                 onPip = { execute { api.requireFeature(ContractProtocol.FeatureIds.MeetingPip); try { pip.enter() } catch (error: Throwable) { if (error is CancellationException || pip.state.value.error == null) throw error } } })
                         }
                     }
@@ -238,6 +302,8 @@ fun MeetingScreen(
                     sharing = ownScreen != null || mediaState.screenCaptureId != 0L || (assistance?.studentId == user.id && mediaState.screenSharing),
                     raised = snapshot?.participants?.find { it.user.id == user.id }?.raised == true,
                     count = mediaState.participants.size.coerceAtLeast(1), panel = panel, unread = unread, busy = busy,
+                    showShare = canShare || ownScreen != null || mediaState.screenCaptureId != 0L ||
+                        (assistance?.studentId == user.id && mediaState.screenSharing), showMaterials = showMaterials,
                     onMicrophone = { execute { media.setMicrophone(!mediaState.microphone) } },
                     onCamera = { execute { media.setCamera(!mediaState.camera) } },
                     onHand = { command("hand.set", buildJsonObject { put("raised", snapshot?.participants?.find { it.user.id == user.id }?.raised != true) }) },
@@ -263,6 +329,43 @@ fun MeetingScreen(
         }
         if (compactSystemPip) CompactVideo(media, mediaState, pipTarget, videoName(pipTarget), Modifier.fillMaxSize())
     }
+    }
+    if (notesEnabled && !compactSystemPip) capturePreview?.let { preview ->
+        val share = snapshot?.share
+        val changed = share == null || share.id != preview.shareId || share.page != preview.page || share.assistanceId != null
+        MeetingLightTheme {
+            NoteDialog(DesignContent.NotesCapture, captureBusy, onClose = { capturePreview = null }) {
+                NotePreview(preview.draft.bytes, "저장할 수업 화면")
+                if (owner) Text(DesignContent.NotesShareNotice)
+                (if (changed) DesignContent.NotesShareChanged else captureError)?.let { Text(it, color = Palette.DangerText) }
+                DesignButton(if (captureBusy) "저장 중…" else "저장하기", {
+                    val id = admission.admissionId ?: return@DesignButton
+                    if (captureBusy || changed) return@DesignButton
+                    captureBusy = true; captureError = null
+                    scope.launch {
+                        try {
+                            api.saveNoteCapture(lesson.id, preview.draft.bytes, preview.draft.requestId, preview.shareId, preview.page, id)
+                            capturePreview = null; showMessage("화면을 저장했어요.")
+                        } catch (error: Throwable) {
+                            if (error is CancellationException) throw error
+                            captureError = error.message ?: "화면을 저장하지 못했어요."
+                        } finally { captureBusy = false }
+                    }
+                }, enabled = !changed && !captureBusy && socketConnected && mediaState.connected)
+            }
+        }
+    }
+    modeConfirm?.takeUnless { compactSystemPip }?.let { change ->
+        MeetingLightTheme {
+            AlertDialog(onDismissRequest = { modeConfirm = null },
+                title = { Text(DesignContent.MeetingLessonSwitchTitle) },
+                text = { Text(DesignContent.MeetingLessonSwitchCopy) },
+                confirmButton = { TextButton(enabled = modeReady && !modeBusy, onClick = {
+                    modeConfirm = null
+                    updateInstruction(change)
+                }) { Text(DesignContent.MeetingLessonSwitchAction) } },
+                dismissButton = { TextButton(onClick = { modeConfirm = null }) { Text("취소") } })
+        }
     }
     if (confirmLeave && !compactSystemPip) AlertDialog(
         onDismissRequest = { if (!busy) confirmLeave = false },
@@ -424,11 +527,21 @@ private fun MeetingPanel(
     onClose: () -> Unit, report: (Throwable) -> Unit, chatDraft: MeetingChatDraft, media: MediaController, mediaState: MediaState,
     onPanel: (Panel) -> Unit, unread: Int, miniVisible: Boolean, onMini: () -> Unit,
     pipState: PictureInPictureState, pipEnabled: Boolean, onPip: () -> Unit,
+    textbookEnabled: Boolean, textbookConnected: Boolean, closeAfterTextbook: Boolean,
 ) {
+    var textbookTab by remember(panel, textbookEnabled) { mutableStateOf(textbookEnabled) }
+    val textbookHeader = panel == Panel.Materials && textbookTab
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().heightIn(min = LayoutToken.MeetingHeader).padding(horizontal = Space.S24, vertical = Space.S12), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().heightIn(min = if (textbookHeader) Space.S56 else LayoutToken.MeetingHeader)
+            .padding(horizontal = Space.S24, vertical = if (textbookHeader) Space.S4 else Space.S12),
+            verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text(if (panel == Panel.Invite && !lesson.isOpen) "다른 참석자 추가" else panel.title,
+                val title = when {
+                    panel == Panel.Invite && !lesson.isOpen -> "다른 참석자 추가"
+                    textbookHeader -> DesignContent.TextbookPicker
+                    else -> panel.title
+                }
+                Text(title,
                     style = MaterialTheme.typography.titleMedium.copy(fontSize = Type.Heading, lineHeight = Type.Heading * 1.45f), fontWeight = DesignWeight.Bold, color = Palette.Ink)
                 if (panel == Panel.People) Text("${snapshot?.participants?.count { it.online } ?: 1}명 입장", style = MaterialTheme.typography.bodySmall.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f), color = Palette.Muted)
             }
@@ -456,7 +569,11 @@ private fun MeetingPanel(
         when (panel) {
             Panel.Chat -> ChatPanel(snapshot, user, realtime, report, chatDraft)
             Panel.People -> PeoplePanel(api, lesson, user, snapshot, mediaState, realtime, report)
-            Panel.Materials -> MaterialsPanel(api, lesson, snapshot, realtime, report, onClose)
+            Panel.Materials -> if (snapshot?.instruction?.phase.let { it == null || it == "classroom" }) {
+                MaterialsPanel(api, snapshot, realtime, report, onClose, textbookEnabled, textbookConnected,
+                    onTextbookTab = { textbookTab = it },
+                    onTextbookOpened = { if (closeAfterTextbook) onClose() })
+            }
             Panel.Settings -> DevicePanel(media, mediaState, report)
             Panel.Invite -> InvitePanel(api, lesson, report)
             Panel.More -> MorePanel(lesson, user, snapshot, realtime, report, onPanel, unread, miniVisible, onMini, pipState, pipEnabled, onPip)
@@ -475,7 +592,9 @@ private fun ColumnScope.MorePanel(
         item { MeetingMenuItem("chat", "수업 채팅", "함께 이야기 나누기", badge = unread) { onPanel(Panel.Chat) } }
         if (lesson.isOwner(user)) {
             item { MeetingMenuItem(if (lesson.isOpen) "link" else "users", if (lesson.isOpen) "참여 링크 공유" else "다른 참석자 추가", if (lesson.isOpen) "누구나 참여할 수 있는 공개 수업" else "초대 학생과 참여 링크 관리") { onPanel(Panel.Invite) } }
-            item { MeetingMenuItem("folder", "수업 자료", "영상과 PDF를 함께 보기") { onPanel(Panel.Materials) } }
+            if (snapshot?.instruction?.phase.let { it == null || it == "classroom" }) {
+                item { MeetingMenuItem("folder", "수업 자료", "영상과 PDF를 함께 보기") { onPanel(Panel.Materials) } }
+            }
         }
         item { MeetingMenuItem("settings", "카메라·마이크 설정", "입력·출력 장치 설정") { onPanel(Panel.Settings) } }
         item { MeetingMenuItem("pip", "화면 속 화면", if (!pipState.supported) "기기에서 지원하지 않아요" else "다른 앱을 보면서 수업 계속하기", enabled = pipState.supported && pipEnabled && !pipState.active && !pipState.transitioning) { onPip() } }
@@ -598,7 +717,8 @@ private fun ColumnScope.PeoplePanel(api: ThinkMeetApi, lesson: Lesson, user: Use
     val scope = rememberCoroutineScope()
     val capabilities by api.capabilities.collectAsState()
     val socketConnected by realtime.connected.collectAsState()
-    val assistanceEnabled = capabilities.supports(ContractProtocol.FeatureIds.MeetingRemoteAssistance)
+    val assistanceEnabled = capabilities.supports(ContractProtocol.FeatureIds.MeetingRemoteAssistance) &&
+        snapshot?.instruction?.phase.let { it == null || it == "mirroring" }
     var search by remember { mutableStateOf("") }
     var kickPerson by remember { mutableStateOf<User?>(null) }
     var pending by remember { mutableStateOf(false) }
@@ -643,48 +763,128 @@ private fun ColumnScope.PeoplePanel(api: ThinkMeetApi, lesson: Lesson, user: Use
 }
 
 @Composable
-private fun ColumnScope.MaterialsPanel(api: ThinkMeetApi, lesson: Lesson, snapshot: MeetingSnapshot?, realtime: MeetingRealtime, report: (Throwable) -> Unit, onShared: () -> Unit) {
+private fun ColumnScope.MaterialsPanel(
+    api: ThinkMeetApi, snapshot: MeetingSnapshot?, realtime: MeetingRealtime, report: (Throwable) -> Unit,
+    onShared: () -> Unit, textbookEnabled: Boolean, textbookConnected: Boolean,
+    onTextbookTab: (Boolean) -> Unit, onTextbookOpened: () -> Unit,
+) {
     val scope = rememberCoroutineScope()
     var materials by remember { mutableStateOf<List<Material>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
+    var listFailed by remember { mutableStateOf(false) }
+    var listAttempt by remember { mutableIntStateOf(0) }
     var uploading by remember { mutableStateOf(false) }
+    var textbookBusy by remember { mutableStateOf(false) }
+    var textbookError by remember { mutableStateOf<String?>(null) }
     var deleting by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var contentTab by remember { mutableStateOf("media") }
-    suspend fun reload() { materials = api.materials() }
-    LaunchedEffect(api) { try { reload() } catch (error: Throwable) { report(error) } finally { loading = false } }
+    var contentTab by remember(textbookEnabled) { mutableStateOf(if (textbookEnabled) "document" else "media") }
+    val textbookTab = textbookEnabled && contentTab == "document"
+    val shown = materials.filter { it.type == contentTab }
+    LaunchedEffect(textbookTab) { onTextbookTab(textbookTab); textbookError = null }
+    LaunchedEffect(api, listAttempt) {
+        loading = true
+        listFailed = false
+        try { materials = api.materials() }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { listFailed = true }
+        finally { loading = false }
+    }
+
     val picker = rememberFilePicker { file ->
         if (file != null) {
             val pdf = file.name.endsWith(".pdf", true)
             val mp4 = file.name.endsWith(".mp4", true)
             val limit = if (pdf) 50L * 1024 * 1024 else 500L * 1024 * 1024
-            if ((!pdf && !mp4) || file.size > limit) { file.release(); report(IllegalArgumentException("PDF는 50MiB, MP4는 500MiB까지 업로드할 수 있어요.")) }
-            else {
+            if ((!pdf && !mp4) || file.size > limit) {
+                file.release()
+                report(IllegalArgumentException("PDF는 50MiB, MP4는 500MiB까지 업로드할 수 있어요."))
+            } else {
                 uploading = true
                 scope.launch {
-                    try { api.upload(file.name, file.size, if (pdf) "application/pdf" else "video/mp4", file.openChannel); reload(); contentTab = if (pdf) "document" else "media" }
-                    catch (error: Throwable) { report(error) } finally { file.release(); uploading = false }
+                    try {
+                        val material = api.upload(file.name, file.size, if (pdf) "application/pdf" else "video/mp4", file.openChannel)
+                        materials = listOf(material) + materials.filterNot { it.id == material.id }
+                        contentTab = material.type
+                    } catch (error: Exception) {
+                        report(error)
+                    } finally {
+                        file.release()
+                        uploading = false
+                    }
                 }
             }
         }
     }
-    LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(horizontal = Space.S24, vertical = Space.S16)) {
-        item {
-            Row(Modifier.fillMaxWidth().padding(bottom = Space.S16)) {
-                listOf("media" to "미디어", "document" to "문서").forEach { (value, label) ->
-                    Column(Modifier.weight(1f).clickable { contentTab = value }, horizontalAlignment = Alignment.CenterHorizontally) {
-                        Box(Modifier.height(Space.S48), contentAlignment = Alignment.Center) { Text(label, style = MaterialTheme.typography.labelMedium.copy(fontSize = Type.Support, lineHeight = Type.Support * 1.5f), color = if (contentTab == value) Palette.Primary else Palette.MeetingSecondary) }
-                        Box(Modifier.fillMaxWidth().height(Space.S2).background(if (contentTab == value) Palette.Primary else Palette.MeetingText))
+    fun changeTextbook(action: suspend () -> Unit) {
+        if (textbookBusy) return
+        textbookBusy = true
+        textbookError = null
+        scope.launch {
+            try { action() }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) { textbookError = error.message ?: "교재 요청을 처리하지 못했어요." }
+            finally { textbookBusy = false }
+        }
+    }
+    val tools: @Composable () -> Unit = {
+        val tabs = if (textbookEnabled) listOf("document" to DesignContent.TextbookTab, "media" to "미디어")
+            else listOf("media" to "미디어", "document" to "문서")
+        Row(Modifier.fillMaxWidth().padding(bottom = if (textbookTab) Space.S4 else Space.S16)) {
+            tabs.forEach { (value, label) ->
+                Column(Modifier.weight(1f).clickable(enabled = !textbookBusy && !uploading) { contentTab = value }, horizontalAlignment = Alignment.CenterHorizontally) {
+                    Box(Modifier.height(Space.S44), contentAlignment = Alignment.Center) {
+                        Text(label, style = MaterialTheme.typography.labelMedium.copy(fontSize = Type.Support, lineHeight = Type.Support * 1.5f),
+                            color = if (contentTab == value) Palette.Primary else Palette.MeetingSecondary)
                     }
+                    Box(Modifier.fillMaxWidth().height(Space.S2).background(if (contentTab == value) Palette.Primary else Palette.MeetingText))
                 }
             }
-            DesignButton(if (uploading) "업로드 중…" else if (contentTab == "media") "미디어 파일 업로드" else "문서 파일 업로드", onClick = picker,
-                modifier = Modifier.fillMaxWidth(), enabled = !uploading, secondary = true, textStyle = MaterialTheme.typography.labelLarge.copy(color = Palette.Primary), icon = { if (uploading) CircularProgressIndicator(Modifier.size(Space.S18), strokeWidth = Space.S2) else DesignIcon("plus", Modifier.size(Space.S20), Palette.Primary) })
+        }
+        DesignButton(
+            if (uploading) "업로드 중…" else if (contentTab == "media") "미디어 파일 업로드" else if (textbookTab) DesignContent.TextbookAdd else "문서 파일 업로드",
+            onClick = picker, modifier = Modifier.fillMaxWidth(), enabled = !uploading && !loading && !textbookBusy, secondary = true,
+            textStyle = MaterialTheme.typography.labelLarge.copy(color = Palette.Primary),
+            icon = { if (uploading) CircularProgressIndicator(Modifier.size(Space.S18), strokeWidth = Space.S2) else DesignIcon("plus", Modifier.size(Space.S20), Palette.Primary) },
+        )
+    }
+    if (textbookTab) {
+        Column(Modifier.weight(1f).fillMaxWidth().padding(horizontal = Space.S12, vertical = Space.S8),
+            verticalArrangement = Arrangement.spacedBy(Space.S8)) {
+            tools()
+            textbookError?.let { Text(it, color = Palette.Danger, style = MaterialTheme.typography.bodySmall) }
+            when {
+                loading -> TextbookNotice("자료 목록을 불러오는 중이에요.")
+                listFailed -> TextbookRetry(DesignContent.TextbookListError) { listAttempt++ }
+                else -> TextbookPicker(api, shown, snapshot?.share, textbookBusy || uploading, textbookConnected,
+                    onOpen = { material, page ->
+                        changeTextbook {
+                            val payload = ThinkMeetJson.encodeToJsonElement(DocumentOpenPayload(material.id, page)).jsonObject
+                            realtime.command("document.open", payload)
+                            onTextbookOpened()
+                        }
+                    },
+                    onDelete = { material ->
+                        changeTextbook {
+                            api.deleteMaterial(material.id)
+                            materials = materials.filterNot { it.id == material.id }
+                        }
+                    })
+            }
+        }
+        return
+    }
+
+    LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(horizontal = Space.S24, vertical = Space.S16)) {
+        item {
+            tools()
             Text("내 파일", Modifier.padding(top = Space.S32, bottom = Space.S8), color = Palette.Muted, style = MaterialTheme.typography.bodySmall.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f))
         }
-        if (loading) item { Box(Modifier.fillMaxWidth().padding(Space.S24), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(Space.S28)) } }
-        val shown = materials.filter { it.type == contentTab }
-        if (!loading && shown.isEmpty()) item { Text("업로드한 자료가 없어요.", Modifier.fillMaxWidth().background(Palette.MeetingSubtle, RoundedCornerShape(Corner.R8)).padding(Space.S16), color = Palette.Muted, style = MaterialTheme.typography.bodySmall.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f)) }
-        items(shown, key = { it.id }) { material ->
+        when {
+            loading -> item { Box(Modifier.fillMaxWidth().padding(Space.S24), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(Space.S28)) } }
+            listFailed -> item { TextbookRetry("자료 목록을 불러오지 못했어요.") { listAttempt++ } }
+            shown.isEmpty() -> item { TextbookNotice("업로드한 자료가 없어요.") }
+        }
+        items(if (loading || listFailed) emptyList() else shown, key = { it.id }) { material ->
             val active = snapshot?.share?.materialId == material.id
             Row(Modifier.fillMaxWidth().padding(vertical = Space.S8).heightIn(min = 76.dp)
                 .border(Space.S1, if (active) Palette.PrimarySoft else Palette.MeetingText, RoundedCornerShape(Corner.R8))

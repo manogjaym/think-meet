@@ -59,6 +59,7 @@ import kotlin.time.TimeSource
     var handoff by remember { mutableStateOf(false) }
     val capture = foreground && !handoff
     val owner = lesson.teacher.id == user.id
+    val lessonModes = controller.capabilities.collectAsState().value.supports(ContractProtocol.FeatureIds.ClassroomLessonModes)
     val status = probe?.status ?: lesson.status
     val scheduled = status == "SCHEDULED"
 
@@ -253,7 +254,7 @@ import kotlin.time.TimeSource
                 state.error?.let { ErrorCard(it) }
                 DesignButton(when {
                     state.busy || handoff -> "입장 확인 중…"
-                    owner && scheduled -> "수업 시작하기"
+                    owner && scheduled -> if (lessonModes) DesignContent.MeetingEnter else "수업 시작하기"
                     scheduled -> DesignContent.PrejoinWaitAction
                     else -> "지금 참여하기"
                 }, ::join, Modifier.fillMaxWidth().heightIn(min = Space.S54), enabled = !state.busy && !handoff,

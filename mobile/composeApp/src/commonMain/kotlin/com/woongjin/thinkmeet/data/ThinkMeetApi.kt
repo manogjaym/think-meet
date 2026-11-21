@@ -230,6 +230,34 @@ class ThinkMeetApi(internal val client: HttpClient, origin: String) {
         return response(path).body()
     }
 
+    suspend fun noteTarget(): ClassNoteTarget = json("getClassNoteTarget")
+    suspend fun noteWorksheets(month: String? = null, lessonId: String? = null): List<ClassNoteWorksheet> {
+        val query = month?.let { "month=${it.encodeURLQueryComponent()}" } ?: "lessonId=${checkNotNull(lessonId).encodeURLQueryComponent()}"
+        return ThinkMeetJson.decodeFromString(response("${apiPath("listClassNoteWorksheets")}?$query").bodyAsText())
+    }
+    suspend fun noteCaptures(): List<ClassNoteCapture> = json("listClassNoteCaptures")
+    suspend fun noteImage(id: String): ByteArray = operationResponse("getClassNoteImage", mapOf("id" to id)).body()
+
+    suspend fun submitNoteWorksheet(id: String, image: ByteArray, requestId: String): ClassNoteImage =
+        uploadNote("submitClassNoteWorksheet", id, image, requestId)
+    suspend fun submitNoteCorrection(id: String, image: ByteArray, requestId: String): ClassNoteImage =
+        uploadNote("submitClassNoteCorrection", id, image, requestId)
+    suspend fun saveNoteCapture(id: String, image: ByteArray, requestId: String, shareId: String, page: Int, admissionId: String): ClassNoteImage =
+        uploadNote("saveClassNoteCapture", id, image, requestId, mapOf("shareId" to shareId, "page" to page.toString(), "admissionId" to admissionId))
+
+    private suspend fun uploadNote(operation: String, id: String, image: ByteArray, requestId: String, fields: Map<String, String> = emptyMap()): ClassNoteImage {
+        val png = image.firstOrNull() == 0x89.toByte()
+        val body = MultiPartFormDataContent(formData {
+            append("requestId", requestId)
+            fields.forEach { (key, value) -> append(key, value) }
+            append("file", image, Headers.build {
+                append(HttpHeaders.ContentType, if (png) "image/png" else "image/jpeg")
+                append(HttpHeaders.ContentDisposition, if (png) "filename=\"image.png\"" else "filename=\"image.jpg\"")
+            })
+        })
+        return ThinkMeetJson.decodeFromString(operationResponse(operation, mapOf("id" to id), body).bodyAsText())
+    }
+
     fun joinLink(lesson: Lesson): String = "$origin/join/${lesson.code.encodeURLPathPart()}"
     /** Also used by native PDF/video renderers, which do not share Ktor's cookie jar. */
     suspend fun cookieHeader(): String = client.cookies(origin).joinToString("; ") { "${it.name}=${it.value}" }

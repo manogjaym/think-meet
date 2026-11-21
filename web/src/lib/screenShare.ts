@@ -34,11 +34,14 @@ export class ScreenShareSession {
     this.link = link
   }
 
-  observeShare(share: Share | null | undefined) {
+  observeShare(share: Share | null | undefined, canPublish = true) {
     this.currentShare = share
     if (this.pendingStop !== share?.id) this.pendingStop = undefined
     if (this.ownedId && this.ownedId !== share?.id) {
       this.ownedId = undefined
+      void this.releaseCapture()
+    } else if (!canPublish && this.starting && !this.cancelledStart) {
+      this.cancelledStart = true
       void this.releaseCapture()
     }
   }

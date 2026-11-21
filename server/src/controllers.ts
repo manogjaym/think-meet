@@ -10,17 +10,33 @@ import { Lessons } from './lessons'
 import { Materials } from './materials'
 import { ApiError } from './errors'
 import { FeaturePolicy } from './features'
+import { CLASS_NOTE_IMAGE_LIMIT, ClassNotes, withClassNoteFile } from './class-notes'
 import { StudentAttendance } from './student-attendance'
+import type { PublicUser } from './types'
 import type { CapabilitiesResponse, LoginInput, LessonInput, KickInput, InviteInput } from './generated/contracts'
 @Injectable()
 class TeacherUploadGuard implements CanActivate {
   constructor(private readonly auth: Auth, private readonly lessons: Lessons) {}
   async canActivate(context: ExecutionContext) { const req = context.switchToHttp().getRequest(); req.user = await this.auth.user(req); this.lessons.teacher(req.user); return true }
 }
+type ClassNoteRequest = Request & { noteUser: PublicUser }
+@Injectable()
+export class ClassNoteUploadGuard implements CanActivate {
+  constructor(private readonly auth: Auth) {}
+  async canActivate(context: ExecutionContext) {
+    const req = context.switchToHttp().getRequest<ClassNoteRequest>()
+    req.noteUser = await this.auth.user(req)
+    return true
+  }
+}
+const ClassNoteUpload = FileInterceptor('file', {
+  storage: diskStorage({ destination: tmpdir(), filename: (_req, _file, callback) => callback(null, `think-meet-note-${randomUUID()}`) }),
+  limits: { fileSize: CLASS_NOTE_IMAGE_LIMIT, files: 1, fields: 4, fieldSize: 128, parts: 6 },
+})
 @ApiTags('service')
 @Controller('api/v1')
 export class ApiController {
-  constructor(readonly auth: Auth, readonly db: Database, readonly lessons: Lessons, readonly materials: Materials, readonly features: FeaturePolicy, readonly attendance: StudentAttendance) {}
+  constructor(readonly auth: Auth, readonly db: Database, readonly lessons: Lessons, readonly materials: Materials, readonly features: FeaturePolicy, readonly notes: ClassNotes, readonly attendance: StudentAttendance) {}
   @Get('capabilities')
   capabilities(@Req() req: Request): CapabilitiesResponse { return this.features.capabilities(req.headers) }
   @Get('health')
@@ -57,7 +73,9 @@ export class ApiController {
     return this.lessons.edit(id, user, body)
   }
   @Post('lessons/:id/cancel') async cancel(@Req() req: Request, @Param('id') id: string) { return this.lessons.cancel(id, await this.auth.user(req)) }
-  @Post('lessons/:id/join') async join(@Req() req: Request, @Param('id') id: string) { return this.lessons.join(id, await this.auth.user(req)) }
+  @Post('lessons/:id/join') async join(@Req() req: Request, @Param('id') id: string) {
+    return this.lessons.join(id, await this.auth.user(req), this.features.capabilities(req.headers).features['classroom.lesson-modes'] === true)
+  }
   @Get('lessons/:id/prejoin') async prejoin(@Req() req: Request, @Param('id') id: string) {
     return this.lessons.prejoin(id, await this.auth.user(req))
   }
@@ -84,6 +102,36 @@ export class ApiController {
   async upload(@Req() req: Request, @UploadedFile() file: Express.Multer.File) { return this.materials.upload(await this.auth.user(req), file, req) }
   @Delete('materials/:id') async remove(@Req() req: Request, @Param('id') id: string) { return this.materials.remove(await this.auth.user(req), id) }
   @Get('materials/:id/content') async content(@Req() req: Request, @Res() res: Response, @Param('id') id: string, @Query('lessonId') lessonId?: string) { await this.materials.content(await this.auth.user(req), id, lessonId, req, res) }
+  @Get('class-notes/target')
+  async noteTarget(@Req() req: Request) { return this.notes.target(await this.auth.user(req)) }
+  @Get('class-notes/worksheets')
+  async noteWorksheets(@Req() req: Request, @Query('month') month?: string, @Query('lessonId') lessonId?: string) {
+    return this.notes.worksheets(await this.auth.user(req), month, lessonId)
+  }
+  @Post('class-notes/lessons/:id/worksheets')
+  @UseGuards(ClassNoteUploadGuard)
+  @UseInterceptors(ClassNoteUpload)
+  noteSubmit(@Req() req: ClassNoteRequest, @Param('id') id: string, @Body() fields: unknown, @UploadedFile() file?: Express.Multer.File) {
+    return withClassNoteFile(file, () => this.notes.submit(req.noteUser, id, fields, file))
+  }
+  @Post('class-notes/worksheets/:id/correction')
+  @UseGuards(ClassNoteUploadGuard)
+  @UseInterceptors(ClassNoteUpload)
+  noteCorrect(@Req() req: ClassNoteRequest, @Param('id') id: string, @Body() fields: unknown, @UploadedFile() file?: Express.Multer.File) {
+    return withClassNoteFile(file, () => this.notes.correct(req.noteUser, id, fields, file))
+  }
+  @Get('class-notes/captures')
+  async noteCaptures(@Req() req: Request) { return this.notes.captures(await this.auth.user(req)) }
+  @Post('class-notes/lessons/:id/captures')
+  @UseGuards(ClassNoteUploadGuard)
+  @UseInterceptors(ClassNoteUpload)
+  noteCapture(@Req() req: ClassNoteRequest, @Param('id') id: string, @Body() fields: unknown, @UploadedFile() file?: Express.Multer.File) {
+    return withClassNoteFile(file, () => this.notes.capture(req.noteUser, id, fields, file))
+  }
+  @Get('class-notes/images/:id')
+  async noteImage(@Req() req: Request, @Param('id') id: string, @Res() res: Response) {
+    await this.notes.content(await this.auth.user(req), id, res)
+  }
   @Post('webhooks/livekit') async webhook(@Req() req: Request & { rawBody?: Buffer }, @Headers('authorization') authorization: string) { return this.lessons.webhook(req.rawBody?.toString('utf8') || '', authorization) }
 }
 @Controller('internal')

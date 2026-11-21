@@ -41,6 +41,14 @@
     }
   },
   "commands": {
+    "lesson.start": {
+      "payload": "EmptyPayload",
+      "feature": "classroom.lesson-modes"
+    },
+    "lesson.mode.set": {
+      "payload": "LessonModeSetPayload",
+      "feature": "classroom.lesson-modes"
+    },
     "chat.send": {
       "payload": "ChatSendPayload",
       "feature": "classroom.core"
@@ -65,6 +73,10 @@
     "document.page": {
       "payload": "DocumentPagePayload",
       "feature": "classroom.core"
+    },
+    "document.open": {
+      "payload": "DocumentOpenPayload",
+      "feature": "classroom.textbook-picker"
     },
     "stroke.add": {
       "payload": "StrokeAddPayload",

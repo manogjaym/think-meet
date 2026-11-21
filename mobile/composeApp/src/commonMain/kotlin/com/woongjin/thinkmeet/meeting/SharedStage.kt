@@ -29,6 +29,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Canvas as ImageCanvas
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -66,9 +74,19 @@ internal fun SharedStage(
     modifier: Modifier,
     report: (Throwable) -> Unit,
     onStopShare: (String) -> Unit,
+    captureEnabled: Boolean = false,
+    onCapture: (String, Int, ByteArray) -> Unit = { _, _, _ -> },
+    textbookLayout: Boolean = false,
+    dockedParticipants: Boolean = false,
 ) {
     val share = snapshot.share ?: return
     val owner = snapshot.lesson.teacher.id == user.id
+    val noteFrame = remember(share.id, share.page) { NoteFrameSource() }
+    val captureSource = noteFrame.takeIf { captureEnabled && share.assistanceId == null }
+    var captureSize by remember(share.id) { mutableStateOf(IntSize.Zero) }
+    var readingFrame by remember(share.id) { mutableStateOf(false) }
+    val density = LocalDensity.current
+    val direction = LocalLayoutDirection.current
     val mediaState by media.state.collectAsState()
     val capabilities by api.capabilities.collectAsState()
     val socketConnected by realtime.connected.collectAsState()
@@ -132,18 +150,94 @@ internal fun SharedStage(
         }
     }
     val compact = LocalMeetingCompact.current
+    val captureControl: @Composable () -> Unit = {
+        if (captureEnabled) Surface(onClick = {
+            val read = captureSource?.read ?: return@Surface
+            if (readingFrame || !socketConnected || !mediaState.connected || captureSize.width <= 0) return@Surface
+            readingFrame = true
+            val visibleWidth = captureSize.width
+            scope.launch {
+                try {
+                    val frame = read() ?: error("공유 화면을 불러오는 중이에요.")
+                    val bytes = withContext(Dispatchers.Default) {
+                        val image = ImageBitmap(frame.width, frame.height)
+                        val bounds = Size(frame.width.toFloat(), frame.height.toFloat())
+                        CanvasDrawScope().draw(density, direction, ImageCanvas(image), bounds) {
+                            drawRect(Color.White)
+                            drawImage(frame)
+                            strokes.forEach { stroke ->
+                                val path = annotationPath(stroke.points, size.width, size.height)
+                                drawAnnotationPath(stroke.tool, hexColor(stroke.color), path, widthScale = size.width / visibleWidth)
+                            }
+                        }
+                        encodeNoteImage(image) ?: error("공유 화면의 이미지를 만들지 못했어요.")
+                    }
+                    onCapture(share.id, share.page, bytes)
+                } catch (error: Throwable) { report(error) }
+                finally { readingFrame = false }
+            }
+        }, enabled = !readingFrame && socketConnected && mediaState.connected && captureSource?.read != null && captureSize.width > 0,
+            color = Palette.MeetingShareText, contentColor = Palette.MeetingShareInk, shape = RoundedCornerShape(Corner.R6)) {
+            Box(Modifier.heightIn(min = Space.S36).padding(horizontal = if (compact) Space.S8 else Space.S12), contentAlignment = Alignment.Center) {
+                Text(DesignContent.NotesCapture, style = MaterialTheme.typography.labelMedium.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f))
+            }
+        }
+    }
+    val documentControls: @Composable (Modifier) -> Unit = { controlsModifier ->
+        Surface(controlsModifier, shape = RoundedCornerShape(Corner.R8), color = Palette.MeetingTile) {
+            FlowRow(Modifier.padding(Space.S5), horizontalArrangement = Arrangement.spacedBy(Space.S4, Alignment.CenterHorizontally), verticalArrangement = Arrangement.spacedBy(Space.S4)) {
+                StageButton("− 축소", enabled = zoom > .5f, description = "PDF 축소") { zoom = (zoom - .25f).coerceAtLeast(.5f) }
+                Text("${(zoom * 100).toInt()}%", Modifier.padding(horizontal = Space.S6, vertical = Space.S10), style = MaterialTheme.typography.bodySmall.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f), color = Palette.MeetingMuted)
+                StageButton("＋ 확대", enabled = zoom < 4f, description = "PDF 확대") { zoom = (zoom + .25f).coerceAtMost(4f) }
+                StageButton("화면에 맞추기") { zoom = 1f }
+                StageButton("이전", enabled = owner && !pending && share.page > 1, description = "PDF 이전 페이지") { command("document.page", buildJsonObject { put("page", share.page - 1) }) }
+                Text("${share.page} / ${share.material?.pages ?: 1}쪽", Modifier.padding(horizontal = Space.S6, vertical = Space.S10), style = MaterialTheme.typography.bodySmall.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f), color = Palette.MeetingMuted)
+                StageButton("다음", enabled = owner && !pending && share.page < (share.material?.pages ?: 1), description = "PDF 다음 페이지") { command("document.page", buildJsonObject { put("page", share.page + 1) }) }
+                if (textbookLayout) captureControl()
+            }
+        }
+    }
+    val annotationControls: @Composable (Modifier) -> Unit = { controlsModifier ->
+        if (!annotating) Surface(onClick = { annotating = true }, modifier = controlsModifier, color = Palette.Selection,
+            contentColor = Palette.PrimaryPressed, shape = RoundedCornerShape(Corner.R8)) {
+            Row(Modifier.heightIn(min = Space.S44).padding(horizontal = Space.S12), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.S7)) {
+                DesignIcon("pen", Modifier.size(Space.S20), Palette.PrimaryPressed)
+                Text("판서 시작", style = MaterialTheme.typography.labelMedium.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f))
+            }
+        } else Surface(controlsModifier.fillMaxWidth(), shape = RoundedCornerShape(Corner.R9), color = Palette.MeetingTile) {
+            FlowRow(Modifier.padding(if (compact) Space.S5 else Space.S8), horizontalArrangement = Arrangement.spacedBy(if (compact) Space.S4 else Space.S8, if (textbookLayout) Alignment.End else Alignment.Start), verticalArrangement = Arrangement.spacedBy(Space.S4)) {
+                listOf("pen" to "펜", "highlighter" to "형광펜", "eraser" to "지우개").forEach { (value, label) ->
+                    StageButton(if (compact) null else label, icon = value, description = label, selected = tool == value, minHeight = if (compact) Space.S36 else Space.S44) { tool = value }
+                }
+                Row(Modifier.heightIn(min = if (compact) Space.S36 else Space.S44), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(if (compact) Space.S2 else Space.S4)) {
+                    penColors.forEach { penColor ->
+                        Box(Modifier.size(if (compact) Space.S22 else Space.S28).clip(CircleShape).background(hexColor(penColor))
+                            .border(Space.S2, if (color == penColor) Palette.White else Color.Transparent, CircleShape).clickable { color = penColor }
+                            .semantics { contentDescription = "색상 $penColor" }, contentAlignment = Alignment.Center) {
+                            if (color == penColor) DesignIcon("check", Modifier.size(Space.S12), Palette.White)
+                        }
+                    }
+                }
+                StageButton(if (compact) null else "실행 취소", icon = "undo", description = "실행 취소", enabled = !pending, minHeight = if (compact) Space.S36 else Space.S44) { command("annotation.undo") }
+                StageButton(if (compact) null else "다시 실행", icon = "redo", description = "다시 실행", enabled = !pending, minHeight = if (compact) Space.S36 else Space.S44) { command("annotation.redo") }
+                StageButton(if (owner) "전체 지우기" else "내 판서 지우기", icon = "trash", description = if (owner) "전체 지우기" else "내 판서 지우기", enabled = strokes.any { owner || it.authorId == user.id }, minHeight = if (compact) Space.S36 else Space.S44) { clearConfirm = true }
+                StageButton("판서 종료", icon = "close", minHeight = if (compact) Space.S36 else Space.S44) { annotating = false; draft = null }
+            }
+        }
+    }
     val renderContent: @Composable (Modifier) -> Unit = { contentModifier ->
         BoxWithConstraints(contentModifier.clip(RoundedCornerShape(Corner.R10)).background(Palette.MeetingSharedBackground)) {
             BoxWithConstraints(Modifier.fillMaxSize().padding(start = if (compact) Space.S8 else Space.S12, end = if (compact) Space.S8 else Space.S12,
-                top = if (compact) 84.dp else Space.S64, bottom = if (compact) 92.dp else 80.dp), contentAlignment = Alignment.Center) {
+                top = if (textbookLayout) Space.S8 else if (compact) 84.dp else Space.S64,
+                bottom = if (textbookLayout) Space.S8 else if (compact) 92.dp else 80.dp), contentAlignment = Alignment.Center) {
                 val fitWidth = min(maxWidth.value, maxHeight.value * aspect).coerceAtLeast(1f).dp
                 val fitHeight = (fitWidth.value / aspect).dp
                 // The PDF/video and annotation overlay retain the exact same fitted coordinate bounds.
                 Box(Modifier.fillMaxSize().horizontalScroll(rememberScrollState()).verticalScroll(rememberScrollState()), contentAlignment = Alignment.Center) {
                 Box(Modifier.size(fitWidth * zoom, fitHeight * zoom).background(if (share.type == "document") Palette.White else Palette.MeetingSharedBackground)) {
                     if (share.type == "screen") {
-                        if (LocalMeetingVideoRendering.current) VideoSurface(media, share.ownerId, screen = true, modifier = Modifier.fillMaxSize())
-                    } else MaterialSurface(api, share, snapshot.lessonId, Modifier.fillMaxSize(), onAspectRatio = { if (it > .05f && it < 20f) aspect = it })
+                        if (LocalMeetingVideoRendering.current) VideoSurface(media, share.ownerId, screen = true, modifier = Modifier.fillMaxSize(), noteFrame = captureSource)
+                    } else MaterialSurface(api, share, snapshot.lessonId, Modifier.fillMaxSize(), noteFrame = captureSource, onAspectRatio = { if (it > .05f && it < 20f) aspect = it })
                 var erasedThisGesture by remember { mutableStateOf<Set<String>>(emptySet()) }
                 var previewAt by remember { mutableLongStateOf(0L) }
                 var surfaceSize by remember { mutableStateOf(IntSize.Zero) }
@@ -207,7 +301,7 @@ internal fun SharedStage(
                         } finally { draft = null }
                     }
                 }
-                Canvas(Modifier.fillMaxSize().onSizeChanged { surfaceSize = it }.then(if (assistance != null) guideModifier else drawModifier).semantics { contentDescription = if (guideReady) DesignContent.RemoteAssistActive else "수업 판서 영역" }) {
+                Canvas(Modifier.fillMaxSize().onSizeChanged { surfaceSize = it; captureSize = it }.then(if (assistance != null) guideModifier else drawModifier).semantics { contentDescription = if (guideReady) DesignContent.RemoteAssistActive else "수업 판서 영역" }) {
                     cachedStrokes.forEach { drawAnnotationPath(it.tool, it.color, it.path) }
                     previews.values.forEach { (preview, _) -> drawAnnotation(preview.tool, preview.color, preview.points) }
                     optimistic.values.forEach { drawAnnotation(it.tool, it.color, it.points) }
@@ -221,16 +315,8 @@ internal fun SharedStage(
                 }
                 }
             }
-            if (share.type == "document") Surface(Modifier.align(Alignment.BottomCenter).padding(Space.S12).fillMaxWidth(), shape = RoundedCornerShape(Corner.R8), color = Palette.MeetingTile) {
-                FlowRow(Modifier.padding(Space.S5), horizontalArrangement = Arrangement.spacedBy(Space.S4, Alignment.CenterHorizontally), verticalArrangement = Arrangement.spacedBy(Space.S4)) {
-                    StageButton("− 축소", enabled = zoom > .5f, description = "PDF 축소") { zoom = (zoom - .25f).coerceAtLeast(.5f) }
-                    Text("${(zoom * 100).toInt()}%", Modifier.padding(horizontal = Space.S6, vertical = Space.S10), style = MaterialTheme.typography.bodySmall.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f), color = Palette.MeetingMuted)
-                    StageButton("＋ 확대", enabled = zoom < 4f, description = "PDF 확대") { zoom = (zoom + .25f).coerceAtMost(4f) }
-                    StageButton("화면에 맞추기") { zoom = 1f }
-                    StageButton("이전", enabled = owner && !pending && share.page > 1, description = "PDF 이전 페이지") { command("document.page", buildJsonObject { put("page", share.page - 1) }) }
-                    Text("${share.page} / ${share.material?.pages ?: 1}쪽", Modifier.padding(horizontal = Space.S6, vertical = Space.S10), style = MaterialTheme.typography.bodySmall.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f), color = Palette.MeetingMuted)
-                    StageButton("다음", enabled = owner && !pending && share.page < (share.material?.pages ?: 1), description = "PDF 다음 페이지") { command("document.page", buildJsonObject { put("page", share.page + 1) }) }
-                }
+            if (!textbookLayout && share.type == "document") {
+                documentControls(Modifier.align(Alignment.BottomCenter).padding(Space.S12).fillMaxWidth())
             }
             if (share.type == "media") Surface(Modifier.align(Alignment.BottomCenter).padding(Space.S12).fillMaxWidth(), shape = RoundedCornerShape(Corner.R8), color = Palette.MeetingTile) {
                 MediaTransport(share, snapshot.serverTime, owner, pending) { command("media.update", it) }
@@ -238,31 +324,8 @@ internal fun SharedStage(
             if (assistance != null) Surface(Modifier.align(Alignment.TopStart).padding(Space.S12), color = Palette.MeetingTile, shape = RoundedCornerShape(Corner.R8)) {
                 Text(if (guideReady) DesignContent.RemoteAssistActive else if (owner) DesignContent.RemoteAssistGeometryWaiting else DesignContent.RemoteAssistActiveStudent,
                     Modifier.padding(Space.S10), style = MaterialTheme.typography.bodySmall, color = Palette.MeetingText)
-            } else if (!annotating) Surface(onClick = { annotating = true }, modifier = Modifier.align(Alignment.TopStart).padding(Space.S12), color = Palette.Selection,
-                contentColor = Palette.PrimaryPressed, shape = RoundedCornerShape(Corner.R8)) {
-                Row(Modifier.heightIn(min = Space.S44).padding(horizontal = Space.S12), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.S7)) {
-                    DesignIcon("pen", Modifier.size(Space.S20), Palette.PrimaryPressed)
-                    Text("판서 시작", style = MaterialTheme.typography.labelMedium.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f))
-                }
-            } else Surface(Modifier.align(Alignment.TopStart).padding(Space.S12).fillMaxWidth(), shape = RoundedCornerShape(Corner.R9), color = Palette.MeetingTile) {
-                FlowRow(Modifier.padding(if (compact) Space.S5 else Space.S8), horizontalArrangement = Arrangement.spacedBy(if (compact) Space.S4 else Space.S8), verticalArrangement = Arrangement.spacedBy(Space.S4)) {
-                    listOf("pen" to "펜", "highlighter" to "형광펜", "eraser" to "지우개").forEach { (value, label) ->
-                        StageButton(if (compact) null else label, icon = value, description = label, selected = tool == value, minHeight = if (compact) Space.S36 else Space.S44) { tool = value }
-                    }
-                    Row(Modifier.heightIn(min = if (compact) Space.S36 else Space.S44), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(if (compact) Space.S2 else Space.S4)) {
-                        penColors.forEach { penColor ->
-                            Box(Modifier.size(if (compact) Space.S22 else Space.S28).clip(CircleShape).background(hexColor(penColor))
-                                .border(Space.S2, if (color == penColor) Palette.White else Color.Transparent, CircleShape).clickable { color = penColor }
-                                .semantics { contentDescription = "색상 $penColor" }, contentAlignment = Alignment.Center) {
-                                if (color == penColor) DesignIcon("check", Modifier.size(Space.S12), Palette.White)
-                            }
-                        }
-                    }
-                    StageButton(if (compact) null else "실행 취소", icon = "undo", description = "실행 취소", enabled = !pending, minHeight = if (compact) Space.S36 else Space.S44) { command("annotation.undo") }
-                    StageButton(if (compact) null else "다시 실행", icon = "redo", description = "다시 실행", enabled = !pending, minHeight = if (compact) Space.S36 else Space.S44) { command("annotation.redo") }
-                    StageButton(if (owner) "전체 지우기" else "내 판서 지우기", icon = "trash", description = if (owner) "전체 지우기" else "내 판서 지우기", enabled = strokes.any { owner || it.authorId == user.id }, minHeight = if (compact) Space.S36 else Space.S44) { clearConfirm = true }
-                    StageButton("판서 종료", icon = "close", minHeight = if (compact) Space.S36 else Space.S44) { annotating = false; draft = null }
-                }
+            } else if (!textbookLayout) {
+                annotationControls(Modifier.align(Alignment.TopStart).padding(Space.S12))
             }
         }
     }
@@ -273,17 +336,30 @@ internal fun SharedStage(
             val ownerName = snapshot.participants.firstOrNull { it.user.id == share.ownerId }?.user?.name ?: "참여자"
             Text(if (share.type == "screen") "$ownerName 님의 화면 공유 중" else "${share.material?.name ?: "수업 자료"} 공유 중", Modifier.weight(1f),
                 style = MaterialTheme.typography.bodySmall.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f), color = Palette.MeetingShareText, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (!textbookLayout) captureControl()
             if (owner || share.ownerId == user.id) Surface(onClick = { onStopShare(share.id) },
                 enabled = !pending, color = Palette.MeetingShareText, contentColor = Palette.MeetingShareInk, shape = RoundedCornerShape(Corner.R6)) {
                 Box(Modifier.heightIn(min = Space.S36).padding(horizontal = if (compact) Space.S8 else Space.S12), contentAlignment = Alignment.Center) { Text("공유 중지", style = MaterialTheme.typography.labelMedium.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f)) }
             }
         }
+        val renderStage: @Composable (Modifier) -> Unit = { stageModifier ->
+            if (textbookLayout) Column(stageModifier, verticalArrangement = Arrangement.spacedBy(Space.S4)) {
+                renderContent(Modifier.weight(1f).fillMaxWidth())
+                documentControls(Modifier.fillMaxWidth())
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) { annotationControls(Modifier) }
+            } else renderContent(stageModifier)
+        }
         if (compact) Column(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Space.S8)) {
-            renderContent(Modifier.weight(1f).fillMaxWidth())
-            SharedParticipants(snapshot, user, media, mediaState, Modifier.fillMaxWidth().height(142.dp), horizontal = true)
+            renderStage(Modifier.weight(1f).fillMaxWidth())
+            SharedParticipants(snapshot, user, media, mediaState,
+                Modifier.fillMaxWidth().height(if (textbookLayout) Space.S96 else 142.dp), horizontal = true)
         } else Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Space.S12)) {
-            renderContent(Modifier.weight(1f).fillMaxHeight())
-            SharedParticipants(snapshot, user, media, mediaState, Modifier.width(if (LocalMeetingViewportWidth.current <= com.woongjin.thinkmeet.design.generated.DesignTokens.Layout.MeetingMediumBreakpoint) 130.dp else 160.dp).fillMaxHeight(), horizontal = false)
+            renderStage(Modifier.weight(1f).fillMaxHeight())
+            if (!dockedParticipants) {
+                SharedParticipants(snapshot, user, media, mediaState,
+                    Modifier.width(if (LocalMeetingViewportWidth.current <= com.woongjin.thinkmeet.design.generated.DesignTokens.Layout.MeetingMediumBreakpoint) 130.dp else 160.dp).fillMaxHeight(),
+                    horizontal = false)
+            }
         }
     }
     if (clearConfirm) MeetingLightTheme {
@@ -308,21 +384,23 @@ private fun StageButton(label: String?, icon: String? = null, description: Strin
 }
 
 @Composable
-private fun SharedParticipants(snapshot: MeetingSnapshot, user: User, media: MediaController, state: MediaState, modifier: Modifier, horizontal: Boolean) {
+internal fun SharedParticipants(snapshot: MeetingSnapshot, user: User, media: MediaController, state: MediaState, modifier: Modifier, horizontal: Boolean, docked: Boolean = false) {
     val owner = snapshot.lesson.teacher.id == user.id
-    val people = snapshot.participants.filter { it.online && if (owner) it.user.id != snapshot.lesson.teacher.id else it.user.id == snapshot.lesson.teacher.id }
+    val participants = snapshot.participants.filter { it.online && if (owner) docked || it.user.id != snapshot.lesson.teacher.id else it.user.id == snapshot.lesson.teacher.id }
+    val people = if (docked) participants.sortedByDescending { it.user.id == user.id } else participants
     BoxWithConstraints(modifier) {
         val tileHeight = (maxHeight - 92.dp).coerceIn(Space.S56, if (LocalMeetingViewportWidth.current <= com.woongjin.thinkmeet.design.generated.DesignTokens.Layout.MeetingMediumBreakpoint) 115.dp else 132.dp)
-        val size = if (horizontal) kotlin.math.floor((maxWidth.value + 8) / 120).toInt().coerceIn(1, 4)
+        val stripHeight = if (horizontal && LocalMeetingCompact.current && maxHeight <= Space.S96) Space.S64 else 90.dp
+        val size = if (docked) 2 else if (horizontal) kotlin.math.floor((maxWidth.value + 8) / 120).toInt().coerceIn(1, 4)
             else kotlin.math.floor((maxHeight.value - 40 - 52 + 12) / (tileHeight.value + 12)).toInt().coerceIn(1, 4)
         var page by remember(size) { mutableIntStateOf(0) }
         val pages = ((people.size + size - 1) / size).coerceAtLeast(1)
         val safePage = page.coerceIn(0, pages - 1)
         val visible = people.drop(safePage * size).take(size)
-        Column(Modifier.fillMaxSize()) {
+        Column(if (docked) Modifier.fillMaxWidth() else Modifier.fillMaxSize()) {
             if (!horizontal) Row(Modifier.padding(bottom = Space.S12), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.S6)) { DesignIcon("users", Modifier.size(Space.S14), Palette.MeetingDim); Text(if (owner) "참여자 ${people.size}명" else "선생님", style = MaterialTheme.typography.bodySmall.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f), color = Palette.MeetingDim) }
             if (people.isEmpty()) Box(Modifier.fillMaxWidth().height(Space.S96), contentAlignment = Alignment.Center) { Text("입장 대기 중", color = Palette.MeetingDim, style = MaterialTheme.typography.bodySmall.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f)) }
-            else if (horizontal) Row(Modifier.fillMaxWidth().height(90.dp), horizontalArrangement = Arrangement.spacedBy(Space.S8)) {
+            else if (horizontal) Row(Modifier.fillMaxWidth().height(stripHeight), horizontalArrangement = Arrangement.spacedBy(Space.S8)) {
                 visible.forEach { entry -> ParticipantTile(entry.user, entry.user.id == snapshot.lesson.teacher.id, entry.raised, media, state, Modifier.weight(1f).fillMaxHeight(), small = true) }
             } else Column(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Space.S12)) {
                 visible.forEach { entry -> ParticipantTile(entry.user, entry.user.id == snapshot.lesson.teacher.id, entry.raised, media, state, Modifier.fillMaxWidth().height(tileHeight), small = true) }
@@ -368,7 +446,7 @@ private fun DrawScope.drawAnnotation(tool: String, color: String, points: List<P
     else drawAnnotationPath(tool, ink, path)
 }
 private fun annotationPath(points: List<Point>, width: Float, height: Float): Path = Path().apply { points.forEachIndexed { index, point -> if (index == 0) moveTo((point.x * width).toFloat(), (point.y * height).toFloat()) else lineTo((point.x * width).toFloat(), (point.y * height).toFloat()) } }
-private fun DrawScope.drawAnnotationPath(tool: String, ink: Color, path: Path) = drawPath(path, ink, alpha = if (tool == "highlighter") .38f else 1f, style = DrawStroke(if (tool == "highlighter") 18.dp.toPx() else 4.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+private fun DrawScope.drawAnnotationPath(tool: String, ink: Color, path: Path, widthScale: Float = 1f) = drawPath(path, ink, alpha = if (tool == "highlighter") .38f else 1f, style = DrawStroke((if (tool == "highlighter") 18.dp else 4.dp).toPx() * widthScale, cap = StrokeCap.Round, join = StrokeJoin.Round))
 /** Segment distance, rather than only point distance, also erases quickly drawn sparse strokes. */
 private fun hitsStroke(point: Point, points: List<Point>, width: Float, height: Float): Boolean {
     val px = point.x * width; val py = point.y * height

@@ -50,10 +50,12 @@ export function TopBar({
   if (!isRoot) {
     const canGoBack =
       screen === "detail" ||
+      screen === "class-notes" ||
       screen === "prejoin" ||
       (screen === "form" && isEditing)
     const titles: Partial<Record<Screen, string>> = {
       detail: "수업 상세",
+      "class-notes": designContent.notesTitle,
       students: designContent.attendanceStudents,
       attendance: designContent.attendanceTitle,
       prejoin: prejoinEnabled ? designContent.prejoinTitle : "입장 준비",

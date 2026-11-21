@@ -5,7 +5,7 @@ data class ContractHttpOperation(val id: String, val method: String, val path: S
 data class ContractFeature(val id: String, val stage: String, val requiresRevision: Int, val defaultEnabled: Boolean, val platforms: Set<String>)
 
 object ContractProtocol {
-    const val Revision = 9
+    const val Revision = 11
     const val ApiBasePath = "/api/v1"
     const val SocketPath = "/socket.io"
     const val PlatformHeader = "X-ThinkMeet-Platform"
@@ -25,8 +25,11 @@ object ContractProtocol {
         const val MeetingPip = "meeting.pip"
         const val MeetingRemoteAssistance = "meeting.remote-assistance"
         const val ClassroomSubjects = "classroom.subjects"
-        const val ClassroomPrejoin = "classroom.prejoin"
+        const val ClassroomNotes = "classroom.notes"
         const val ClassroomAttendance = "classroom.attendance"
+        const val ClassroomPrejoin = "classroom.prejoin"
+        const val ClassroomLessonModes = "classroom.lesson-modes"
+        const val ClassroomTextbookPicker = "classroom.textbook-picker"
     }
     val HttpOperations = listOf(
         ContractHttpOperation("health", "GET", "/api/v1/health", null),
@@ -56,6 +59,13 @@ object ContractProtocol {
         ContractHttpOperation("deleteMaterial", "DELETE", "/api/v1/materials/{id}", "classroom.core"),
         ContractHttpOperation("getMaterialContent", "GET", "/api/v1/materials/{id}/content", "classroom.core"),
         ContractHttpOperation("livekitWebhook", "POST", "/api/v1/webhooks/livekit", null),
+        ContractHttpOperation("getClassNoteTarget", "GET", "/api/v1/class-notes/target", "classroom.notes"),
+        ContractHttpOperation("listClassNoteWorksheets", "GET", "/api/v1/class-notes/worksheets", "classroom.notes"),
+        ContractHttpOperation("submitClassNoteWorksheet", "POST", "/api/v1/class-notes/lessons/{id}/worksheets", "classroom.notes"),
+        ContractHttpOperation("submitClassNoteCorrection", "POST", "/api/v1/class-notes/worksheets/{id}/correction", "classroom.notes"),
+        ContractHttpOperation("listClassNoteCaptures", "GET", "/api/v1/class-notes/captures", "classroom.notes"),
+        ContractHttpOperation("saveClassNoteCapture", "POST", "/api/v1/class-notes/lessons/{id}/captures", "classroom.notes"),
+        ContractHttpOperation("getClassNoteImage", "GET", "/api/v1/class-notes/images/{id}", "classroom.notes"),
         ContractHttpOperation("getPrejoinStatus", "GET", "/api/v1/lessons/{id}/prejoin", "classroom.prejoin"),
         ContractHttpOperation("renewPrejoinWait", "PUT", "/api/v1/lessons/{id}/waiting/{clientId}", "classroom.prejoin"),
         ContractHttpOperation("clearPrejoinWait", "DELETE", "/api/v1/lessons/{id}/waiting/{clientId}", "classroom.prejoin"),
@@ -65,16 +75,22 @@ object ContractProtocol {
         ContractFeature("meeting.pip", "baseline", 0, true, setOf("android", "ios")),
         ContractFeature("meeting.remote-assistance", "in-progress", 4, true, setOf("web", "android", "ios")),
         ContractFeature("classroom.subjects", "in-progress", 7, true, setOf("web", "android", "ios")),
-        ContractFeature("classroom.prejoin", "in-progress", 9, true, setOf("web", "android", "ios")),
+        ContractFeature("classroom.notes", "in-progress", 6, true, setOf("web", "android", "ios")),
         ContractFeature("classroom.attendance", "in-progress", 8, true, setOf("web", "android", "ios")),
+        ContractFeature("classroom.prejoin", "in-progress", 9, true, setOf("web", "android", "ios")),
+        ContractFeature("classroom.lesson-modes", "in-progress", 10, true, setOf("web", "android", "ios")),
+        ContractFeature("classroom.textbook-picker", "ready", 11, true, setOf("web", "android", "ios")),
     )
     private val commandFeatures: Map<String, String?> = mapOf(
+        "lesson.start" to "classroom.lesson-modes",
+        "lesson.mode.set" to "classroom.lesson-modes",
         "chat.send" to "classroom.core",
         "hand.set" to "classroom.core",
         "share.start" to "classroom.core",
         "share.stop" to null,
         "media.update" to "classroom.core",
         "document.page" to "classroom.core",
+        "document.open" to "classroom.textbook-picker",
         "stroke.add" to "classroom.core",
         "stroke.erase" to "classroom.core",
         "annotation.undo" to "classroom.core",

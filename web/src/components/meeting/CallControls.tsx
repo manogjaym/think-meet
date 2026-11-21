@@ -9,6 +9,8 @@ export function CallControls({
   panel,
   setPanel,
   screenSharing,
+  showShare = true,
+  showMaterials = role === "teacher",
   onShareScreen,
   onEnd,
   mic,
@@ -24,6 +26,8 @@ export function CallControls({
   panel: Panel
   setPanel: (p: Panel) => void
   screenSharing: boolean
+  showShare?: boolean
+  showMaterials?: boolean
   onShareScreen: () => void
   onEnd: () => void
   mic: boolean
@@ -63,7 +67,7 @@ export function CallControls({
       </div>
       <span className="control-divider" />
       <div className="control-group meeting-tools">
-        <button
+        {showShare && <button
           className={screenSharing ? "selected sharing" : ""}
           onClick={onShareScreen}
           aria-pressed={screenSharing}
@@ -73,7 +77,7 @@ export function CallControls({
             <Icon name="screen" size={22} />
           </span>
           <small>{screenSharing ? "공유 중지" : "화면 공유"}</small>
-        </button>
+        </button>}
         <button
           className={panel === "people" ? "selected" : ""}
           onClick={() => togglePanel("people")}
@@ -101,7 +105,7 @@ export function CallControls({
           </span>
           <small>채팅</small>
         </button>
-        {role === "teacher" ? (
+        {role === "teacher" ? showMaterials && (
           <button
             className={panel === "content" ? "selected" : ""}
             onClick={() => togglePanel("content")}

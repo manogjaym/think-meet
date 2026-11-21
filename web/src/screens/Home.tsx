@@ -1,3 +1,4 @@
+import { ClassNotesHome, type NotesTab } from "./ClassNotes"
 import { designContent } from "../generated/design-content"
 import { useState } from "react"
 import { colorFor, displayLesson, type User } from "../lib/api"
@@ -43,12 +44,14 @@ export function Home({
   lessons,
   user,
   onJoinCode,
+  onNotes,
   view,
   onViewChange,
 }: {
   role: Role
   lessons: Lesson[]
   user: User
+  onNotes?: (tab: NotesTab) => void
   onJoinCode: (code: string) => Promise<void>
   setScreen: (screen: Screen) => void
   onOpen: (lesson: Lesson) => void
@@ -121,6 +124,11 @@ export function Home({
     )
     .map((student) => ({ ...student, color: colorFor(student.id) }))
   const timeLabel = live?.date.split(", ")[1] || "오후 4:00"
+
+  const renderSide = (quickJoin: React.ReactNode) => onNotes ? <div className="note-home-stack">
+    <ClassNotesHome refreshKey={lessons.map(item => `${item.id}:${item.state}:${item.date}`).join("|")} onOpen={onNotes} />
+    {quickJoin}
+  </div> : quickJoin
 
   return (
     <main className="class-dashboard">
@@ -245,7 +253,7 @@ export function Home({
           </section>
         )}
 
-        <section className="quick-join" aria-label="링크로 수업 참여">
+        {renderSide(<section className="quick-join" aria-label="링크로 수업 참여">
           <div className="quick-join-copy">
             <span className="quick-join-icon" aria-hidden="true">
               <Icon name="link" size={19} />
@@ -304,7 +312,7 @@ export function Home({
             <Icon name="video" size={15} />
             <span>입장 전에 카메라와 마이크를 확인할 수 있어요.</span>
           </p>
-        </section>
+        </section>)}
       </div>
 
       <section

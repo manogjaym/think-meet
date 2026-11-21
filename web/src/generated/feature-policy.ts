@@ -1,5 +1,5 @@
 // Generated from features/catalog.json and contracts/. Do not edit.
-export const CONTRACT_REVISION = 9 as const;
+export const CONTRACT_REVISION = 11 as const;
 export const CAPABILITY_HEADERS = {"platform":"X-ThinkMeet-Platform","revision":"X-ThinkMeet-Contract-Revision"} as const;
 export type ClientPlatform = "web" | "android" | "ios";
 export type FeatureDefinition = { readonly id: string; readonly stage: "baseline" | "planned" | "in-progress" | "ready"; readonly requiresRevision: number; readonly defaultEnabled: boolean; readonly platforms: readonly ClientPlatform[] };
@@ -48,9 +48,9 @@ export const FEATURE_DEFINITIONS = [
     ]
   },
   {
-    "id": "classroom.prejoin",
+    "id": "classroom.notes",
     "stage": "in-progress",
-    "requiresRevision": 9,
+    "requiresRevision": 6,
     "defaultEnabled": true,
     "platforms": [
       "web",
@@ -62,6 +62,39 @@ export const FEATURE_DEFINITIONS = [
     "id": "classroom.attendance",
     "stage": "in-progress",
     "requiresRevision": 8,
+    "defaultEnabled": true,
+    "platforms": [
+      "web",
+      "android",
+      "ios"
+    ]
+  },
+  {
+    "id": "classroom.prejoin",
+    "stage": "in-progress",
+    "requiresRevision": 9,
+    "defaultEnabled": true,
+    "platforms": [
+      "web",
+      "android",
+      "ios"
+    ]
+  },
+  {
+    "id": "classroom.lesson-modes",
+    "stage": "in-progress",
+    "requiresRevision": 10,
+    "defaultEnabled": true,
+    "platforms": [
+      "web",
+      "android",
+      "ios"
+    ]
+  },
+  {
+    "id": "classroom.textbook-picker",
+    "stage": "ready",
+    "requiresRevision": 11,
     "defaultEnabled": true,
     "platforms": [
       "web",
@@ -229,6 +262,48 @@ export const HTTP_OPERATIONS: readonly { id: string; method: string; path: strin
     "path": "/api/v1/webhooks/livekit"
   },
   {
+    "id": "getClassNoteTarget",
+    "method": "GET",
+    "path": "/api/v1/class-notes/target",
+    "feature": "classroom.notes"
+  },
+  {
+    "id": "listClassNoteWorksheets",
+    "method": "GET",
+    "path": "/api/v1/class-notes/worksheets",
+    "feature": "classroom.notes"
+  },
+  {
+    "id": "submitClassNoteWorksheet",
+    "method": "POST",
+    "path": "/api/v1/class-notes/lessons/{id}/worksheets",
+    "feature": "classroom.notes"
+  },
+  {
+    "id": "submitClassNoteCorrection",
+    "method": "POST",
+    "path": "/api/v1/class-notes/worksheets/{id}/correction",
+    "feature": "classroom.notes"
+  },
+  {
+    "id": "listClassNoteCaptures",
+    "method": "GET",
+    "path": "/api/v1/class-notes/captures",
+    "feature": "classroom.notes"
+  },
+  {
+    "id": "saveClassNoteCapture",
+    "method": "POST",
+    "path": "/api/v1/class-notes/lessons/{id}/captures",
+    "feature": "classroom.notes"
+  },
+  {
+    "id": "getClassNoteImage",
+    "method": "GET",
+    "path": "/api/v1/class-notes/images/{id}",
+    "feature": "classroom.notes"
+  },
+  {
     "id": "getPrejoinStatus",
     "method": "GET",
     "path": "/api/v1/lessons/{id}/prejoin",
@@ -247,7 +322,7 @@ export const HTTP_OPERATIONS: readonly { id: string; method: string; path: strin
     "feature": "classroom.prejoin"
   }
 ];
-const COMMAND_FEATURES: Record<string, string | undefined> = {"chat.send":"classroom.core","hand.set":"classroom.core","share.start":"classroom.core","share.stop":undefined,"media.update":"classroom.core","document.page":"classroom.core","stroke.add":"classroom.core","stroke.erase":"classroom.core","annotation.undo":"classroom.core","annotation.redo":"classroom.core","annotation.clear":"classroom.core","assistance.request":"meeting.remote-assistance","assistance.respond":"meeting.remote-assistance","assistance.start":"meeting.remote-assistance","assistance.geometry":"meeting.remote-assistance","assistance.stop":undefined};
+const COMMAND_FEATURES: Record<string, string | undefined> = {"lesson.start":"classroom.lesson-modes","lesson.mode.set":"classroom.lesson-modes","chat.send":"classroom.core","hand.set":"classroom.core","share.start":"classroom.core","share.stop":undefined,"media.update":"classroom.core","document.page":"classroom.core","document.open":"classroom.textbook-picker","stroke.add":"classroom.core","stroke.erase":"classroom.core","annotation.undo":"classroom.core","annotation.redo":"classroom.core","annotation.clear":"classroom.core","assistance.request":"meeting.remote-assistance","assistance.respond":"meeting.remote-assistance","assistance.start":"meeting.remote-assistance","assistance.geometry":"meeting.remote-assistance","assistance.stop":undefined};
 const EVENT_FEATURES: Record<string, string | undefined> = {"subscribe":"classroom.core","command":undefined,"stroke.preview":"classroom.core","snapshot":undefined,"lessons:changed":undefined,"room:error":undefined,"session:replaced":undefined,"assistance.pointer":"meeting.remote-assistance"};
 
 function matchingOperation(method: string, input: string) {

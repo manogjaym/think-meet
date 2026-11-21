@@ -291,22 +291,26 @@
       }
     },
     {
-      "id": "classroom.prejoin",
-      "title": "입장 전 장치 점검과 학생 대기 상태",
+      "id": "classroom.notes",
+      "title": "수업 노트",
       "stage": "in-progress",
-      "requiresRevision": 9,
+      "requiresRevision": 6,
       "defaultEnabled": true,
       "platforms": [
         "web",
         "android",
         "ios"
       ],
-      "spec": "classroom-prejoin.md",
+      "spec": "classroom-notes.md",
       "contracts": {
         "operations": [
-          "getPrejoinStatus",
-          "renewPrejoinWait",
-          "clearPrejoinWait"
+          "getClassNoteTarget",
+          "listClassNoteWorksheets",
+          "submitClassNoteWorksheet",
+          "submitClassNoteCorrection",
+          "listClassNoteCaptures",
+          "saveClassNoteCapture",
+          "getClassNoteImage"
         ],
         "events": [],
         "commands": []
@@ -315,27 +319,89 @@
         "server": {
           "status": "done",
           "files": [
-            "server/src/lessons.ts",
+            "server/src/class-notes.ts",
             "server/src/controllers.ts"
           ]
         },
         "web": {
           "status": "done",
           "files": [
-            "web/src/screens/Join.tsx",
-            "web/src/lib/prejoin.ts"
+            "web/src/screens/ClassNotes.tsx",
+            "web/src/screens/Meeting.tsx"
           ]
         },
         "android": {
           "status": "done",
           "files": [
-            "mobile/composeApp/src/androidMain/kotlin/com/woongjin/thinkmeet/platform/AndroidMedia.kt"
+            "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/ui/ClassNotes.kt",
+            "mobile/composeApp/src/androidMain/kotlin/com/woongjin/thinkmeet/platform/AndroidNoteImages.kt"
           ]
         },
         "ios": {
           "status": "done",
           "files": [
+            "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/ui/ClassNotes.kt",
             "mobile/iosApp/ThinkMeet/NativeBridge.swift"
+          ]
+        }
+      },
+      "verification": {
+        "server": {
+          "status": "passed",
+          "checks": [
+            "web/e2e/class-notes.spec.ts"
+          ],
+          "evidence": [
+            "features/classroom-notes.md"
+          ]
+        },
+        "web": {
+          "status": "passed",
+          "checks": [
+            "web/e2e/class-notes.spec.ts"
+          ],
+          "evidence": [
+            "features/classroom-notes.md"
+          ],
+          "screens": {
+            "phone": {
+              "status": "passed",
+              "evidence": [
+                "features/evidence/classroom-notes/web-phone-records.png"
+              ]
+            },
+            "tablet": {
+              "status": "passed",
+              "evidence": [
+                "features/evidence/classroom-notes/web-tablet-records.png"
+              ]
+            }
+          }
+        },
+        "android": {
+          "status": "pending",
+          "evidence": [
+            "features/classroom-notes.md"
+          ],
+          "screens": {
+            "phone": {
+              "status": "passed",
+              "evidence": [
+                "features/evidence/classroom-notes/android-phone-records.png"
+              ]
+            },
+            "tablet": {
+              "status": "pending",
+              "evidence": [
+                "features/evidence/classroom-notes/android-tablet-width-records.png"
+              ]
+            }
+          }
+        },
+        "ios": {
+          "status": "pending",
+          "evidence": [
+            "features/classroom-notes.md"
           ]
         }
       }
@@ -464,6 +530,159 @@
               "status": "pending",
               "evidence": []
             }
+          }
+        }
+      }
+    },
+    {
+      "id": "classroom.prejoin",
+      "title": "입장 전 장치 점검과 학생 대기 상태",
+      "stage": "in-progress",
+      "requiresRevision": 9,
+      "defaultEnabled": true,
+      "platforms": [
+        "web",
+        "android",
+        "ios"
+      ],
+      "spec": "classroom-prejoin.md",
+      "contracts": {
+        "operations": [
+          "getPrejoinStatus",
+          "renewPrejoinWait",
+          "clearPrejoinWait"
+        ],
+        "events": [],
+        "commands": []
+      },
+      "implementation": {
+        "server": {
+          "status": "done",
+          "files": [
+            "server/src/lessons.ts",
+            "server/src/controllers.ts"
+          ]
+        },
+        "web": {
+          "status": "done",
+          "files": [
+            "web/src/screens/Join.tsx",
+            "web/src/lib/prejoin.ts"
+          ]
+        },
+        "android": {
+          "status": "done",
+          "files": [
+            "mobile/composeApp/src/androidMain/kotlin/com/woongjin/thinkmeet/platform/AndroidMedia.kt"
+          ]
+        },
+        "ios": {
+          "status": "done",
+          "files": [
+            "mobile/iosApp/ThinkMeet/NativeBridge.swift"
+          ]
+        }
+      }
+    },
+    {
+      "id": "classroom.lesson-modes",
+      "title": "화상미팅 수업 시작과 모드 전환",
+      "stage": "in-progress",
+      "requiresRevision": 10,
+      "defaultEnabled": true,
+      "platforms": [
+        "web",
+        "android",
+        "ios"
+      ],
+      "spec": "classroom-lesson-modes.md",
+      "contracts": {
+        "operations": [],
+        "events": [],
+        "commands": [
+          "lesson.start",
+          "lesson.mode.set"
+        ]
+      },
+      "implementation": {
+        "server": {
+          "status": "done",
+          "files": [
+            "server/src/lessons.ts",
+            "server/src/gateway.ts"
+          ]
+        },
+        "web": {
+          "status": "done",
+          "files": [
+            "web/src/screens/Meeting.tsx",
+            "web/src/screens/Join.tsx"
+          ]
+        },
+        "android": {
+          "status": "done",
+          "files": [
+            "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/meeting/MeetingScreen.kt"
+          ]
+        },
+        "ios": {
+          "status": "done",
+          "files": [
+            "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/meeting/MeetingScreen.kt"
+          ]
+        }
+      }
+    },
+    {
+      "id": "classroom.textbook-picker",
+      "title": "수업방 PDF 교재와 쪽 선택",
+      "stage": "ready",
+      "requiresRevision": 11,
+      "defaultEnabled": true,
+      "platforms": ["web", "android", "ios"],
+      "spec": "classroom-textbook-picker.md",
+      "contracts": {
+        "operations": [],
+        "events": [],
+        "commands": ["document.open"]
+      },
+      "implementation": {
+        "server": {"status": "done", "files": ["server/src/lessons.ts", "server/src/gateway.ts"]},
+        "web": {"status": "done", "files": ["web/src/screens/Meeting.tsx", "web/src/components/meeting/TextbookPicker.tsx"]},
+        "android": {"status": "done", "files": ["mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/meeting/TextbookPicker.kt", "mobile/composeApp/src/androidMain/kotlin/com/woongjin/thinkmeet/platform/AndroidTextbookPreview.kt"]},
+        "ios": {"status": "done", "files": ["mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/meeting/TextbookPicker.kt", "mobile/composeApp/src/iosMain/kotlin/com/woongjin/thinkmeet/platform/IosTextbookPreview.kt"]}
+      },
+      "verification": {
+        "server": {
+          "status": "passed",
+          "checks": ["server/test/remote-assistance.test.ts"],
+          "evidence": ["features/evidence/classroom-textbook-picker.md"]
+        },
+        "web": {
+          "status": "passed",
+          "checks": ["web/e2e/meeting.spec.ts", "web/e2e/devices.spec.ts"],
+          "evidence": ["features/evidence/classroom-textbook-picker.md"],
+          "screens": {
+            "phone": {"status": "passed", "evidence": ["features/evidence/classroom-textbook-picker/web-phone-picker.png", "features/evidence/classroom-textbook-picker/web-phone-annotation.png"]},
+            "tablet": {"status": "passed", "evidence": ["features/evidence/classroom-textbook-picker/web-tablet-picker.png", "features/evidence/classroom-textbook-picker/web-tablet-annotation.png"]}
+          }
+        },
+        "android": {
+          "status": "passed",
+          "checks": ["mobile/composeApp/src/androidInstrumentedTest/kotlin/com/woongjin/thinkmeet/NativeSmokeTest.kt"],
+          "evidence": ["features/evidence/classroom-textbook-picker.md"],
+          "screens": {
+            "phone": {"status": "passed", "evidence": ["features/evidence/classroom-textbook-picker/android-phone-picker.png", "features/evidence/classroom-textbook-picker/android-phone-annotation.png"]},
+            "tablet": {"status": "passed", "evidence": ["features/evidence/classroom-textbook-picker/android-tablet-picker.png", "features/evidence/classroom-textbook-picker/android-tablet-annotation.png"]}
+          }
+        },
+        "ios": {
+          "status": "passed",
+          "checks": ["mobile/iosApp/Tests/TextbookSmoke.swift", "features/classroom-textbook-picker.md"],
+          "evidence": ["features/evidence/classroom-textbook-picker.md"],
+          "screens": {
+            "phone": {"status": "passed", "evidence": ["features/evidence/classroom-textbook-picker/ios-phone-picker.png", "features/evidence/classroom-textbook-picker/ios-phone-annotation.png"]},
+            "tablet": {"status": "passed", "evidence": ["features/evidence/classroom-textbook-picker/ios-tablet-picker.png", "features/evidence/classroom-textbook-picker/ios-tablet-annotation.png"]}
           }
         }
       }

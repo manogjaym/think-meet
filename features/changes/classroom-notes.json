@@ -1,0 +1,31 @@
+{
+  "id": "classroom-notes",
+  "summary": "학생 홈의 학습지 제출과 보관함, 앱의 전체 화면 촬영·미리보기, 담당 선생님의 첨삭과 수업 화면 기록을 추가합니다.",
+  "scope": "shared",
+  "featureIds": [
+    "classroom.notes"
+  ],
+  "platforms": {
+    "server": {
+      "status": "implemented"
+    },
+    "web": {
+      "status": "implemented"
+    },
+    "android": {
+      "status": "implemented"
+    },
+    "ios": {
+      "status": "implemented"
+    }
+  },
+  "verification": [
+    "2026-11-21 Asia/Seoul: 저장소 루트에서 npm run shared:check, npm run verify 및 변경 파일 목록을 전달한 shared:check 통과.",
+    "격리 DB에 Prisma 마이그레이션 적용. web/에서 THINK_MEET_NOTES_TEST=1 npx playwright test e2e/class-notes.spec.ts 1개 통과. 학습지 권한, 중복 방지, 세 가지 공유 자료와 확정 판서, 저장 후 접근 범위 확인. 실제 출석한 다른 학생도 학생 개인 캡처에 접근할 수 없음을 확인.",
+    "mobile/의 Android 검사 40개, Debug APK·iOS KMP 프레임워크·Xcode 호스트 빌드 통과. 카메라 복귀 수정 이후에는 임시 소스 복사본에서 같은 검사를 다시 실행함.",
+    "Android 35 기존 에뮬레이터의 휴대폰·태블릿 너비에서 웹과 같은 계정과 자료를 비교. 수업 중 공유 화면·PDF·영상 저장 후 서버 JPEG의 프레임과 확정 판서 픽셀 확인. 가상 카메라 촬영 취소, 화면 크기와 밀도 변경 뒤 사진 유지, 제출과 보관함 확인.",
+    "Android 35 에뮬레이터 휴대폰에서 촬영 가이드, 촬영, 재촬영, 한 장 제출과 보관함의 원본 확인. 1024dp 태블릿 크기에서 촬영, 미리보기, 재촬영과 닫기 확인.",
+    "iPhone 16 Pro·iPad Pro 11인치 iOS 18.4에서 앱 시작 확인. 서명 없는 빌드에서 Keychain 권한이 없어 로그인 이후 검증을 진행하지 못함. 자동 심사가 시뮬레이터용 권한 서명을 차단함.",
+    "Android·iOS 실기기 카메라 및 원격 CI 미실행. 기능은 in-progress 유지. 실행 조건과 화면 증거는 features/classroom-notes.md 참고."
+  ]
+}

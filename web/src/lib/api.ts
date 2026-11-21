@@ -13,10 +13,10 @@ export class ApiError extends Error {
     this.code = code
   }
 }
-export async function api<T = void>(
+export async function apiResponse(
   path: string,
   options: RequestInit = {},
-): Promise<T> {
+): Promise<Response> {
   await requireHttpFeature(options.method || "GET", path, options.signal)
   const headers = new Headers(options.headers)
   if (options.body && !(options.body instanceof FormData) && !headers.has("Content-Type")) headers.set("Content-Type", "application/json")
@@ -49,6 +49,10 @@ export async function api<T = void>(
         : data.message || "요청을 처리하지 못했어요. 다시 시도해 주세요.",
     )
   }
+  return response
+}
+export async function api<T = void>(path: string, options: RequestInit = {}): Promise<T> {
+  const response = await apiResponse(path, options)
   if (response.status === 204 || response.headers.get("content-length") === "0")
     return undefined as T
   const body = await response.text()

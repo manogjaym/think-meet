@@ -154,7 +154,7 @@ test("device checks and private waiting presence follow actual admission", async
       animations: "disabled",
     })
     await teacherPage
-      .getByRole("button", { name: "수업 시작하기", exact: true })
+      .getByRole("button", { name: "화상미팅 입장", exact: true })
       .click()
     await expect(teacherPage.locator(".call-connected")).toHaveText("연결됨")
     await expect(studentPage.locator(".call-connected")).toHaveText("연결됨")

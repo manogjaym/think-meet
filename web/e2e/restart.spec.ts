@@ -3,7 +3,7 @@ import { PDFDocument, rgb } from "pdf-lib"
 import { createHash } from "node:crypto"
 import { execFileSync } from "node:child_process"
 import { resolve } from "node:path"
-import { createLesson, login } from "./helpers"
+import { createLesson, login, shareTextbook } from "./helpers"
 import type { MeetingSnapshot } from "../src/lib/meeting"
 
 // Explicit opt-in: this test intentionally restarts the deployed application.
@@ -23,8 +23,9 @@ test.describe("Docker restart acceptance", () => {
       const lesson = await createLesson(page.request, 1)
       lessonId = lesson.id
       await page.goto(`/lessons/${lessonId}/prejoin`)
-      await page.getByRole("button", { name: "수업 시작하기", exact: true }).click()
+      await page.getByRole("button", { name: "화상미팅 입장", exact: true }).click()
       await expect(page.locator(".call-connected")).toHaveText("연결됨")
+      await page.getByRole("button", { name: "수업 시작", exact: true }).click()
       const meetingUrl = page.url()
 
       const pdf = await PDFDocument.create()
@@ -38,8 +39,7 @@ test.describe("Docker restart acceptance", () => {
       expect(upload.ok()).toBeTruthy()
       materialId = (await upload.json()).id
       await page.locator(".call-controls").getByRole("button", { name: "수업 자료", exact: true }).click()
-      await page.getByRole("button", { name: "문서", exact: true }).click()
-      await page.locator(".content-share").filter({ hasText: name }).click()
+      await shareTextbook(page, materialId!)
       await expect(page.getByLabel(`${name} 1페이지`, { exact: true })).toBeVisible()
       await page.getByRole("button", { name: "PDF 다음 페이지", exact: true }).click()
       await expect(page.getByLabel(`${name} 2페이지`, { exact: true })).toBeVisible()

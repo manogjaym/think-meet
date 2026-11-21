@@ -174,6 +174,10 @@ class ThinkMeetApi(internal val client: HttpClient, origin: String) {
     }
     suspend fun cancel(id: String): Lesson = json("cancelLesson", mapOf("id" to id))
     suspend fun join(id: String): JoinResult = json("joinLesson", mapOf("id" to id))
+    suspend fun prejoinStatus(id: String): PrejoinStatus = json("getPrejoinStatus", mapOf("id" to id))
+    suspend fun setPrejoinWait(id: String, clientId: String, active: Boolean) {
+        operationResponse(if (active) "renewPrejoinWait" else "clearPrejoinWait", mapOf("id" to id, "clientId" to clientId))
+    }
     suspend fun connected(id: String): Lesson = json("connectedLesson", mapOf("id" to id))
     suspend fun leave(id: String) { operationResponse("leaveLesson", mapOf("id" to id)) }
     suspend fun end(id: String): Lesson = json("endLesson", mapOf("id" to id))

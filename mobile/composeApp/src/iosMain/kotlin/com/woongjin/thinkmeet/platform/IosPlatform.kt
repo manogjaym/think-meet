@@ -16,6 +16,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
 import platform.Foundation.NSFileManager
+import platform.Foundation.NSNotificationCenter
+import platform.Foundation.NSOperationQueue
+import platform.Foundation.NSUUID
+import platform.UIKit.UIApplication
+import platform.UIKit.UIApplicationDidEnterBackgroundNotification
+import platform.UIKit.UIApplicationState.UIApplicationStateBackground
+import platform.UIKit.UIApplicationWillEnterForegroundNotification
 import platform.UIKit.UIView
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -40,6 +47,10 @@ interface IosNativeBridge {
     fun videoView(identity: String, screen: Boolean): UIView
     fun previewView(enabled: Boolean): UIView
     fun updatePreview(view: UIView, enabled: Boolean)
+    fun checkPreviewMicrophone(id: String, onLevel: (Float) -> Unit, onError: (PreviewDevice) -> Unit)
+    fun stopPreviewMicrophone(id: String)
+    fun playPreviewTone(id: String, completion: (String?) -> Unit)
+    fun stopPreviewTone(id: String)
     fun listenPictureInPicture(listener: (PictureInPictureState) -> Unit)
     fun updatePictureInPicture(enabled: Boolean, target: PipVideoTarget?)
     fun enterPictureInPicture(completion: (String?) -> Unit)
@@ -69,7 +80,7 @@ actual fun shareLink(url: String) = native().share(url)
 actual fun copyText(text: String) = native().copy(text)
 @Composable actual fun BackHandler(enabled: Boolean, onBack: () -> Unit) = Unit
 
-private class IosMediaController : MediaController {
+private class IosMediaController : MediaController, PreviewAudio {
     private val mutable = MutableStateFlow(MediaState())
     private var disconnection: Deferred<Unit>? = null
     override val state: StateFlow<MediaState> = mutable
@@ -101,6 +112,21 @@ private class IosMediaController : MediaController {
     override suspend fun flipCamera() = perform("flip")
     override suspend fun setScreenShare(enabled: Boolean) = perform("screen", enabled)
     override suspend fun setSpeaker(enabled: Boolean) = perform("speaker", enabled)
+    override suspend fun checkPreviewMicrophone(onLevel: (Float) -> Unit) = suspendCancellableCoroutine<Unit> { continuation ->
+        val id = NSUUID().UUIDString
+        native().checkPreviewMicrophone(id, { if (continuation.isActive) onLevel(it) }) { status ->
+            if (continuation.isActive) continuation.resumeWithException(PreviewDeviceException(status))
+        }
+        continuation.invokeOnCancellation { native().stopPreviewMicrophone(id) }
+    }
+    override suspend fun playPreviewTone() = suspendCancellableCoroutine<Unit> { continuation ->
+        val id = NSUUID().UUIDString
+        native().playPreviewTone(id) { error ->
+            if (continuation.isActive) if (error == null) continuation.resume(Unit)
+            else continuation.resumeWithException(IllegalStateException(error))
+        }
+        continuation.invokeOnCancellation { native().stopPreviewTone(id) }
+    }
 }
 @Composable actual fun rememberMediaController(): MediaController {
     val media = remember { IosMediaController().also { IosPlatform.mediaOwner = it } }
@@ -160,4 +186,17 @@ private fun fileChannel(path: String): ByteReadChannel {
             if (cookie.isNotEmpty()) native().updateMaterial(view, api.materialContentUrl(id, lessonId), cookie, share.type, share.page, share.playing, share.position, share.updatedAt, aspect)
         }, onRelease = { native().disposeMaterial(it) }, interactive = false)
     }
+}
+
+
+@Composable actual fun prejoinInForeground(): Boolean {
+    var foreground by remember { mutableStateOf(UIApplication.sharedApplication.applicationState != UIApplicationStateBackground) }
+    DisposableEffect(Unit) {
+        val center = NSNotificationCenter.defaultCenter
+        val queue = NSOperationQueue.mainQueue
+        val background = center.addObserverForName(UIApplicationDidEnterBackgroundNotification, null, queue) { foreground = false }
+        val resume = center.addObserverForName(UIApplicationWillEnterForegroundNotification, null, queue) { foreground = true }
+        onDispose { center.removeObserver(background); center.removeObserver(resume) }
+    }
+    return foreground
 }

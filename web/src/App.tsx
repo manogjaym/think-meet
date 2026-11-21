@@ -9,10 +9,11 @@ import {
 } from "react"
 import { BrowserRouter, useLocation, useNavigate } from "react-router-dom"
 import { createAppSocket, requestSocket } from "./lib/socket"
-import { useCapabilityRefresh } from "./lib/useFeature"
+import { useCapabilityRefresh, useFeature } from "./lib/useFeature"
 import { useLessonDirectory } from "./lib/useLessonDirectory"
 import type { CommandAck, MeetingSnapshot } from "./generated/contracts"
 import { SOCKET_EVENTS as Events } from "./generated/contracts"
+import { prejoinFeature, registerPrejoinWait } from "./lib/prejoin"
 import { createWaitingAdmission } from "./lib/waitingAdmission"
 import type { Screen } from "./models"
 import { TopBar } from "./components/TopBar"
@@ -133,6 +134,8 @@ function Application() {
   const [devices, setDevices] = useState<JoinDevices>(initialJoinDevices)
   const [admission, setAdmission] = useState<JoinResult>()
   const [waitingError, setWaitingError] = useState("")
+  const prejoinEnabled = useFeature(prejoinFeature)
+  const waitConfirmed = (location.state as { waitConfirmed?: boolean } | null)?.waitConfirmed === true
   const previousScreen = useRef<Screen>(screen),
     previousLocation = useRef(location.pathname),
     scrollPositions = useRef<Record<string, number>>({})
@@ -291,6 +294,7 @@ function Application() {
         setSelected(result.lesson)
         navigate(
           `/lessons/${lesson.id}/${result.waiting ? "waiting" : "meeting"}`,
+          result.waiting ? { state: { waitConfirmed: true } } : undefined,
         )
       } catch (e) {
         if (e instanceof ApiError && e.status !== 0 && e.status < 500) {
@@ -304,6 +308,10 @@ function Application() {
     },
     [navigate],
   )
+  useEffect(() => {
+    if (prejoinEnabled && screen === "waiting" && lessonId && waitConfirmed && user?.role === "student")
+      return registerPrejoinWait(lessonId)
+  }, [prejoinEnabled, screen, lessonId, waitConfirmed, user?.id, user?.role])
   useEffect(() => {
     if (screen !== "waiting" || !user || !lessonId) return
     let alive = true
@@ -526,9 +534,16 @@ function Application() {
           lesson={lesson}
           user={user}
           role={lessonRole}
-          initialDevices={devices}
           setScreen={setScreen}
           onJoin={(value) => startJoin(lesson, value)}
+          enhanced={prejoinEnabled}
+          onUnavailable={(error) => {
+            if (error.status === 401) auth.retry()
+            else navigate(`/error/${exceptionType(error)}?lesson=${lesson.id}`, {
+              replace: true,
+              state: { message: error.message },
+            })
+          }}
         />
       )
   else if (screen === "waiting")
@@ -538,6 +553,7 @@ function Application() {
         user={user}
         setScreen={setScreen}
         error={waitingError}
+        enhanced={prejoinEnabled}
       />
     )
   else if (screen === "meeting")
@@ -554,7 +570,7 @@ function Application() {
         }
         onWaiting={() => {
           setAdmission(undefined)
-          navigate(`/lessons/${lesson.id}/waiting`, { replace: true })
+          navigate(`/lessons/${lesson.id}/waiting`, { replace: true, state: { waitConfirmed: true } })
         }}
         onEnded={(reason?: string) => {
           sessionStorage.setItem(
@@ -601,6 +617,7 @@ function Application() {
         screen={screen}
         isEditing={screen === "form" && !!lessonId}
         setScreen={setScreen}
+        prejoinEnabled={prejoinEnabled}
         onBack={() => {
           const from = (location.state as { from?: string } | null)?.from
           if (

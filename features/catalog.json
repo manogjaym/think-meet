@@ -289,6 +289,56 @@
           ]
         }
       }
+    },
+    {
+      "id": "classroom.prejoin",
+      "title": "입장 전 장치 점검과 학생 대기 상태",
+      "stage": "in-progress",
+      "requiresRevision": 9,
+      "defaultEnabled": true,
+      "platforms": [
+        "web",
+        "android",
+        "ios"
+      ],
+      "spec": "classroom-prejoin.md",
+      "contracts": {
+        "operations": [
+          "getPrejoinStatus",
+          "renewPrejoinWait",
+          "clearPrejoinWait"
+        ],
+        "events": [],
+        "commands": []
+      },
+      "implementation": {
+        "server": {
+          "status": "done",
+          "files": [
+            "server/src/lessons.ts",
+            "server/src/controllers.ts"
+          ]
+        },
+        "web": {
+          "status": "done",
+          "files": [
+            "web/src/screens/Join.tsx",
+            "web/src/lib/prejoin.ts"
+          ]
+        },
+        "android": {
+          "status": "done",
+          "files": [
+            "mobile/composeApp/src/androidMain/kotlin/com/woongjin/thinkmeet/platform/AndroidMedia.kt"
+          ]
+        },
+        "ios": {
+          "status": "done",
+          "files": [
+            "mobile/iosApp/ThinkMeet/NativeBridge.swift"
+          ]
+        }
+      }
     }
   ]
 }

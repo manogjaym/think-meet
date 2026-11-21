@@ -12,6 +12,7 @@ export function TopBar({
   screen,
   setScreen,
   isEditing = false,
+  prejoinEnabled = false,
   onBack,
   backLabel = "이전 화면으로 돌아가기",
 }: {
@@ -20,6 +21,7 @@ export function TopBar({
   onLogout: () => Promise<void>
   screen: Screen
   isEditing?: boolean
+  prejoinEnabled?: boolean
   onBack?: () => void
   backLabel?: string
   setScreen: (s: Screen) => void
@@ -50,7 +52,7 @@ export function TopBar({
       (screen === "form" && isEditing)
     const titles: Partial<Record<Screen, string>> = {
       detail: "수업 상세",
-      prejoin: "입장 준비",
+      prejoin: prejoinEnabled ? designContent.prejoinTitle : "입장 준비",
       form: "수업 일정 수정",
       waiting: "입장 대기",
       created: "예약 완료",

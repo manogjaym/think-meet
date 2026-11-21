@@ -5,7 +5,7 @@ data class ContractHttpOperation(val id: String, val method: String, val path: S
 data class ContractFeature(val id: String, val stage: String, val requiresRevision: Int, val defaultEnabled: Boolean, val platforms: Set<String>)
 
 object ContractProtocol {
-    const val Revision = 7
+    const val Revision = 9
     const val ApiBasePath = "/api/v1"
     const val SocketPath = "/socket.io"
     const val PlatformHeader = "X-ThinkMeet-Platform"
@@ -25,6 +25,7 @@ object ContractProtocol {
         const val MeetingPip = "meeting.pip"
         const val MeetingRemoteAssistance = "meeting.remote-assistance"
         const val ClassroomSubjects = "classroom.subjects"
+        const val ClassroomPrejoin = "classroom.prejoin"
     }
     val HttpOperations = listOf(
         ContractHttpOperation("health", "GET", "/api/v1/health", null),
@@ -52,12 +53,16 @@ object ContractProtocol {
         ContractHttpOperation("deleteMaterial", "DELETE", "/api/v1/materials/{id}", "classroom.core"),
         ContractHttpOperation("getMaterialContent", "GET", "/api/v1/materials/{id}/content", "classroom.core"),
         ContractHttpOperation("livekitWebhook", "POST", "/api/v1/webhooks/livekit", null),
+        ContractHttpOperation("getPrejoinStatus", "GET", "/api/v1/lessons/{id}/prejoin", "classroom.prejoin"),
+        ContractHttpOperation("renewPrejoinWait", "PUT", "/api/v1/lessons/{id}/waiting/{clientId}", "classroom.prejoin"),
+        ContractHttpOperation("clearPrejoinWait", "DELETE", "/api/v1/lessons/{id}/waiting/{clientId}", "classroom.prejoin"),
     )
     val Features = listOf(
         ContractFeature("classroom.core", "baseline", 0, true, setOf("web", "android", "ios")),
         ContractFeature("meeting.pip", "baseline", 0, true, setOf("android", "ios")),
         ContractFeature("meeting.remote-assistance", "in-progress", 4, true, setOf("web", "android", "ios")),
         ContractFeature("classroom.subjects", "in-progress", 7, true, setOf("web", "android", "ios")),
+        ContractFeature("classroom.prejoin", "in-progress", 9, true, setOf("web", "android", "ios")),
     )
     private val commandFeatures: Map<String, String?> = mapOf(
         "chat.send" to "classroom.core",

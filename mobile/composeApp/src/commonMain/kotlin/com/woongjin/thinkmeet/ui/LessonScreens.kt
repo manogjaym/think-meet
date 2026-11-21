@@ -61,7 +61,7 @@ private val LocalLessonWidth = staticCompositionLocalOf { LayoutToken.PageMaxWid
     }
 }
 
-@Composable private fun LessonCard(modifier: Modifier = Modifier, padding: Dp = ComponentToken.CardPadding, content: @Composable ColumnScope.() -> Unit) {
+@Composable internal fun LessonCard(modifier: Modifier = Modifier, padding: Dp = ComponentToken.CardPadding, content: @Composable ColumnScope.() -> Unit) {
     Surface(modifier, color = Palette.Surface, border = BorderStroke(Space.S1, Palette.Line), shape = RoundedCornerShape(ComponentToken.CardRadius)) {
         Column(Modifier.fillMaxWidth().padding(padding), content = content)
     }
@@ -413,6 +413,12 @@ private fun LessonSubjectField(api: ThinkMeetApi, selected: TeacherSubject?, ena
 }
 
 @Composable fun PrejoinScreen(lesson: Lesson, user: User, state: AppUiState, controller: AppState) {
+    val enabled = controller.capabilities.collectAsState().value.supports(ContractProtocol.FeatureIds.ClassroomPrejoin)
+    if (enabled) EnhancedPrejoinScreen(lesson, user, state, controller)
+    else LegacyPrejoinScreen(lesson, user, state, controller)
+}
+
+@Composable private fun LegacyPrejoinScreen(lesson: Lesson, user: User, state: AppUiState, controller: AppState) {
     val media = rememberMediaController()
     val mediaState by media.state.collectAsState()
     val scope = rememberCoroutineScope()
@@ -490,7 +496,7 @@ private fun LessonSubjectField(api: ThinkMeetApi, selected: TeacherSubject?, ena
         }
     }
 }
-@Composable private fun PreviewControl(icon: String, label: String, enabled: Boolean, phone: Boolean, onClick: () -> Unit) {
+@Composable internal fun PreviewControl(icon: String, label: String, enabled: Boolean, phone: Boolean, onClick: () -> Unit) {
     Surface(onClick = onClick, modifier = Modifier.size(if (phone) Space.S48 else Space.S50), shape = CircleShape, color = if (enabled) Palette.White.copy(alpha = .07f) else Palette.PrejoinControlOff, border = BorderStroke(Space.S1, if (enabled) Palette.PrejoinToggleBorder else Palette.PrejoinControlOff)) {
         Box(contentAlignment = Alignment.Center) { DesignIcon(icon, Modifier.size(ComponentToken.PrejoinControlIconSize), tint = Palette.White, contentDescription = label) }
     }
@@ -506,6 +512,7 @@ private fun LessonSubjectField(api: ThinkMeetApi, selected: TeacherSubject?, ena
 }
 
 @Composable fun WaitingScreen(lesson: Lesson, user: User, state: AppUiState, controller: AppState) {
+    val enhanced = controller.capabilities.collectAsState().value.supports(ContractProtocol.FeatureIds.ClassroomPrejoin)
     CenteredLessonCard(LayoutToken.WaitingCardMaxWidth, waiting = true) {
         Surface(Modifier.size(ComponentToken.WaitingIconSize), shape = CircleShape, color = Palette.Selection) { Box(contentAlignment = Alignment.Center) { DesignIcon("clock", Modifier.size(Space.S28), tint = Brand) } }
         Spacer(Modifier.height(Space.S24)); SmallBadge("입장 대기 중", selected = true); Spacer(Modifier.height(Space.S16))
@@ -513,7 +520,7 @@ private fun LessonSubjectField(api: ThinkMeetApi, selected: TeacherSubject?, ena
         LessonText("${lesson.title} · ${lesson.teacher.name} 선생님\n선생님이 수업을 시작할 때까지 잠시 기다려 주세요.", color = Muted, fontSize = Type.Body, lineHeight = Type.Body * 1.5f, textAlign = TextAlign.Center); Spacer(Modifier.height(Space.S32))
         Surface(Modifier.fillMaxWidth(), color = Palette.Canvas, shape = RoundedCornerShape(Corner.R8)) { Row(Modifier.padding(Space.S16), horizontalArrangement = Arrangement.spacedBy(Space.S12), verticalAlignment = Alignment.CenterVertically) { DesignAvatar(user.name, user.id, small = true); LessonText("${user.name} ${if (user.isTeacher) "선생님" else "학생"}으로 대기 중", color = Muted, fontSize = Type.Support, fontWeight = DesignWeight.Medium) } }
         Spacer(Modifier.height(Space.S24)); state.error?.let { ErrorCard(it); Spacer(Modifier.height(Space.S12)) }
-        DesignButton("카메라·마이크 확인하기", { controller.prejoin(lesson) }, Modifier.fillMaxWidth(), secondary = true, enabled = !state.busy)
+        DesignButton(if (enhanced) DesignContent.PrejoinRecheck else "카메라·마이크 확인하기", { controller.prejoin(lesson) }, Modifier.fillMaxWidth(), secondary = true, enabled = !state.busy)
         TextButton(controller::home, Modifier.fillMaxWidth().heightIn(min = Space.S48)) { LessonText("대기 나가기", color = Muted, fontSize = Type.Label, fontWeight = DesignWeight.SemiBold) }
     }
 }
@@ -586,6 +593,7 @@ fun attendanceText(lesson: Lesson, userId: String): String {
 private fun clockText(value: LocalDateTime): String = "${value.hour.toString().padStart(2, '0')}:${value.minute.toString().padStart(2, '0')}"
 private fun invitedPeople(lesson: Lesson): String = if (lesson.students.size > 1) "${lesson.students.first().name} 외 ${lesson.students.size - 1}명" else lesson.students.firstOrNull()?.name ?: "초대 학생 없음"
 private fun lessonDay(value: String): String = localDateTime(value)?.let { "${it.month.number}월 ${it.day}일" } ?: value
+internal fun lessonStartLabel(value: String) = "${lessonDay(value)} ${koreanTime(value)}"
 private fun koreanTime(value: String): String = localDateTime(value)?.let { "${if (it.hour >= 12) "오후" else "오전"} ${(it.hour % 12).takeIf { hour -> hour != 0 } ?: 12}:${it.minute.toString().padStart(2, '0')}" } ?: value
 private fun lessonDuration(lesson: Lesson): String = lesson.endsAt?.let { end -> runCatching { "${((Instant.parse(end) - Instant.parse(lesson.startsAt)).inWholeSeconds / 60.0).roundToLong()}분" }.getOrNull() } ?: "종료 시간 없음"
 private fun lessonTimeRange(lesson: Lesson): String = "${koreanTime(lesson.startsAt)}${lesson.endsAt?.let { " – ${koreanTime(it)}" }.orEmpty()} · ${lessonDuration(lesson)}"
@@ -602,7 +610,7 @@ private fun elapsedLesson(lesson: Lesson, user: User): String {
 
 /** CSS line-height scales with the chosen font size rather than the ambient body style. */
 @Composable
-private fun LessonText(
+internal fun LessonText(
     text: String,
     modifier: Modifier = Modifier,
     color: Color = Color.Unspecified,

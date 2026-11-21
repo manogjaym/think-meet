@@ -41,6 +41,7 @@ fun App() {
         val scope = rememberCoroutineScope()
         val controller = remember(api) { AppState(api, scope) }
         val state = controller.state.collectAsState().value
+        val prejoinEnabled = api.capabilities.collectAsState().value.supports("classroom.prejoin")
         val user = state.user
         val route = state.route
         val inMeeting = route is Route.Meeting
@@ -78,7 +79,7 @@ fun App() {
                     val rootTabs = rootRoute && mobile && user.isTeacher
                     Scaffold(containerColor = Canvas, contentWindowInsets = WindowInsets(0, 0, 0, 0),
                         snackbarHost = { SnackbarHost(snackbar) },
-                        topBar = { AppHeader(state, mobile, compact, maxWidth, controller::home, controller::form, controller::logout, controller::detail) },
+                        topBar = { AppHeader(state, mobile, compact, maxWidth, controller::home, controller::form, controller::logout, controller::detail, prejoinEnabled) },
                         bottomBar = { if (rootTabs) RootNavigation(route, true, controller::home, controller::form) },
                     ) { padding ->
                         Box(Modifier.fillMaxSize().padding(padding).then(if (rootTabs) Modifier else Modifier.navigationBarsPadding())) {
@@ -114,6 +115,7 @@ fun BrandMark(compact: Boolean = false) {
 @Composable
 private fun AppHeader(state: AppUiState, mobile: Boolean, compact: Boolean, width: androidx.compose.ui.unit.Dp,
     home: () -> Unit, form: () -> Unit, logout: () -> Unit, detail: () -> Unit,
+    prejoinEnabled: Boolean,
 ) {
     val route = state.route
     val rootRoute = route == Route.Home || route == Route.Create
@@ -144,7 +146,7 @@ private fun AppHeader(state: AppUiState, mobile: Boolean, compact: Boolean, widt
                 val canBack = backToDetail || route is Route.Detail
                 val title = when (route) {
                     is Route.Detail -> "수업 상세"
-                    is Route.Prejoin -> "입장 준비"
+                    is Route.Prejoin -> if (prejoinEnabled) DesignContent.PrejoinTitle else "입장 준비"
                     is Route.Edit -> "수업 일정 수정"
                     is Route.Waiting -> "입장 대기"
                     is Route.Created -> "예약 완료"

@@ -1,0 +1,19 @@
+{
+  "id": "classroom-prejoin",
+  "summary": "입장 전 카메라·마이크·스피커·수업 서버 점검과 개설자 전용 학생 대기 상태를 추가합니다.",
+  "scope": "shared",
+  "featureIds": ["classroom.prejoin"],
+  "platforms": {
+    "server": {"status": "implemented"},
+    "web": {"status": "implemented"},
+    "android": {"status": "implemented"},
+    "ios": {"status": "implemented"}
+  },
+  "verification": [
+    "npm run shared:check",
+    "npm run verify",
+    "web/에서 npm run test:e2e -- e2e/prejoin.spec.ts",
+    "mobile/에서 Android 핵심 테스트·APK와 iOS 프레임워크·앱 빌드",
+    "features/evidence/classroom-prejoin.md"
+  ]
+}

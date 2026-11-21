@@ -231,6 +231,16 @@ object DesignVectors {
             addPath(pathData = PathParser().parsePathString("m5 12 4 4L19 6").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.8f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
         }.build()
     }
+    private val speaker by lazy {
+        ImageVector.Builder(name = "speaker", defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f).apply {
+            addPath(pathData = PathParser().parsePathString("M3 9h4l5-4v14l-5-4H3zM16 9a4 4 0 0 1 0 6M19 6a8 8 0 0 1 0 12").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.8f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+        }.build()
+    }
+    private val cameraFlip by lazy {
+        ImageVector.Builder(name = "cameraFlip", defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f).apply {
+            addPath(pathData = PathParser().parsePathString("M4 7h15m-4-4 4 4-4 4M20 17H5m4-4-4 4 4 4").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.8f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+        }.build()
+    }
     private val wifi by lazy {
         ImageVector.Builder(name = "wifi", defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f).apply {
             addPath(pathData = PathParser().parsePathString("M5 12.6a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0M12 20h.01").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.8f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
@@ -281,6 +291,8 @@ object DesignVectors {
         "trash" -> trash
         "alert" -> alert
         "check" -> check
+        "speaker" -> speaker
+        "cameraFlip" -> cameraFlip
         "wifi" -> wifi
         "file" -> file
         else -> error("Unknown shared icon: $name")

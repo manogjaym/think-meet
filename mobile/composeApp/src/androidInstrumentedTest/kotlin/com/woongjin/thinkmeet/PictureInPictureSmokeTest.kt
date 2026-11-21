@@ -65,7 +65,7 @@ class PictureInPictureSmokeTest {
             }
             eventually("authenticated dashboard", 90_000) { visible(By.text("오늘도 함께 배우는 시간")) != null }
             scenario.onActivity { AppLinks.receive("thinkmeet://join/$code") }
-            eventually("lesson prejoin", 90_000) { visible(By.text("입장 전 준비해 볼까요?")) != null }
+            eventually("lesson prejoin", 90_000) { visible(By.text("입장 전 장치 점검")) != null || visible(By.text("입장 준비")) != null }
             clickPageText("수업 시작하기", "수업 참여하기")
             eventually("native room and companion video", 90_000) {
                 visible(By.text("실시간 수업")) != null && visible(By.text("김민준")) != null

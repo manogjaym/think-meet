@@ -6,7 +6,13 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Rect
+import android.hardware.camera2.CameraCharacteristics
+import android.hardware.camera2.CameraManager
+import android.media.AudioFormat
 import android.media.AudioManager
+import android.media.AudioRecord
+import android.media.MediaRecorder
+import android.media.ToneGenerator
 import android.media.projection.MediaProjectionManager
 import android.media.projection.MediaProjectionConfig
 import android.os.Build
@@ -17,6 +23,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import io.livekit.android.LiveKit
 import io.livekit.android.RoomOptions
 import io.livekit.android.audio.MixerAudioBufferCallback
@@ -26,21 +34,26 @@ import io.livekit.android.events.collect
 import io.livekit.android.renderer.TextureViewRenderer
 import io.livekit.android.room.Room
 import io.livekit.android.room.participant.Participant
+import io.livekit.android.room.track.CameraPosition
 import io.livekit.android.room.track.LocalVideoTrack
 import io.livekit.android.room.track.LocalAudioTrack
 import io.livekit.android.room.track.Track
 import io.livekit.android.room.track.VideoTrack
 import io.livekit.android.room.track.screencapture.ScreenCaptureParams
 import io.livekit.android.util.LoggingLevel
+import livekit.org.webrtc.VideoSink
 import livekit.org.webrtc.audio.JavaAudioDeviceModule
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlin.math.sqrt
 import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
-internal class AndroidMediaController(private val context: Context) : MediaController {
+internal class AndroidMediaController(private val context: Context) : MediaController, PreviewAudio {
     private val mutable = MutableStateFlow(MediaState())
     override val state: StateFlow<MediaState> = mutable
     internal val room = run {
@@ -50,6 +63,17 @@ internal class AndroidMediaController(private val context: Context) : MediaContr
         LiveKit.create(context, options = RoomOptions(adaptiveStream = true, dynacast = true))
     }
     internal var preview by mutableStateOf<LocalVideoTrack?>(null)
+    private var previewSink: VideoSink? = null
+    private val permissionLock = Mutex()
+    private val cameraManager = context.getSystemService(CameraManager::class.java)
+    private fun cameraPositions(): Set<CameraPosition> = cameraManager.cameraIdList.mapNotNull { id ->
+        when (cameraManager.getCameraCharacteristics(id).get(CameraCharacteristics.LENS_FACING)) {
+            CameraCharacteristics.LENS_FACING_FRONT -> CameraPosition.FRONT
+            CameraCharacteristics.LENS_FACING_BACK -> CameraPosition.BACK
+            else -> null
+        }
+    }.toSet()
+    private fun cameraPosition() = if (readPreference("devices.cameraFacing", "front") == "back") CameraPosition.BACK else CameraPosition.FRONT
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var disconnected = false
     private var microphoneDesired = false
@@ -80,11 +104,11 @@ internal class AndroidMediaController(private val context: Context) : MediaContr
             }
         }
     }
-    private suspend fun allowed(permission: String): Boolean {
-        if (context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED) return true
+    private suspend fun allowed(permission: String): Boolean = permissionLock.withLock {
+        if (context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED) return@withLock true
         val deferred = CompletableDeferred<Map<String, Boolean>>()
-        permissionRequest?.invoke(arrayOf(permission), deferred) ?: return false
-        return deferred.await()[permission] == true
+        permissionRequest?.invoke(arrayOf(permission), deferred) ?: return@withLock false
+        deferred.await()[permission] == true
     }
     internal fun refresh() {
         val people = listOf(room.localParticipant) + room.remoteParticipants.values
@@ -117,6 +141,7 @@ internal class AndroidMediaController(private val context: Context) : MediaContr
         mutable.value = mutable.value.copy(error = null)
         microphoneDesired = false
         room.connect(url, token)
+        room.localParticipant.videoTrackCaptureDefaults = room.localParticipant.videoTrackCaptureDefaults.copy(position = cameraPosition())
         // Media access denied still permits listening and participating through chat.
         runCatching { if (camera && context.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) room.localParticipant.setCameraEnabled(true) }
             .onFailure { mutable.value = mutable.value.copy(error = "카메라를 시작하지 못했어요: ${it.message}") }
@@ -157,7 +182,15 @@ internal class AndroidMediaController(private val context: Context) : MediaContr
         refresh()
     }
     override suspend fun flipCamera() {
-        ((room.localParticipant.getTrackPublication(Track.Source.CAMERA)?.track as? LocalVideoTrack) ?: preview)?.switchCamera()
+        val published = room.localParticipant.getTrackPublication(Track.Source.CAMERA)?.track as? LocalVideoTrack
+        if (published != null) {
+            published.switchCamera()
+        } else if (preview != null && state.value.canFlipPreview) {
+            val current = preview?.options?.position ?: cameraPosition()
+            val next = if (current == CameraPosition.FRONT) CameraPosition.BACK else CameraPosition.FRONT
+            stopPreview()
+            startPreview(next)
+        }
     }
     override suspend fun setScreenShare(enabled: Boolean) {
         if (enabled) startScreenShare(fullDisplay = false) else stopRegularScreenShare()
@@ -329,13 +362,98 @@ internal class AndroidMediaController(private val context: Context) : MediaContr
         audio.isSpeakerphoneOn = enabled
         mutable.value = mutable.value.copy(speaker = enabled)
     }
-    internal suspend fun startPreview() {
-        if (preview != null || state.value.connected || !allowed(Manifest.permission.CAMERA)) return
-        runCatching {
-            room.localParticipant.createVideoTrack().also { it.startCapture(); preview = it }
-        }.onFailure { mutable.value = mutable.value.copy(error = "카메라 미리보기를 사용할 수 없어요.") }
+    internal suspend fun startPreview(position: CameraPosition = cameraPosition()) {
+        if (preview != null || state.value.connected) return
+        mutable.value = mutable.value.copy(previewCamera = PreviewDevice.Checking, canFlipPreview = false, error = null)
+        try {
+            val positions = cameraPositions()
+            if (cameraManager.cameraIdList.isEmpty()) throw PreviewDeviceException(PreviewDevice.Unavailable)
+            if (!allowed(Manifest.permission.CAMERA)) throw PreviewDeviceException(PreviewDevice.Permission)
+            currentCoroutineContext().ensureActive()
+            val selected = position.takeIf(positions::contains) ?: positions.firstOrNull()
+            val options = room.localParticipant.videoTrackCaptureDefaults.copy(position = selected)
+            val track = room.localParticipant.createVideoTrack(options = options)
+            preview = track
+            val firstFrame = AtomicBoolean()
+            val sink = VideoSink {
+                if (firstFrame.compareAndSet(false, true)) scope.launch {
+                    if (preview === track) {
+                        mutable.value = mutable.value.copy(previewCamera = PreviewDevice.Connected, canFlipPreview = positions.size > 1)
+                        selected?.let { writePreference("devices.cameraFacing", if (it == CameraPosition.BACK) "back" else "front") }
+                    }
+                }
+            }
+            previewSink = sink
+            track.addRenderer(sink)
+            track.startCapture()
+            scope.launch {
+                delay(4_000)
+                if (preview === track && !firstFrame.get()) {
+                    stopPreview()
+                    mutable.value = mutable.value.copy(previewCamera = PreviewDevice.Failed)
+                }
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            stopPreview()
+            mutable.value = mutable.value.copy(previewCamera = (error as? PreviewDeviceException)?.status ?: PreviewDevice.Failed)
+        }
     }
-    internal fun stopPreview() { preview?.let { it.stopCapture(); it.dispose() }; preview = null }
+    internal fun stopPreview() {
+        val track = preview ?: return
+        preview = null
+        previewSink?.let(track::removeRenderer)
+        previewSink = null
+        track.stopCapture()
+        track.dispose()
+    }
+    @Suppress("MissingPermission")
+    override suspend fun checkPreviewMicrophone(onLevel: (Float) -> Unit) {
+        if (!context.packageManager.hasSystemFeature(PackageManager.FEATURE_MICROPHONE))
+            throw PreviewDeviceException(PreviewDevice.Unavailable)
+        if (!allowed(Manifest.permission.RECORD_AUDIO)) throw PreviewDeviceException(PreviewDevice.Permission)
+        withContext(Dispatchers.IO) {
+            val rate = 16_000
+            val minimum = AudioRecord.getMinBufferSize(rate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
+            check(minimum > 0)
+            val samples = ShortArray(rate / 20)
+            val record = AudioRecord(MediaRecorder.AudioSource.MIC, rate, AudioFormat.CHANNEL_IN_MONO,
+                AudioFormat.ENCODING_PCM_16BIT, maxOf(minimum, samples.size * 4))
+            try {
+                check(record.state == AudioRecord.STATE_INITIALIZED)
+                record.startRecording()
+                check(record.recordingState == AudioRecord.RECORDSTATE_RECORDING)
+                withContext(Dispatchers.Main) { onLevel(0f) }
+                while (isActive) {
+                    val count = record.read(samples, 0, samples.size, AudioRecord.READ_NON_BLOCKING)
+                    check(count >= 0)
+                    if (count > 0) {
+                        val sum = (0 until count).sumOf { index ->
+                            val sample = samples[index] / 32768.0
+                            sample * sample
+                        }
+                        val level = (sqrt(sum / count).toFloat() * 3.5f).coerceIn(0f, 1f)
+                        withContext(Dispatchers.Main) { onLevel(level) }
+                    }
+                    delay(50)
+                }
+            } finally {
+                try { if (record.recordingState == AudioRecord.RECORDSTATE_RECORDING) record.stop() }
+                finally { record.release() }
+            }
+        }
+    }
+    override suspend fun playPreviewTone() {
+        val tone = ToneGenerator(AudioManager.STREAM_MUSIC, 35)
+        try {
+            check(tone.startTone(ToneGenerator.TONE_DTMF_5, 650))
+            delay(650)
+        } finally {
+            tone.stopTone()
+            tone.release()
+        }
+    }
     internal fun release() { disconnectNow(); videoRenderers.clear(); room.release(); scope.cancel() }
     internal fun registerVideoRenderer(identity: String, screen: Boolean, renderer: TextureViewRenderer) {
         videoRenderers.getOrPut(identity to screen) { mutableSetOf() }.add(renderer)
@@ -421,4 +539,18 @@ internal class AndroidMediaController(private val context: Context) : MediaContr
     LaunchedEffect(enabled) { if (enabled) media.startPreview() else media.stopPreview() }
     DisposableEffect(media) { onDispose { media.stopPreview() } }
     TrackSurface(media, media.preview, true, modifier)
+}
+
+
+@Composable actual fun prejoinInForeground(): Boolean {
+    val lifecycle = LocalContext.current.findMainActivity()?.lifecycle ?: return true
+    var started by remember(lifecycle) { mutableStateOf(lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) }
+    DisposableEffect(lifecycle) {
+        val observer = LifecycleEventObserver { _, _ ->
+            started = lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
+    return started
 }

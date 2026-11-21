@@ -6,7 +6,7 @@ export const OPENAPI_DOCUMENT = {
     "version": "1.0.0",
     "description": "Canonical REST schemas shared by NestJS, React and KMP. Socket.IO is defined in realtime.json."
   },
-  "x-contract-revision": 7,
+  "x-contract-revision": 9,
   "servers": [
     {
       "url": "/api/v1"
@@ -1129,6 +1129,149 @@ export const OPENAPI_DOCUMENT = {
           }
         },
         "description": "Raw signed LiveKit body; authentication remains signature-based."
+      }
+    },
+    "/lessons/{id}/prejoin": {
+      "get": {
+        "operationId": "getPrejoinStatus",
+        "tags": [
+          "lessons"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrejoinStatus"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "x-feature": "classroom.prejoin",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
+    },
+    "/lessons/{id}/waiting/{clientId}": {
+      "put": {
+        "operationId": "renewPrejoinWait",
+        "tags": [
+          "lessons"
+        ],
+        "responses": {
+          "204": {
+            "description": "Waiting presence renewed"
+          },
+          "default": {
+            "description": "API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "x-feature": "classroom.prejoin",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "clearPrejoinWait",
+        "tags": [
+          "lessons"
+        ],
+        "responses": {
+          "204": {
+            "description": "Waiting presence cleared"
+          },
+          "default": {
+            "description": "API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "x-feature": "classroom.prejoin",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
       }
     }
   },
@@ -2299,6 +2442,44 @@ export const OPENAPI_DOCUMENT = {
         "required": [
           "sessionId"
         ]
+      },
+      "PrejoinStudent": {
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "PrejoinStatus": {
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "SCHEDULED",
+              "LIVE",
+              "ENDED",
+              "CANCELLED"
+            ]
+          },
+          "waitingStudents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PrejoinStudent"
+            }
+          }
+        }
       }
     }
   }

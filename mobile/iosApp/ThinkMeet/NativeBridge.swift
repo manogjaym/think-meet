@@ -8,11 +8,23 @@ import LiveKit
 import ThinkMeet
 
 /// The platform layer contains media and OS integration only; screens and rules live in KMP.
-final class NativeBridge: NSObject, IosNativeBridge, RoomDelegate, BroadcastManagerDelegate, UIDocumentPickerDelegate, @unchecked Sendable {
+final class NativeBridge: NSObject, IosNativeBridge, RoomDelegate, BroadcastManagerDelegate, UIDocumentPickerDelegate, AVAudioPlayerDelegate, @unchecked Sendable {
     private let room = Room(roomOptions: RoomOptions(defaultScreenShareCaptureOptions: ScreenShareCaptureOptions(appAudio: true, useBroadcastExtension: true), adaptiveStream: true, dynacast: true, suspendLocalVideoTracksInBackground: false))
     private var listener: ((MediaState) -> Void)?
     private var preview: LocalVideoTrack?
-    private var previewEnabled = false
+    private weak var previewOwner: VideoView?
+    private var previewTask: Task<Void, Never>?
+    private var previewStatus = PreviewDevice.checking
+    private var previewCanFlip = false
+    private var previewMicId: String?
+    private var previewMic: AVAudioEngine?
+    private var previewToneId: String?
+    private var previewTone: AVAudioPlayer?
+    private var previewToneCompletion: ((String?) -> Void)?
+    private var previewAudioSettings: (AVAudioSession.Category, AVAudioSession.Mode, AVAudioSession.CategoryOptions)?
+    private var preferredCamera: AVCaptureDevice.Position {
+        read(key: "devices.cameraFacing", fallback: "front") == "back" ? .back : .front
+    }
     private var speaker = true
     private var microphoneWanted = false
     private var screenAudioActive = false
@@ -62,6 +74,7 @@ final class NativeBridge: NSObject, IosNativeBridge, RoomDelegate, BroadcastMana
     @MainActor private func disconnectMedia() async {
         pictureInPicture.update(enabled: false, target: nil)
         await stopPreview()
+        stopPrejoinAudio()
         endBroadcast()
         await stopAppAudio()
         await room.disconnect()
@@ -70,7 +83,7 @@ final class NativeBridge: NSObject, IosNativeBridge, RoomDelegate, BroadcastMana
 
     @MainActor private func setCameraEnabled(_ enabled: Bool) async throws {
         if enabled, room.localParticipant.videoTracks.first(where: { $0.source == .camera }) == nil {
-            let track = LocalVideoTrack.createCameraTrack()
+            let track = LocalVideoTrack.createCameraTrack(options: CameraCaptureOptions(position: preferredCamera))
             if let camera = track.capturer as? CameraCapturer, camera.isMultitaskingAccessSupported {
                 camera.isMultitaskingAccessEnabled = true
             }
@@ -93,6 +106,7 @@ final class NativeBridge: NSObject, IosNativeBridge, RoomDelegate, BroadcastMana
         Task { @MainActor in
             do {
                 await stopPreview()
+                stopPrejoinAudio()
                 await stopAppAudio()
                 restoreMicrophoneAfterReconnect = false
                 AudioManager.shared.mixer.micVolume = 1
@@ -144,7 +158,14 @@ final class NativeBridge: NSObject, IosNativeBridge, RoomDelegate, BroadcastMana
                 case "speaker": try AVAudioSession.sharedInstance().overrideOutputAudioPort(enabled ? .speaker : .none); speaker = enabled
                 case "flip":
                     let track = (room.localParticipant.videoTracks.first { $0.source == .camera }?.track as? LocalVideoTrack) ?? preview
-                    if let capturer = track?.capturer as? CameraCapturer { _ = try await capturer.switchCameraPosition() }
+                    if let capturer = track?.capturer as? CameraCapturer {
+                        if track === preview {
+                            guard previewCanFlip else { break }
+                            let position: AVCaptureDevice.Position = capturer.position == .front ? .back : .front
+                            guard try await capturer.set(cameraPosition: position) else { throw NativeError.previewUnavailable }
+                            write(key: "devices.cameraFacing", value: position == .back ? "back" : "front")
+                        } else { _ = try await capturer.switchCameraPosition() }
+                    }
                 default: break
                 }
                 emitState(); _ = completion(nil)
@@ -201,7 +222,8 @@ final class NativeBridge: NSObject, IosNativeBridge, RoomDelegate, BroadcastMana
                 return MediaParticipant(identity: id, name: p.name ?? "", camera: p.isCameraEnabled(), microphone: microphone,
                     screen: p.isScreenShareEnabled(), speaking: p.isSpeaking, local: p === room.localParticipant, screenAspectRatio: ratio)
             }, error: lastError, camera: room.localParticipant.isCameraEnabled(), microphone: screenAudioActive ? microphoneWanted : room.localParticipant.isMicrophoneEnabled(),
-            screenSharing: room.localParticipant.isScreenShareEnabled(), speaker: speaker, screenCaptureId: screenCaptureId)
+            screenSharing: room.localParticipant.isScreenShareEnabled(), speaker: speaker, screenCaptureId: screenCaptureId,
+            previewCamera: previewStatus, canFlipPreview: previewCanFlip)
         _ = listener?(state)
         videoViews = videoViews.filter { $0.view != nil }
         for item in videoViews {
@@ -225,25 +247,213 @@ final class NativeBridge: NSObject, IosNativeBridge, RoomDelegate, BroadcastMana
     }
     func updatePreview(view: UIView, enabled: Bool) {
         guard let video = view as? VideoView else { return }
-        previewEnabled = enabled
-        Task { @MainActor in
-            if enabled {
-                guard await AVCaptureDevice.requestAccess(for: .video), previewEnabled else { return }
-                do {
-                    if preview == nil {
-                        let track = LocalVideoTrack.createCameraTrack()
-                        _ = try await track.capturer.startCapture()
-                        preview = track
+        onMain {
+            if !enabled {
+                if self.previewOwner === video {
+                    self.previewOwner = nil
+                    self.previewTask?.cancel()
+                    Task { @MainActor in
+                        if self.previewOwner == nil { await self.stopPreview() }
                     }
-                    video.track = preview
-                } catch { lastError = error.localizedDescription; emitState() }
-            } else { video.track = nil; await stopPreview() }
+                }
+                return
+            }
+            guard self.previewOwner !== video else { return }
+            self.previewOwner = video
+            let previousTask = self.previewTask
+            previousTask?.cancel()
+            self.previewTask = Task { @MainActor in
+                await previousTask?.value
+                guard !Task.isCancelled, self.previewOwner === video else { return }
+                if let old = self.preview {
+                    self.preview = nil
+                    _ = try? await old.capturer.stopCapture()
+                }
+                self.previewStatus = .checking
+                self.previewCanFlip = false
+                self.emitState()
+                let devices = (try? await CameraCapturer.captureDevices()) ?? []
+                guard !Task.isCancelled, self.previewOwner === video else { return }
+                guard !devices.isEmpty else {
+                    self.previewStatus = .unavailable
+                    self.emitState()
+                    return
+                }
+                let granted = await AVCaptureDevice.requestAccess(for: .video)
+                guard !Task.isCancelled, self.previewOwner === video else { return }
+                guard granted else {
+                    self.previewStatus = .permission
+                    self.emitState()
+                    return
+                }
+                let position = devices.contains { $0.position == self.preferredCamera } ? self.preferredCamera : .unspecified
+                let track = LocalVideoTrack.createCameraTrack(options: CameraCaptureOptions(position: position))
+                do {
+                    _ = try await track.capturer.startCapture()
+                    guard !Task.isCancelled, self.previewOwner === video else {
+                        _ = try? await track.capturer.stopCapture()
+                        return
+                    }
+                    self.preview = track
+                    video.track = track
+                    for _ in 0..<40 {
+                        if track.videoFrame != nil { break }
+                        try await Task.sleep(nanoseconds: 100_000_000)
+                    }
+                    guard !Task.isCancelled, self.previewOwner === video else { return }
+                    guard track.videoFrame != nil else { throw NativeError.previewUnavailable }
+                    self.previewStatus = .connected
+                    self.previewCanFlip = devices.contains { $0.position == .front } && devices.contains { $0.position == .back }
+                    self.emitState()
+                } catch {
+                    _ = try? await track.capturer.stopCapture()
+                    if !Task.isCancelled, self.previewOwner === video {
+                        self.preview = nil
+                        video.track = nil
+                        self.previewStatus = .failed
+                        self.emitState()
+                    }
+                }
+            }
         }
     }
-    private func stopPreview() async {
-        previewEnabled = false
-        if let track = preview { _ = try? await track.capturer.stopCapture() }
+    @MainActor private func stopPreview() async {
+        previewOwner?.track = nil
+        previewOwner = nil
+        let task = previewTask
+        previewTask = nil
+        let track = preview
         preview = nil
+        task?.cancel()
+        await task?.value
+        if let track { _ = try? await track.capturer.stopCapture() }
+    }
+
+    func checkPreviewMicrophone(id: String, onLevel: @escaping (KotlinFloat) -> Void, onError: @escaping (PreviewDevice) -> Void) {
+        onMain {
+            self.previewMicId = id
+            Task { @MainActor in
+                let granted = await AVCaptureDevice.requestAccess(for: .audio)
+                guard self.previewMicId == id else { return }
+                guard granted else { self.previewMicId = nil; onError(.permission); return }
+                do {
+                    try self.preparePreviewAudio(recording: true)
+                    let engine = AVAudioEngine()
+                    let input = engine.inputNode
+                    let format = input.outputFormat(forBus: 0)
+                    guard format.channelCount > 0, format.sampleRate > 0 else {
+                        self.stopPreviewMicrophone(id: id); onError(.unavailable); return
+                    }
+                    input.installTap(onBus: 0, bufferSize: 2048, format: format) { [weak self] buffer, _ in
+                        guard let data = buffer.floatChannelData?.pointee, buffer.frameLength > 0 else { return }
+                        let count = Int(buffer.frameLength)
+                        var square: Float = 0
+                        for index in 0..<count { square += data[index] * data[index] }
+                        let level = min(1, sqrt(square / Float(count)) * 3.5)
+                        DispatchQueue.main.async {
+                            if self?.previewMicId == id { onLevel(KotlinFloat(float: level)) }
+                        }
+                    }
+                    self.previewMic = engine
+                    try engine.start()
+                    onLevel(KotlinFloat(float: 0))
+                } catch {
+                    self.stopPreviewMicrophone(id: id)
+                    onError(.failed)
+                }
+            }
+        }
+    }
+    func stopPreviewMicrophone(id: String) {
+        onMain {
+            guard self.previewMicId == id else { return }
+            self.previewMicId = nil
+            if let engine = self.previewMic {
+                engine.inputNode.removeTap(onBus: 0)
+                engine.stop()
+                self.previewMic = nil
+            }
+            self.restorePreviewAudioIfIdle()
+        }
+    }
+
+    func playPreviewTone(id: String, completion: @escaping (String?) -> Void) {
+        onMain {
+            self.previewToneId = id
+            self.previewToneCompletion = completion
+            do {
+                try self.preparePreviewAudio(recording: self.previewMic != nil)
+                let player = try AVAudioPlayer(data: Self.previewToneData())
+                player.delegate = self
+                self.previewTone = player
+                if !player.play() { self.finishPreviewTone(error: "재생 실패") }
+            } catch { self.finishPreviewTone(error: error.localizedDescription) }
+        }
+    }
+    func stopPreviewTone(id: String) {
+        onMain {
+            if self.previewToneId == id { self.finishPreviewTone(error: nil) }
+        }
+    }
+    func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        onMain {
+            if self.previewTone === player { self.finishPreviewTone(error: flag ? nil : "재생 실패") }
+        }
+    }
+    func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
+        onMain {
+            if self.previewTone === player { self.finishPreviewTone(error: error?.localizedDescription ?? "재생 실패") }
+        }
+    }
+    @MainActor private func finishPreviewTone(error: String?) {
+        let completion = previewToneCompletion
+        previewTone?.stop()
+        previewTone = nil
+        previewToneId = nil
+        previewToneCompletion = nil
+        restorePreviewAudioIfIdle()
+        completion?(error)
+    }
+    @MainActor private func preparePreviewAudio(recording: Bool) throws {
+        let session = AVAudioSession.sharedInstance()
+        if previewAudioSettings == nil { previewAudioSettings = (session.category, session.mode, session.categoryOptions) }
+        let category: AVAudioSession.Category = recording ? .playAndRecord : .playback
+        let options: AVAudioSession.CategoryOptions = recording ? [.defaultToSpeaker, .allowBluetooth] : []
+        if session.category != category || session.mode != .default || session.categoryOptions != options {
+            try session.setCategory(category, mode: .default, options: options)
+        }
+        try session.setActive(true)
+    }
+    @MainActor private func restorePreviewAudioIfIdle() {
+        guard previewMic == nil, previewTone == nil, let saved = previewAudioSettings else { return }
+        previewAudioSettings = nil
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        try? AVAudioSession.sharedInstance().setCategory(saved.0, mode: saved.1, options: saved.2)
+    }
+    @MainActor private func stopPrejoinAudio() {
+        if let id = previewMicId { stopPreviewMicrophone(id: id) }
+        if let id = previewToneId { stopPreviewTone(id: id) }
+    }
+    private static func previewToneData() -> Data {
+        let rate = 16_000
+        let count = rate * 65 / 100
+        var data = Data()
+        func append<T: FixedWidthInteger>(_ number: T) {
+            var value = number.littleEndian
+            withUnsafeBytes(of: &value) { data.append(contentsOf: $0) }
+        }
+        data.append(contentsOf: "RIFF".utf8)
+        append(UInt32(36 + count * 2))
+        data.append(contentsOf: "WAVEfmt ".utf8)
+        append(UInt32(16)); append(UInt16(1)); append(UInt16(1))
+        append(UInt32(rate)); append(UInt32(rate * 2)); append(UInt16(2)); append(UInt16(16))
+        data.append(contentsOf: "data".utf8)
+        append(UInt32(count * 2))
+        for index in 0..<count {
+            let fade = min(1, Double(index) / 320, Double(count - 1 - index) / 320)
+            append(Int16(4000 * fade * sin(2 * .pi * 440 * Double(index) / Double(rate))))
+        }
+        return data
     }
     @MainActor private func startAppAudio() async {
         let capture = screenCaptureId
@@ -387,9 +597,11 @@ final class NativeBridge: NSObject, IosNativeBridge, RoomDelegate, BroadcastMana
 }
 private struct WeakVideoView { weak var view: VideoView?; let identity: String; let screen: Bool }
 private enum NativeError: LocalizedError {
+    case previewUnavailable
     case permission(String), fileSize, broadcastStopping, screenNotConnected
     var errorDescription: String? {
         switch self {
+        case .previewUnavailable: return "카메라 미리보기를 사용할 수 없어요."
         case .permission(let name): return "설정에서 \(name) 권한을 허용해 주세요."
         case .fileSize: return "PDF는 50MB, MP4는 500MB까지 선택할 수 있어요."
         case .broadcastStopping: return "이전 화면 공유가 멈춘 뒤 다시 시도해 주세요."

@@ -13,6 +13,10 @@ data class MediaParticipant(
     val microphone: Boolean = false, val screen: Boolean = false,
     val speaking: Boolean = false, val local: Boolean = false, val screenAspectRatio: Float = 16f / 9f,
 )
+enum class PreviewDevice { Checking, Connected, Permission, Unavailable, Failed }
+
+class PreviewDeviceException(val status: PreviewDevice) : Exception()
+
 data class MediaState(
     val connected: Boolean = false, val reconnecting: Boolean = false,
     val participants: List<MediaParticipant> = emptyList(), val error: String? = null,
@@ -20,6 +24,9 @@ data class MediaState(
     val screenSharing: Boolean = false, val speaker: Boolean = true,
     /** The local regular capture, including while its LiveKit publication is reconnecting. */
     val screenCaptureId: Long = 0,
+    val previewCamera: PreviewDevice = PreviewDevice.Checking,
+    val canFlipPreview: Boolean = false,
+
 )
 interface MediaController {
     val state: StateFlow<MediaState>
@@ -31,9 +38,14 @@ interface MediaController {
     suspend fun setScreenShare(enabled: Boolean)
     suspend fun setSpeaker(enabled: Boolean)
 }
+interface PreviewAudio {
+    suspend fun checkPreviewMicrophone(onLevel: (Float) -> Unit)
+    suspend fun playPreviewTone()
+}
 @Composable expect fun rememberMediaController(): MediaController
 @Composable expect fun VideoSurface(controller: MediaController, identity: String, screen: Boolean = false, modifier: Modifier = Modifier)
 @Composable expect fun CameraPreview(controller: MediaController, enabled: Boolean, modifier: Modifier = Modifier)
+@Composable expect fun prejoinInForeground(): Boolean
 
 data class PickedFile(
     val name: String, val size: Long, val mimeType: String,

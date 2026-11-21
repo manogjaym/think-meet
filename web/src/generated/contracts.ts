@@ -1,5 +1,5 @@
 // Generated from contracts/openapi.json and realtime.json. Do not edit.
-export const CONTRACT_REVISION = 7 as const;
+export const CONTRACT_REVISION = 9 as const;
 export const API_BASE_PATH = "/api/v1" as const;
 export const SOCKET_PATH = "/socket.io" as const;
 export const SOCKET_EVENTS = {
@@ -58,6 +58,8 @@ export type AssistanceRespondPayload = { sessionId: string; approved: boolean };
 export type AssistanceStartPayload = { sessionId: string; geometry: AssistanceGeometry };
 export type AssistanceGeometryPayload = { sessionId: string; geometry: AssistanceGeometry };
 export type AssistanceStopPayload = { sessionId: string };
+export type PrejoinStudent = { id: string; name: string };
+export type PrejoinStatus = { status: "SCHEDULED" | "LIVE" | "ENDED" | "CANCELLED"; waitingStudents?: Array<PrejoinStudent> };
 export type ApiLesson = Lesson;
 export type CommandType = "chat.send" | "hand.set" | "share.start" | "share.stop" | "media.update" | "document.page" | "stroke.add" | "stroke.erase" | "annotation.undo" | "annotation.redo" | "annotation.clear" | "assistance.request" | "assistance.respond" | "assistance.start" | "assistance.geometry" | "assistance.stop";
 export type CommandPayloads = { "chat.send": ChatSendPayload; "hand.set": HandSetPayload; "share.start": ShareStartPayload; "share.stop": EmptyPayload; "media.update": MediaUpdatePayload; "document.page": DocumentPagePayload; "stroke.add": StrokeAddPayload; "stroke.erase": StrokeErasePayload; "annotation.undo": EmptyPayload; "annotation.redo": EmptyPayload; "annotation.clear": EmptyPayload; "assistance.request": AssistanceRequestPayload; "assistance.respond": AssistanceRespondPayload; "assistance.start": AssistanceStartPayload; "assistance.geometry": AssistanceGeometryPayload; "assistance.stop": AssistanceStopPayload };

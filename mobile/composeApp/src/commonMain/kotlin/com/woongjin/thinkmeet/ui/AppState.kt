@@ -7,6 +7,8 @@ import kotlinx.datetime.*
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 
 sealed interface Route {
     data object Home : Route
@@ -215,6 +217,15 @@ class AppState(val api: ThinkMeetApi, private val scope: CoroutineScope) {
         val current = state.value.route as? Route.ForLesson ?: return
         show(Route.Detail(current.lesson))
     }
+    internal fun prejoinUnavailable(lessonId: String, status: String? = null, message: String? = null) {
+        val route = state.value.route as? Route.Prejoin ?: return
+        if (route.lesson.id != lessonId) return
+        if (status == "ENDED" || status == "CANCELLED") show(Route.Ended(route.lesson.copy(status = status)))
+        else {
+            show(Route.Detail(route.lesson))
+            mutable.update { it.copy(error = message) }
+        }
+    }
     fun devices(camera: Boolean, microphone: Boolean) { mutable.update { it.copy(camera = camera, microphone = microphone) } }
     fun joinCode(value: String) = work {
         if (state.value.route is Route.Meeting) return@work
@@ -258,6 +269,7 @@ class AppState(val api: ThinkMeetApi, private val scope: CoroutineScope) {
         waitingJob = null
     }
 
+    @OptIn(ExperimentalUuidApi::class)
     private fun waitForTeacher(id: String) {
         cancelWaiting()
         val userId = state.value.user?.id ?: return
@@ -294,6 +306,32 @@ class AppState(val api: ThinkMeetApi, private val scope: CoroutineScope) {
                     catch (e: Throwable) { handleFailure(e) }
                 }
             }
+            val presence = launch {
+                if (state.value.user?.role != "student") return@launch
+                val clientId = Uuid.random().toString()
+                var registered = false
+                try {
+                    while (isActive && waitingRoute() != null) {
+                        if (supportsFeature(ContractProtocol.FeatureIds.ClassroomPrejoin)) {
+                            registered = true
+                            withTimeoutOrNull(4_000) {
+                                try { api.setPrejoinWait(id, clientId, active = true) }
+                                catch (cancelled: CancellationException) { throw cancelled }
+                                catch (_: ApiError) { /* Lesson polling handles admission and access errors. */ }
+                            }
+                        }
+                        delay(5_000)
+                    }
+                } finally {
+                    if (registered) withContext(NonCancellable) {
+                        withTimeoutOrNull(4_000) {
+                            try { api.setPrejoinWait(id, clientId, active = false) }
+                            catch (cancelled: CancellationException) { throw cancelled }
+                            catch (_: ApiError) { /* The server expires the waiting record. */ }
+                        }
+                    }
+                }
+            }
             try {
                 while (isActive && waitingRoute() != null) {
                     try { consider(api.lesson(id)) }
@@ -309,7 +347,7 @@ class AppState(val api: ThinkMeetApi, private val scope: CoroutineScope) {
                     } catch (e: Throwable) { handleFailure(e) }
                     if (waitingRoute() != null) delay(3_000)
                 }
-            } finally { updates.cancel(); realtime.close() }
+            } finally { presence.cancel(); updates.cancel(); realtime.close() }
         }
     }
     fun meetingExit(ended: Boolean) {

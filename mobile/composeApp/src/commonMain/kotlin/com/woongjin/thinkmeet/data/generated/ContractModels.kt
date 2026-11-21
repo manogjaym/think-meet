@@ -354,3 +354,16 @@ data class AssistanceGeometryPayload(
 data class AssistanceStopPayload(
     val sessionId: String,
 )
+
+@Serializable
+data class PrejoinStudent(
+    val id: String,
+    val name: String,
+)
+
+@Serializable
+data class PrejoinStatus(
+    val status: String,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val waitingStudents: List<PrejoinStudent>? = null,
+)

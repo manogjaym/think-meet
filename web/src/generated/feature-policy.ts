@@ -1,5 +1,5 @@
 // Generated from features/catalog.json and contracts/. Do not edit.
-export const CONTRACT_REVISION = 7 as const;
+export const CONTRACT_REVISION = 9 as const;
 export const CAPABILITY_HEADERS = {"platform":"X-ThinkMeet-Platform","revision":"X-ThinkMeet-Contract-Revision"} as const;
 export type ClientPlatform = "web" | "android" | "ios";
 export type FeatureDefinition = { readonly id: string; readonly stage: "baseline" | "planned" | "in-progress" | "ready"; readonly requiresRevision: number; readonly defaultEnabled: boolean; readonly platforms: readonly ClientPlatform[] };
@@ -40,6 +40,17 @@ export const FEATURE_DEFINITIONS = [
     "id": "classroom.subjects",
     "stage": "in-progress",
     "requiresRevision": 7,
+    "defaultEnabled": true,
+    "platforms": [
+      "web",
+      "android",
+      "ios"
+    ]
+  },
+  {
+    "id": "classroom.prejoin",
+    "stage": "in-progress",
+    "requiresRevision": 9,
     "defaultEnabled": true,
     "platforms": [
       "web",
@@ -193,6 +204,24 @@ export const HTTP_OPERATIONS: readonly { id: string; method: string; path: strin
     "id": "livekitWebhook",
     "method": "POST",
     "path": "/api/v1/webhooks/livekit"
+  },
+  {
+    "id": "getPrejoinStatus",
+    "method": "GET",
+    "path": "/api/v1/lessons/{id}/prejoin",
+    "feature": "classroom.prejoin"
+  },
+  {
+    "id": "renewPrejoinWait",
+    "method": "PUT",
+    "path": "/api/v1/lessons/{id}/waiting/{clientId}",
+    "feature": "classroom.prejoin"
+  },
+  {
+    "id": "clearPrejoinWait",
+    "method": "DELETE",
+    "path": "/api/v1/lessons/{id}/waiting/{clientId}",
+    "feature": "classroom.prejoin"
   }
 ];
 const COMMAND_FEATURES: Record<string, string | undefined> = {"chat.send":"classroom.core","hand.set":"classroom.core","share.start":"classroom.core","share.stop":undefined,"media.update":"classroom.core","document.page":"classroom.core","stroke.add":"classroom.core","stroke.erase":"classroom.core","annotation.undo":"classroom.core","annotation.redo":"classroom.core","annotation.clear":"classroom.core","assistance.request":"meeting.remote-assistance","assistance.respond":"meeting.remote-assistance","assistance.start":"meeting.remote-assistance","assistance.geometry":"meeting.remote-assistance","assistance.stop":undefined};

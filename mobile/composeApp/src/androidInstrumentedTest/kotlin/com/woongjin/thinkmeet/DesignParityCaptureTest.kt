@@ -27,6 +27,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
+import java.util.regex.Pattern
 
 /** Real native windows and fonts, without the synthetic Compose test frame clock. */
 @RunWith(AndroidJUnit4::class)
@@ -66,9 +67,33 @@ class DesignParityCaptureTest {
             editors[0].text = arguments.getString("username") ?: "teacher1"
             editors[1].text = arguments.getString("password") ?: "test123"
             revealAndClick("로그인")
-            eventually("authenticated dashboard", 90_000) { visible(By.text("수업 일정")) != null }
-            capture("02-dashboard", By.text("수업 일정"))
+            val dashboardAnchor = By.text(if (arguments.getString("captureUntil") == "prejoin") "내 수업" else "수업 일정")
+            eventually("authenticated dashboard", 90_000) { visible(dashboardAnchor) != null }
+            capture("02-dashboard", dashboardAnchor)
             if (arguments.getString("captureUntil") == "dashboard") { stage("capture-complete"); return }
+            if (arguments.getString("captureUntil") == "prejoin") {
+                val code = requireNotNull(lessonCode)
+                scenario.onActivity { AppLinks.receive("thinkmeet://join/$code") }
+                eventually("device check title") { visible(By.text("입장 전 장치 점검")) != null }
+                capture("06-prejoin", By.text("입장 전 장치 점검"))
+                revealAndClick("소리 테스트")
+                eventually("test tone ended") { visible(By.text("재생 완료")) != null }
+                reveal("네트워크")
+                eventually("server latency") { visible(By.text(Pattern.compile("[0-9]+ ms"))) != null }
+                capture("07-device-status", By.text("재생 완료"))
+                if (arguments.getString("username")?.startsWith("student") == true) {
+                    revealAndClick("수업 시작 대기")
+                    eventually("waiting for teacher") { visible(By.text("곧 수업이 시작돼요")) != null }
+                    capture("08-waiting", By.text("곧 수업이 시작돼요"))
+                    revealAndClick("장치 다시 점검하기")
+                    eventually("returned to device checks") { visible(By.text("입장 전 장치 점검")) != null }
+                } else {
+                    revealSelector(By.text("학생 대기 상태"))
+                    capture("08-teacher-presence", By.text("학생 대기 상태"))
+                }
+                stage("capture-complete")
+                return
+            }
             val self = runBlocking { api.me() }.id
 
             stage("opening-history")
@@ -104,7 +129,7 @@ class DesignParityCaptureTest {
                 require(lessonCode.matches(Regex("[A-Za-z0-9_-]{1,100}")))
                 scenario.onActivity { AppLinks.receive("thinkmeet://join/$lessonCode") }
                 eventually("fixture prejoin", 90_000) {
-                    visible(By.text("입장 준비")) != null &&
+                    (visible(By.text("입장 준비")) != null || visible(By.text("입장 전 장치 점검")) != null) &&
                         (visible(By.desc("카메라 끄기")) != null || visible(By.text("카메라가 꺼져 있습니다")) != null)
                 }
                 visible(By.desc("카메라 끄기"))?.click()

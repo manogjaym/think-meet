@@ -77,8 +77,18 @@ model LessonMember {
   admissionId String?
   online Boolean @default(false)
   disconnectedAt DateTime?
+  prejoinWaits PrejoinWait[]
   @@id([lessonId, userId])
   @@index([userId])
+}
+model PrejoinWait {
+  lessonId String @db.Uuid
+  userId String @db.Uuid
+  clientId String @db.Uuid
+  expiresAt DateTime
+  member LessonMember @relation(fields: [lessonId, userId], references: [lessonId, userId], onDelete: Cascade)
+  @@id([lessonId, userId, clientId])
+  @@index([expiresAt])
 }
 model Attendance {
   id String @id @default(uuid()) @db.Uuid

@@ -558,6 +558,22 @@
         }
       }
     ],
+    "speaker": [
+      {
+        "type": "path",
+        "attributes": {
+          "d": "M3 9h4l5-4v14l-5-4H3zM16 9a4 4 0 0 1 0 6M19 6a8 8 0 0 1 0 12"
+        }
+      }
+    ],
+    "cameraFlip": [
+      {
+        "type": "path",
+        "attributes": {
+          "d": "M4 7h15m-4-4 4 4-4 4M20 17H5m4-4-4 4 4 4"
+        }
+      }
+    ],
     "wifi": [
       {
         "type": "path",

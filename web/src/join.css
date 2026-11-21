@@ -44,3 +44,80 @@
 @media (max-width:design(layout.prejoinWide)) { .join-page { padding: var(--space-6) var(--tm-spacing-s40) var(--space-12); max-width: var(--tm-layout-prejoin-single-max-width); } .prejoin { grid-template-columns: 1fr; gap: var(--space-6); min-height: 0; } .join-preview { aspect-ratio: 16/9; max-height:30dvh; } .prejoin-info { width: 100%; max-width: var(--tm-layout-prejoin-info-max-width); justify-self: center; } .prejoin-info .badge { margin-bottom: var(--space-4); } .prejoin-info .account-row { margin-top: var(--space-6); padding-top: var(--space-4); } .prejoin-info .device-check { margin:var(--space-4) 0 var(--space-6); } .join-participants { margin-top: var(--space-4); } }
 @media (max-width:design(layout.rootNavigationMobile)) { .join-waiting-page { min-height: calc(100dvh - 64px); } }
 @media (max-width:design(layout.prejoinPhone)) { .join-page { padding: var(--space-4) var(--space-6) var(--space-8); } .prejoin { gap: var(--space-6); } .join-preview { aspect-ratio: 4/3; max-height:none; border-radius: var(--tm-radius-r10); } .join-preview-person .avatar { width: 72px; height: 72px; font-size: 27px; } .join-preview-name { left: 12px; bottom: 16px; font-size:var(--type-support);  line-height:1.5; font-weight:var(--weight-medium);} .join-preview .preview-controls { gap: var(--space-2); bottom: 12px; } .join-preview .preview-controls button { width: 48px; height: 48px; } .join-device-selectors { gap: var(--space-3); } .join-device-selectors select { font-size:var(--type-support);  line-height:1.5; font-weight:var(--weight-medium); color:var(--text-secondary);} .join-preview-note { font-size:var(--type-caption);  line-height:1.5; color:var(--muted);} .prejoin-info h1 { font-size:var(--type-title);  font-weight:var(--weight-bold); letter-spacing:-.025em; line-height:1.3462; color:var(--text);} .join-waiting-page .waiting-card { padding: var(--space-8) var(--space-6) var(--space-6); } }
+
+.join-check-header {
+  grid-column: 1 / -1;
+  display: flex;
+  width: 100%;
+  max-width: none;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+.join-check-header .badge { margin: 0 0 var(--space-2); }
+.join-check-header .account-row { border: 0; margin: 0; padding: 0; }
+.join-check-page .join-preview-name {
+  top: var(--space-4);
+  bottom: auto;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--tm-radius-r8);
+  background: var(--tm-color-prejoin-background);
+  max-width: calc(100% - var(--space-8));
+  overflow-wrap: anywhere;
+}
+.join-check-panel, .join-waiting-students {
+  background: var(--tm-color-white);
+  border: 1px solid var(--line);
+  border-radius: var(--tm-radius-r14);
+  padding: var(--space-4);
+}
+.join-check-panel h2, .join-waiting-students h2 {
+  margin: 0 0 var(--space-2);
+  color: var(--text);
+  font-size: var(--type-body);
+  font-weight: var(--weight-semibold);
+}
+.join-check-row {
+  display: flex;
+  align-items: flex-start;
+  min-width: 0;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  color: var(--accent);
+}
+.join-check-row > svg { flex-shrink: 0; }
+.join-check-row + .join-check-row { border-top: 1px solid var(--line); }
+.join-check-body { flex: 1; min-width: 0; }
+.join-check-title, .join-check-detail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-3);
+  font-size: var(--type-support);
+  color: var(--muted);
+}
+.join-check-title strong { color: var(--text); font-weight: var(--weight-semibold); }
+.join-check-title span { font-size: var(--type-caption); }
+.join-check-title .healthy { color: var(--tm-color-success); }
+.join-check-detail select {
+  min-width: 0;
+  max-width: 100%;
+  min-height: var(--tm-spacing-s40);
+  color: var(--text-secondary);
+  border: 0;
+  background: transparent;
+}
+.join-check-detail .ghost { min-height: var(--tm-spacing-s40); padding: var(--space-1) var(--space-2); font-size: var(--type-caption); }
+.join-check-detail .join-input-meter { flex-basis: 100%; margin: 0; }
+.join-waiting-students { margin-top: var(--space-4); }
+.join-waiting-students p { margin: 0; color: var(--muted); font-size: var(--type-support); overflow-wrap: anywhere; }
+.join-check-page .join-submit { margin-top: var(--space-4); }
+
+@media (max-width: design(layout.prejoinWide)) {
+  .join-check-page .prejoin-info { max-width: none; }
+}
+
+@media (max-width: design(layout.prejoinPhone)) {
+  .join-check-header { flex-direction: column; align-items: flex-start; }
+}

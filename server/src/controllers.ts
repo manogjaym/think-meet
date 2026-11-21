@@ -1,4 +1,4 @@
-import { Body, CanActivate, Controller, Delete, ExecutionContext, Get, Headers, Injectable, Param, Patch, Post, Query, Req, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common'
+import { Body, CanActivate, Controller, Delete, ExecutionContext, Get, Headers, HttpCode, Injectable, Param, Patch, Post, Put, Query, Req, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common'
 import { FileInterceptor } from '@nestjs/platform-express'
 import { ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger'
 import type { Request, Response } from 'express'
@@ -49,6 +49,17 @@ export class ApiController {
   }
   @Post('lessons/:id/cancel') async cancel(@Req() req: Request, @Param('id') id: string) { return this.lessons.cancel(id, await this.auth.user(req)) }
   @Post('lessons/:id/join') async join(@Req() req: Request, @Param('id') id: string) { return this.lessons.join(id, await this.auth.user(req)) }
+  @Get('lessons/:id/prejoin') async prejoin(@Req() req: Request, @Param('id') id: string) {
+    return this.lessons.prejoin(id, await this.auth.user(req))
+  }
+  @Put('lessons/:id/waiting/:clientId') @HttpCode(204)
+  async renewPrejoinWait(@Req() req: Request, @Param('id') id: string, @Param('clientId') clientId: string) {
+    await this.lessons.renewPrejoinWait(id, clientId, await this.auth.user(req))
+  }
+  @Delete('lessons/:id/waiting/:clientId') @HttpCode(204)
+  async clearPrejoinWait(@Req() req: Request, @Param('id') id: string, @Param('clientId') clientId: string) {
+    await this.lessons.clearPrejoinWait(id, clientId, await this.auth.user(req))
+  }
   @Post('lessons/:id/connected') async connected(@Req() req: Request, @Param('id') id: string) { return this.lessons.connected(id, await this.auth.user(req)) }
   @Post('lessons/:id/leave') async leave(@Req() req: Request, @Param('id') id: string) { return this.lessons.leave(id, await this.auth.user(req)) }
   @Post('lessons/:id/end') async end(@Req() req: Request, @Param('id') id: string) { return this.lessons.end(id, await this.auth.user(req)) }

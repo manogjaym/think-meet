@@ -64,7 +64,7 @@ class NativeSmokeTest {
         if (lessonCode.isEmpty()) return
         require(Regex("[A-Za-z0-9_-]{1,100}").matches(lessonCode)) { "Invalid lessonCode argument" }
         compose.runOnIdle { AppLinks.receive("thinkmeet://join/$lessonCode") }
-        waitFor("lesson prejoin") { exists(hasText("입장 전 준비해 볼까요?")) }
+        waitFor("lesson prejoin") { exists(hasText("입장 전 장치 점검")) || exists(hasText("입장 준비")) }
         screenshot("02-prejoin")
 
         val join = hasText("수업 시작하기") or hasText("수업 참여하기")

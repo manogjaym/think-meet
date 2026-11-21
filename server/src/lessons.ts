@@ -36,7 +36,14 @@ export class Lessons implements OnModuleInit, OnModuleDestroy {
   private missingScreenShares = new Map<string, { shareId: string; since: number }>()
   private timer?: NodeJS.Timeout
   constructor(readonly db: Database) {}
-  onModuleInit() { this.timer = setInterval(() => this.reconcile().catch(error => console.error('reconciliation failed', error.message)), 10000); this.timer.unref() }
+  onModuleInit() {
+    this.timer = setInterval(() => {
+      void this.reconcile().catch(error => console.error('reconciliation failed', error.message))
+      void this.db.prejoinWait.deleteMany({ where: { expiresAt: { lte: new Date() } } })
+        .catch(error => console.error('prejoin wait cleanup failed', error.message))
+    }, 10_000)
+    this.timer.unref()
+  }
   onModuleDestroy() { clearInterval(this.timer) }
   async locked<T>(id: string, fn: () => Promise<T>): Promise<T> {
     const previous = this.locks.get(id) || Promise.resolve()
@@ -180,6 +187,39 @@ export class Lessons implements OnModuleInit, OnModuleDestroy {
     const lesson = await this.access(match.id, user)
     if (lesson.status === 'CANCELLED' || lesson.status === 'ENDED') throw new ApiError(lesson.status, lesson.status === 'ENDED' ? '이미 종료된 수업입니다.' : '취소된 수업입니다.', 409)
     return this.dto(lesson)
+  }
+  async prejoin(id: string, user: PublicUser) {
+    const lesson = await this.access(id, user)
+    if (lesson.teacherId !== user.id) return { status: lesson.status }
+    const members = lesson.status === 'SCHEDULED' ? await this.db.lessonMember.findMany({
+      where: { lessonId: id, banned: false, prejoinWaits: { some: { expiresAt: { gt: new Date() } } } },
+      select: { userId: true },
+    }) : []
+    const waitingStudents = members.length ? await this.db.user.findMany({
+      where: { role: 'student', id: { in: members.map(member => member.userId) } },
+      select: { id: true, name: true },
+      orderBy: [{ name: 'asc' }, { id: 'asc' }],
+    }) : []
+    return { status: lesson.status, waitingStudents }
+  }
+  async renewPrejoinWait(id: string, clientId: string, user: PublicUser) {
+    if (!z.uuid().safeParse(clientId).success) throw new ApiError('VALIDATION', '대기 정보를 확인해 주세요.')
+    await this.locked(id, async () => {
+      const lesson = await this.access(id, user)
+      if (user.role !== 'student' || lesson.teacherId === user.id || !lesson.members.some(member => member.userId === user.id))
+        throw new ApiError('FORBIDDEN', '이 수업에서 대기할 권한이 없습니다.', 403)
+      if (lesson.status !== 'SCHEDULED') throw new ApiError(lesson.status, '대기 상태가 종료되었어요.', 409)
+      const key = { lessonId: id, userId: user.id, clientId }
+      const expiresAt = new Date(Date.now() + 20_000)
+      await this.db.prejoinWait.upsert({ where: { lessonId_userId_clientId: key }, create: { ...key, expiresAt }, update: { expiresAt } })
+    })
+  }
+  async clearPrejoinWait(id: string, clientId: string, user: PublicUser) {
+    if (!z.uuid().safeParse(id).success || !z.uuid().safeParse(clientId).success)
+      throw new ApiError('VALIDATION', '대기 정보를 확인해 주세요.')
+    await this.locked(id, async () => {
+      await this.db.prejoinWait.deleteMany({ where: { lessonId: id, userId: user.id, clientId } })
+    })
   }
   async join(id: string, user: PublicUser) {
     return this.locked(id, async () => {

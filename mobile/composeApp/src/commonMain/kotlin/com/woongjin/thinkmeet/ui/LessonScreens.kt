@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.Dp
 import com.woongjin.thinkmeet.ErrorCard
 import com.woongjin.thinkmeet.data.*
 import com.woongjin.thinkmeet.design.*
+import com.woongjin.thinkmeet.design.generated.DesignContent
 import com.woongjin.thinkmeet.design.generated.DesignTokens.Colors as Palette
 import com.woongjin.thinkmeet.design.generated.DesignTokens.Component as ComponentToken
 import com.woongjin.thinkmeet.design.generated.DesignTokens.Layout as LayoutToken
@@ -320,6 +321,7 @@ private val LocalLessonWidth = staticCompositionLocalOf { LayoutToken.PageMaxWid
 }
 
 @Composable fun PrejoinScreen(lesson: Lesson, user: User, state: AppUiState, controller: AppState) {
+    val lessonModes = controller.capabilities.collectAsState().value.supports(ContractProtocol.FeatureIds.ClassroomLessonModes)
     val media = rememberMediaController()
     val mediaState by media.state.collectAsState()
     val scope = rememberCoroutineScope()
@@ -388,7 +390,7 @@ private val LocalLessonWidth = staticCompositionLocalOf { LayoutToken.PageMaxWid
                     Row(horizontalArrangement = Arrangement.spacedBy(Space.S16)) { DeviceState(if (microphone) "mic" else "micOff", "마이크 ${if (microphone) "켜짐" else "꺼짐"}"); DeviceState(if (camera) "video" else "videoOff", "카메라 ${if (camera) "켜짐" else "꺼짐"}") }
                     Spacer(Modifier.height(if (wide) Space.S32 else Space.S24))
                     state.error?.let { ErrorCard(it); Spacer(Modifier.height(Space.S12)) }
-                    DesignButton(if (state.busy) "입장 확인 중…" else if (lesson.teacher.id == user.id && lesson.status == "SCHEDULED") "수업 시작하기" else "지금 참여하기", { controller.devices(camera, microphone); controller.join() }, Modifier.fillMaxWidth().heightIn(min = Space.S54), enabled = !state.busy, trailingIcon = { DesignIcon("chevron", Modifier.size(Space.S18), tint = Palette.White) }, textStyle = MaterialTheme.typography.bodyLarge)
+                    DesignButton(if (state.busy) "입장 확인 중…" else if (lesson.teacher.id == user.id && lesson.status == "SCHEDULED") { if (lessonModes) DesignContent.MeetingEnter else "수업 시작하기" } else "지금 참여하기", { controller.devices(camera, microphone); controller.join() }, Modifier.fillMaxWidth().heightIn(min = Space.S54), enabled = !state.busy, trailingIcon = { DesignIcon("chevron", Modifier.size(Space.S18), tint = Palette.White) }, textStyle = MaterialTheme.typography.bodyLarge)
                     Spacer(Modifier.height(Space.S8)); LessonText(if (!microphone && !camera) "카메라와 마이크를 끈 상태로 참여합니다." else "준비가 되면 참여해 주세요.", Modifier.fillMaxWidth(), color = Muted, fontSize = Type.Caption, textAlign = TextAlign.Center)
                 }
             }
@@ -413,11 +415,13 @@ private val LocalLessonWidth = staticCompositionLocalOf { LayoutToken.PageMaxWid
 }
 
 @Composable fun WaitingScreen(lesson: Lesson, user: User, state: AppUiState, controller: AppState) {
+    val lessonModes = controller.capabilities.collectAsState().value.supports(ContractProtocol.FeatureIds.ClassroomLessonModes)
+    val waitingCopy = if (lessonModes) DesignContent.MeetingWaitForTeacher else "선생님이 수업을 시작할 때까지 잠시 기다려 주세요."
     CenteredLessonCard(LayoutToken.WaitingCardMaxWidth, waiting = true) {
         Surface(Modifier.size(ComponentToken.WaitingIconSize), shape = CircleShape, color = Palette.Selection) { Box(contentAlignment = Alignment.Center) { DesignIcon("clock", Modifier.size(Space.S28), tint = Brand) } }
         Spacer(Modifier.height(Space.S24)); SmallBadge("입장 대기 중", selected = true); Spacer(Modifier.height(Space.S16))
         LessonText("곧 수업이 시작돼요", fontSize = Type.Title, fontWeight = DesignWeight.Bold, lineHeight = Type.Title * 1.3462f, textAlign = TextAlign.Center); Spacer(Modifier.height(Space.S8))
-        LessonText("${lesson.title} · ${lesson.teacher.name} 선생님\n선생님이 수업을 시작할 때까지 잠시 기다려 주세요.", color = Muted, fontSize = Type.Body, lineHeight = Type.Body * 1.5f, textAlign = TextAlign.Center); Spacer(Modifier.height(Space.S32))
+        LessonText("${lesson.title} · ${lesson.teacher.name} 선생님\n$waitingCopy", color = Muted, fontSize = Type.Body, lineHeight = Type.Body * 1.5f, textAlign = TextAlign.Center); Spacer(Modifier.height(Space.S32))
         Surface(Modifier.fillMaxWidth(), color = Palette.Canvas, shape = RoundedCornerShape(Corner.R8)) { Row(Modifier.padding(Space.S16), horizontalArrangement = Arrangement.spacedBy(Space.S12), verticalAlignment = Alignment.CenterVertically) { DesignAvatar(user.name, user.id, small = true); LessonText("${user.name} ${if (user.isTeacher) "선생님" else "학생"}으로 대기 중", color = Muted, fontSize = Type.Support, fontWeight = DesignWeight.Medium) } }
         Spacer(Modifier.height(Space.S24)); state.error?.let { ErrorCard(it); Spacer(Modifier.height(Space.S12)) }
         DesignButton("카메라·마이크 확인하기", { controller.prejoin(lesson) }, Modifier.fillMaxWidth(), secondary = true, enabled = !state.busy)

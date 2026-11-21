@@ -6,7 +6,7 @@ export const OPENAPI_DOCUMENT = {
     "version": "1.0.0",
     "description": "Canonical REST schemas shared by NestJS, React and KMP. Socket.IO is defined in realtime.json."
   },
-  "x-contract-revision": 5,
+  "x-contract-revision": 10,
   "servers": [
     {
       "url": "/api/v1"
@@ -1636,6 +1636,28 @@ export const OPENAPI_DOCUMENT = {
           "createdAt"
         ]
       },
+      "LessonInstruction": {
+        "type": "object",
+        "properties": {
+          "phase": {
+            "type": "string",
+            "enum": [
+              "preparing",
+              "classroom",
+              "mirroring"
+            ]
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        },
+        "required": [
+          "phase",
+          "startedAt"
+        ]
+      },
       "MeetingSnapshot": {
         "type": "object",
         "properties": {
@@ -1644,6 +1666,9 @@ export const OPENAPI_DOCUMENT = {
           },
           "lesson": {
             "$ref": "#/components/schemas/Lesson"
+          },
+          "instruction": {
+            "$ref": "#/components/schemas/LessonInstruction"
           },
           "participants": {
             "type": "array",
@@ -1923,6 +1948,41 @@ export const OPENAPI_DOCUMENT = {
         },
         "required": [
           "raised"
+        ]
+      },
+      "LessonModeSetPayload": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "classroom",
+              "mirroring"
+            ]
+          },
+          "expectedMode": {
+            "type": "string",
+            "enum": [
+              "classroom",
+              "mirroring"
+            ]
+          },
+          "expectedShareId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "expectedAssistanceId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          }
+        },
+        "required": [
+          "mode",
+          "expectedMode",
+          "expectedShareId",
+          "expectedAssistanceId"
         ]
       },
       "ShareStartPayload": {

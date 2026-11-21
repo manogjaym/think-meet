@@ -18,6 +18,6 @@ export function RemoteAssistanceStatus({ snapshot, userId, command, onError, poi
     <button disabled={pending} onClick={() => {
       setPending(true)
       void command("assistance.stop", { sessionId: session.id }).catch(error => onError(friendlyError(error))).finally(() => setPending(false))
-    }}>{designContent.remoteAssistStop}</button>
+    }}>{teacher && snapshot?.instruction && session.status === "pending" ? designContent.meetingLessonCancelRequest : designContent.remoteAssistStop}</button>
   </div>
 }

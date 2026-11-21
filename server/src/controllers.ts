@@ -39,7 +39,9 @@ export class ApiController {
   @Get('lessons/:id') async detail(@Req() req: Request, @Param('id') id: string) { return this.lessons.dto(await this.lessons.access(id, await this.auth.user(req))) }
   @Patch('lessons/:id') async edit(@Req() req: Request, @Param('id') id: string, @Body() body: LessonInput) { return this.lessons.edit(id, await this.auth.user(req), body) }
   @Post('lessons/:id/cancel') async cancel(@Req() req: Request, @Param('id') id: string) { return this.lessons.cancel(id, await this.auth.user(req)) }
-  @Post('lessons/:id/join') async join(@Req() req: Request, @Param('id') id: string) { return this.lessons.join(id, await this.auth.user(req)) }
+  @Post('lessons/:id/join') async join(@Req() req: Request, @Param('id') id: string) {
+    return this.lessons.join(id, await this.auth.user(req), this.features.capabilities(req.headers).features['classroom.lesson-modes'] === true)
+  }
   @Post('lessons/:id/connected') async connected(@Req() req: Request, @Param('id') id: string) { return this.lessons.connected(id, await this.auth.user(req)) }
   @Post('lessons/:id/leave') async leave(@Req() req: Request, @Param('id') id: string) { return this.lessons.leave(id, await this.auth.user(req)) }
   @Post('lessons/:id/end') async end(@Req() req: Request, @Param('id') id: string) { return this.lessons.end(id, await this.auth.user(req)) }

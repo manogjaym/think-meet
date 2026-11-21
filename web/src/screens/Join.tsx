@@ -1,3 +1,5 @@
+import { designContent as copy } from "../generated/design-content"
+import { useFeature } from "../lib/useFeature"
 import { useEffect, useRef, useState } from "react"
 import type { Lesson } from "./Home"
 import type { Role, Screen } from "../models"
@@ -34,7 +36,6 @@ const mediaError = (error: unknown) => {
 export function Prejoin({
   lesson,
   user,
-  role,
   initialDevices,
   onJoin,
 }: {
@@ -45,6 +46,7 @@ export function Prejoin({
   initialDevices?: JoinDevices
   onJoin: (devices: JoinDevices) => Promise<void>
 }) {
+  const lessonModes = useFeature("classroom.lesson-modes")
   const [devices, setDevices] = useState<JoinDevices>(
     initialDevices || initialJoinDevices,
   )
@@ -369,8 +371,8 @@ export function Prejoin({
           >
             {busy
               ? "입장 확인 중…"
-              : role === "teacher" && lesson.status === "SCHEDULED"
-                ? "수업 시작하기"
+              : lesson.status === "SCHEDULED" && lesson.teacher.id === user.id
+                ? lessonModes ? copy.meetingEnter : "수업 시작하기"
                 : "지금 참여하기"}
             <Icon name="chevron" size={18} />
           </button>
@@ -395,6 +397,7 @@ export function Waiting({
   user: User
   error?: string
 }) {
+  const lessonModes = useFeature("classroom.lesson-modes")
   return (
     <main className="center-page join-waiting-page">
       <section className="waiting-card">
@@ -406,7 +409,7 @@ export function Waiting({
         <p>
           {lesson.title} · {lesson.teacher.name} 선생님
           <br />
-          선생님이 수업을 시작할 때까지 잠시 기다려 주세요.
+          {lessonModes ? copy.meetingWaitForTeacher : "선생님이 수업을 시작할 때까지 잠시 기다려 주세요."}
         </p>
         <div className="wait-account">
           <Avatar name={user.name} color={colorFor(user.id)} small />

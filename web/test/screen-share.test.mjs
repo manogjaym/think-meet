@@ -20,6 +20,7 @@ function fixture({ guarded = true } = {}) {
   const unpublishes = []
   let connected = true
   let share = null
+  let picker
   let startAck
   let stopAck
   let starts = 0
@@ -31,7 +32,7 @@ function fixture({ guarded = true } = {}) {
     return track
   }
   const localParticipant = {
-    async setScreenShareEnabled() { createTrack(videoSource); createTrack(audioSource) },
+    async setScreenShareEnabled() { await picker; createTrack(videoSource); createTrack(audioSource) },
     getTrackPublication(source) { return { track: tracks.get(source) } },
     async unpublishTrack(track) {
       unpublishes.push(track)
@@ -55,6 +56,7 @@ function fixture({ guarded = true } = {}) {
     get share() { return share },
     get starts() { return starts },
     set connected(value) { connected = value },
+    set picker(value) { picker = value },
     set startAck(value) { startAck = value },
     set stopAck(value) { stopAck = value },
   }
@@ -143,6 +145,21 @@ test('OS end while share.start is in flight stops the ID from the late acknowled
   await settle()
   assert.deepEqual(f.stops, [screen.id])
   assert.equal(f.share, null)
+})
+
+test('switching away from classroom mode releases capture from a late OS picker', async () => {
+  const f = fixture()
+  let chooseSource
+  f.picker = new Promise(resolve => { chooseSource = resolve })
+  const start = f.session.start('screen')
+  f.session.observeShare(null, false)
+  chooseSource()
+  await start
+  await settle()
+  assert.equal(f.starts, 0)
+  assert.equal(f.tracks.size, 0)
+  assert.deepEqual(f.stops, [])
+  assert.ok(f.unpublishes.every(track => track.mediaStreamTrack.readyState === 'ended'))
 })
 
 test('legacy server receives an explicit stop but never a replayed automatic stop', async () => {

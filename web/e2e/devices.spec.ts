@@ -2,7 +2,7 @@ import { test, expect, type WebSocketRoute } from '@playwright/test'
 import { PDFDocument } from 'pdf-lib'
 import { login, createLesson } from './helpers'
 
-test('screen sharing transfers real frames, replacement stops capture, and voluntary leave is distinct from removal', async ({ browser, baseURL }) => {
+test('screen sharing transfers real frames and mode changes stop only a confirmed capture', async ({ browser, baseURL }, info) => {
   test.setTimeout(210000)
   const teacherContext = await browser.newContext({ baseURL, ignoreHTTPSErrors: true, permissions: ['camera', 'microphone'] })
   const studentContext = await browser.newContext({ baseURL, ignoreHTTPSErrors: true, permissions: ['camera', 'microphone'] })
@@ -63,11 +63,28 @@ test('screen sharing transfers real frames, replacement stops capture, and volun
     lesson = await createLesson(teacherContext.request, 1)
     await login(student, lesson.students[0].username)
     await teacher.goto(`/lessons/${lesson.id}/prejoin`)
-    await teacher.getByRole('button', { name: '수업 시작하기', exact: true }).click()
+    await teacher.getByRole('button', { name: '화상미팅 입장', exact: true }).click()
     await expect(teacher.locator('.call-connected')).toHaveText('연결됨')
     await student.goto(`/lessons/${lesson.id}/prejoin`)
     await student.getByRole('button', { name: '지금 참여하기', exact: true }).click()
     await expect(student.locator('.call-connected')).toHaveText('연결됨')
+    const start = teacher.getByRole('button', { name: '수업 시작', exact: true })
+    const classroom = teacher.getByRole('button', { name: '수업방 모드', exact: true })
+    const mirroring = teacher.getByRole('button', { name: '미러링 모드', exact: true })
+    await expect(teacher.locator('.call-controls').getByRole('button', { name: '화면 공유', exact: true })).toHaveCount(0)
+    await expect(teacher.locator('.call-controls').getByRole('button', { name: '수업 자료', exact: true })).toHaveCount(0)
+    await expect(teacher.locator('.meeting-timer')).toHaveCount(0)
+    await expect(student.getByRole('button', { name: /^(수업 시작|수업방 모드|미러링 모드)$/ })).toHaveCount(0)
+    await start.click()
+    await expect(classroom).toHaveAttribute('aria-pressed', 'true')
+    await expect(teacher.locator('.meeting-timer')).toBeVisible()
+    await expect(student.getByRole('button', { name: /^(수업 시작|수업방 모드|미러링 모드)$/ })).toHaveCount(0)
+    for (const [size, viewport] of Object.entries({ phone: { width: 390, height: 844 }, tablet: { width: 1024, height: 820 } })) {
+      for (const [role, page] of [['teacher', teacher], ['student', student]] as const) {
+        await page.setViewportSize(viewport)
+        await page.screenshot({ path: info.outputPath(`lesson-modes-${role}-${size}.png`), animations: 'disabled' })
+      }
+    }
     await startScreenShare()
     const mute = teacher.getByRole('button', { name: '마이크 끄기', exact: true })
     if (!(await mute.isVisible())) await teacher.getByRole('button', { name: '마이크 켜기', exact: true }).click()
@@ -123,6 +140,23 @@ test('screen sharing transfers real frames, replacement stops capture, and volun
     for (const page of [teacher, student]) await expect(page.getByTestId('shared-screen')).toHaveCount(0)
     await expect.poll(() => teacher.evaluate(() =>
       (window as unknown as { screenCaptures: MediaStreamTrack[] }).screenCaptures.every(track => track.readyState === 'ended'))).toBe(true)
+    await startScreenShare()
+    await mirroring.click()
+    const switchDialog = teacher.getByRole('dialog', { name: '수업 모드를 바꿀까요?' })
+    await switchDialog.getByRole('button', { name: '취소', exact: true }).click()
+    await expect(classroom).toHaveAttribute('aria-pressed', 'true')
+    await expect(student.getByTestId('shared-screen')).toBeVisible()
+    await mirroring.click()
+    await switchDialog.getByRole('button', { name: '종료하고 전환' }).click()
+    await expect(mirroring).toHaveAttribute('aria-pressed', 'true')
+    await expect(teacher.locator('.meeting-panel-container')).toContainText(lesson.students[0].name)
+    await expect(student.getByTestId('shared-screen')).toHaveCount(0)
+    await expect.poll(() => teacher.evaluate(() =>
+      (window as unknown as { screenCaptures: MediaStreamTrack[] }).screenCaptures.every(track => track.readyState === 'ended'))).toBe(true)
+    await teacher.reload()
+    await expect(mirroring).toHaveAttribute('aria-pressed', 'true')
+    await classroom.click()
+    await expect(classroom).toHaveAttribute('aria-pressed', 'true')
     await startScreenShare()
     await teacher.evaluate(() => {
       const tracks = (window as unknown as { screenCaptures: MediaStreamTrack[] }).screenCaptures

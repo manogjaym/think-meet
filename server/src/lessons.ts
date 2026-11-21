@@ -10,6 +10,11 @@ import type { PublicUser, Share, Command } from './types'
 import { AssistanceSessions, assistanceGeometrySchema, type AssistanceBinding, type AssistanceCommandContext } from './assistance'
 const ids = z.array(z.string().uuid()).min(1).max(100)
 const screenShareRecoveryMs = 30_000
+const lessonMode = z.enum(['classroom', 'mirroring'])
+const lessonModeChange = z.object({
+  mode: lessonMode, expectedMode: lessonMode,
+  expectedShareId: z.uuid().nullable(), expectedAssistanceId: z.uuid().nullable(),
+})
 export const lessonInput = z.object({
   title: z.string().trim().min(1, '학습 제목을 입력해 주세요.').max(200),
   description: z.string().trim().max(5000).default(''),
@@ -166,7 +171,7 @@ export class Lessons implements OnModuleInit, OnModuleDestroy {
     if (lesson.status === 'CANCELLED' || lesson.status === 'ENDED') throw new ApiError(lesson.status, lesson.status === 'ENDED' ? '이미 종료된 수업입니다.' : '취소된 수업입니다.', 409)
     return this.dto(lesson)
   }
-  async join(id: string, user: PublicUser) {
+  async join(id: string, user: PublicUser, supportsLessonModes = false) {
     return this.locked(id, async () => {
       let lesson = await this.access(id, user)
       if (lesson.status === 'ENDED' || lesson.status === 'CANCELLED') throw new ApiError(lesson.status, '이미 종료되거나 취소된 수업입니다.', 409)
@@ -181,7 +186,10 @@ export class Lessons implements OnModuleInit, OnModuleDestroy {
       const rooms = await this.livekit.listRooms([lesson.roomName])
       if (!rooms.length) await this.livekit.createRoom({ name: lesson.roomName, emptyTimeout: 600, departureTimeout: 60, maxParticipants: 101 })
       const admissionId = randomUUID()
-      await this.db.lessonMember.update({ where: { lessonId_userId: { lessonId: id, userId: user.id } }, data: { admissionId } })
+      const admit = this.db.lessonMember.update({ where: { lessonId_userId: { lessonId: id, userId: user.id } }, data: { admissionId } })
+      if (supportsLessonModes && user.id === lesson.teacherId && lesson.status === 'SCHEDULED' && lesson.instructionPhase == null) {
+        await this.db.$transaction([admit, this.db.lesson.update({ where: { id }, data: { instructionPhase: 'preparing' } })])
+      } else await admit
       const token = new AccessToken(process.env.LIVEKIT_API_KEY, process.env.LIVEKIT_API_SECRET, { identity: user.id, name: user.name, ttl: '2m', metadata: JSON.stringify({ admissionId, userId: user.id, role: user.id === lesson.teacherId ? 'teacher' : 'student' }) })
       token.addGrant({ roomJoin: true, room: lesson.roomName, canPublish: true, canSubscribe: true, canPublishData: false })
       return { waiting: false, lesson: await this.dto(lesson), token: await token.toJwt(), livekitUrl: process.env.LIVEKIT_PUBLIC_URL || `${process.env.PUBLIC_ORIGIN?.replace(/^http/, 'ws')}/livekit` }
@@ -297,6 +305,7 @@ export class Lessons implements OnModuleInit, OnModuleDestroy {
     const strokes = share ? await this.db.stroke.findMany({ where: { lessonId: id, shareId: share.id }, orderBy: { createdAt: 'asc' } }) : []
     return {
       lessonId: id, lesson: await this.dto(lesson), seq: lesson.seq, serverTime: new Date().toISOString(),
+      ...(lesson.instructionPhase && { instruction: { phase: lesson.instructionPhase, startedAt: lesson.instructionStartedAt?.toISOString() ?? null } }),
       participants: lesson.members.filter(member => !member.banned).map(member => ({ user: publicUser(users.find(user => user.id === member.userId)!), online: member.online, raised: member.raised })),
       messages: messages.reverse().map(({ lessonId, ...message }) => message), share, assistance: this.assistance.publicState(id),
       strokes: strokes.map(({ id, authorId, shareId, page, tool, color, points, deleted }) => ({ id, authorId, shareId, page, tool, color, points, deleted })),
@@ -314,18 +323,47 @@ export class Lessons implements OnModuleInit, OnModuleDestroy {
     return this.locked(command.lessonId, async () => {
       const { lessonId: id, type, payload: p = {} } = command
       const lesson = await this.access(id, user, type !== 'assistance.stop')
-      if (type.startsWith('assistance.')) return this.assistanceCommand(lesson, user, command, context)
       const share = lesson.share as Share | null
       const requireShare = () => { if (!share) throw new ApiError('NO_SHARE', '공유 중인 콘텐츠가 없습니다.', 409); return share }
       const teacher = () => { if (lesson.teacherId !== user.id) throw new ApiError('FORBIDDEN', '선생님만 조작할 수 있습니다.', 403) }
       const writeShare = async (next: Share | null) => this.db.lesson.update({ where: { id }, data: { share: next ? next as any : Prisma.DbNull } })
-      if (type === 'chat.send') {
+      if (type === 'lesson.start' || type === 'lesson.mode.set') {
+        teacher()
+        if (!lesson.members.some(member => member.userId === user.id && member.online && member.admissionId)) {
+          throw new ApiError('NOT_CONNECTED', '화상미팅에 연결한 후 다시 시도해 주세요.', 409)
+        }
+        const phase = lesson.instructionPhase
+        if (!phase) throw new ApiError('FEATURE_UNAVAILABLE', '이 화상미팅에서는 수업 모드를 사용할 수 없어요.', 409)
+        if (type === 'lesson.start') {
+          if (phase !== 'preparing') return this.snapshotUnlocked(id)
+          await this.db.lesson.update({ where: { id }, data: { instructionPhase: 'classroom', instructionStartedAt: new Date() } })
+        } else {
+          if (phase === 'preparing') throw new ApiError('LESSON_NOT_STARTED', '먼저 수업을 시작해 주세요.', 409)
+          const next = lessonModeChange.parse(p)
+          if (phase === next.mode) return this.snapshotUnlocked(id)
+          const assistance = this.assistance.current(id)
+          if (phase !== next.expectedMode || (share?.id ?? null) !== next.expectedShareId || (assistance?.id ?? null) !== next.expectedAssistanceId) {
+            throw new ApiError('LESSON_MODE_CHANGED', '공유 또는 요청 상태가 달라졌어요. 최신 상태를 확인한 뒤 다시 시도해 주세요.', 409)
+          }
+          await this.db.lesson.update({ where: { id }, data: { instructionPhase: next.mode, share: Prisma.DbNull } })
+          this.assistance.remove(id)
+        }
+      } else if (type.startsWith('assistance.')) {
+        if (type !== 'assistance.stop' && lesson.instructionPhase && lesson.instructionPhase !== 'mirroring') {
+          throw new ApiError('LESSON_MODE_REQUIRED', '미러링 모드에서 학생 화면 보기를 사용할 수 있어요.', 409)
+        }
+        return this.assistanceCommand(lesson, user, command, context)
+      } else if (type === 'chat.send') {
         const body = z.object({ text: z.string().trim().min(1).max(2000), clientId: z.string().min(1).max(100) }).parse(p)
         await this.db.message.upsert({ where: { lessonId_userId_clientId: { lessonId: id, userId: user.id, clientId: body.clientId } }, create: { lessonId: id, userId: user.id, userName: user.name, ...body }, update: {} })
       } else if (type === 'hand.set') {
         const { raised } = z.object({ raised: z.boolean() }).parse(p)
         await this.db.lessonMember.update({ where: { lessonId_userId: { lessonId: id, userId: user.id } }, data: { raised } })
       } else if (type === 'share.start') {
+        if (lesson.instructionPhase) {
+          teacher()
+          if (lesson.instructionPhase !== 'classroom') throw new ApiError('LESSON_MODE_REQUIRED', '수업방 모드에서 화면 또는 자료를 공유할 수 있어요.', 409)
+        }
         const body = z.object({ type: z.enum(['screen','media','document']), materialId: z.string().uuid().optional() }).parse(p)
         if (body.type === 'screen') {
           await writeShare({ id: randomUUID(), type: 'screen', ownerId: user.id, page: 1, playing: false, position: 0, updatedAt: new Date().toISOString() })
@@ -341,6 +379,7 @@ export class Lessons implements OnModuleInit, OnModuleDestroy {
       } else if (type === 'share.stop') {
         // An old capture can end after a different share has already taken its place.
         if (command.expectedShareId && share?.id !== command.expectedShareId) return this.snapshotUnlocked(id)
+        if (lesson.instructionPhase && !share) return this.snapshotUnlocked(id)
         if (share && share.ownerId !== user.id && user.id !== lesson.teacherId) throw new ApiError('FORBIDDEN', '자신의 화면 공유만 중지할 수 있습니다.', 403)
         await writeShare(null)
         this.assistance.remove(id)
@@ -446,7 +485,8 @@ export class Lessons implements OnModuleInit, OnModuleDestroy {
           let metadata: any = {}
           try { metadata = JSON.parse(participant?.metadata || '{}') } catch {}
           const member = lesson.members.find((entry: any) => entry.userId === user.id)
-          if (!participant || metadata.admissionId !== member?.admissionId || !participant.tracks.some(track => track.source === 3 && !track.muted)) throw new ApiError('SCREEN_NOT_PUBLISHED', '기기의 화면 공유를 시작한 후 다시 시도해 주세요.', 409)
+          const track = participant?.tracks.find(track => track.source === TrackSource.SCREEN_SHARE && !track.muted)
+          if (!track || metadata.admissionId !== member?.admissionId) throw new ApiError('SCREEN_NOT_PUBLISHED', '기기의 화면 공유를 시작한 후 다시 시도해 주세요.', 409)
           if (this.assistance.current(id) !== current || !this.assistanceConnected(current)) throw new ApiError('STALE_ASSISTANCE', '화면 보기 요청이 종료되었어요. 새로 요청해 주세요.', 409)
           const share: Share = { id: randomUUID(), type: 'screen', ownerId: user.id, page: 1, playing: false, position: 0, updatedAt: new Date().toISOString(), assistanceId: current.id }
           await this.db.lesson.update({ where: { id }, data: { share: share as any } })
@@ -454,7 +494,7 @@ export class Lessons implements OnModuleInit, OnModuleDestroy {
             await this.db.lesson.update({ where: { id }, data: { share: Prisma.DbNull } })
             throw new ApiError('STALE_ASSISTANCE', '연결이 변경되어 화면 공유를 중지했어요.', 409)
           }
-          this.assistance.activate(current, share.id, geometry)
+          this.assistance.activate(current, share.id, geometry, track.sid)
         } else if (type === 'assistance.geometry') {
           const { geometry } = z.object({ geometry: assistanceGeometrySchema }).parse(p)
           this.assistance.geometry(current, geometry)
@@ -493,7 +533,11 @@ export class Lessons implements OnModuleInit, OnModuleDestroy {
         const current = await this.get(lesson.id)
         const share = current.share as Share | null
         // Regular shares can republish on reconnect. Approved assistance keeps its immediate cleanup.
-        if (share?.type === 'screen' && share.assistanceId && share.ownerId === event.participant.identity) await this.db.lesson.update({ where: { id: lesson.id }, data: { share: Prisma.DbNull } })
+        const assistance = this.assistance.current(lesson.id)
+        if (share?.type === 'screen' && share.assistanceId && share.ownerId === event.participant.identity &&
+            assistance?.id === share.assistanceId && assistance.trackSid === event.track.sid) {
+          await this.db.lesson.update({ where: { id: lesson.id }, data: { share: Prisma.DbNull } })
+        }
       }
       await this.broadcast(lesson.id)
     })

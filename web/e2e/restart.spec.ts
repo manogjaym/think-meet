@@ -23,8 +23,9 @@ test.describe("Docker restart acceptance", () => {
       const lesson = await createLesson(page.request, 1)
       lessonId = lesson.id
       await page.goto(`/lessons/${lessonId}/prejoin`)
-      await page.getByRole("button", { name: "수업 시작하기", exact: true }).click()
+      await page.getByRole("button", { name: "화상미팅 입장", exact: true }).click()
       await expect(page.locator(".call-connected")).toHaveText("연결됨")
+      await page.getByRole("button", { name: "수업 시작", exact: true }).click()
       const meetingUrl = page.url()
 
       const pdf = await PDFDocument.create()

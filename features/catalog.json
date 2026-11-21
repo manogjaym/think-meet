@@ -239,6 +239,55 @@
           ]
         }
       }
+    },
+    {
+      "id": "classroom.lesson-modes",
+      "title": "화상미팅 수업 시작과 모드 전환",
+      "stage": "in-progress",
+      "requiresRevision": 10,
+      "defaultEnabled": true,
+      "platforms": [
+        "web",
+        "android",
+        "ios"
+      ],
+      "spec": "classroom-lesson-modes.md",
+      "contracts": {
+        "operations": [],
+        "events": [],
+        "commands": [
+          "lesson.start",
+          "lesson.mode.set"
+        ]
+      },
+      "implementation": {
+        "server": {
+          "status": "done",
+          "files": [
+            "server/src/lessons.ts",
+            "server/src/gateway.ts"
+          ]
+        },
+        "web": {
+          "status": "done",
+          "files": [
+            "web/src/screens/Meeting.tsx",
+            "web/src/screens/Join.tsx"
+          ]
+        },
+        "android": {
+          "status": "done",
+          "files": [
+            "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/meeting/MeetingScreen.kt"
+          ]
+        },
+        "ios": {
+          "status": "done",
+          "files": [
+            "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/meeting/MeetingScreen.kt"
+          ]
+        }
+      }
     }
   ]
 }

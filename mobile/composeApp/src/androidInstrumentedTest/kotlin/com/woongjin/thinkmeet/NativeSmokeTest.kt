@@ -67,10 +67,14 @@ class NativeSmokeTest {
         waitFor("lesson prejoin") { exists(hasText("입장 전 준비해 볼까요?")) }
         screenshot("02-prejoin")
 
-        val join = hasText("수업 시작하기") or hasText("수업 참여하기")
+        val join = hasText("화상미팅 입장") or hasText("수업 시작하기") or hasText("수업 참여하기")
         compose.onNode(join).performScrollTo().performClick()
         waitFor("native LiveKit and authenticated Socket.IO connection") { exists(hasText("실시간 수업", substring = false)) }
         compose.onNodeWithText("실시간 수업").assertIsDisplayed()
+        if (exists(hasText("수업 시작", substring = false))) {
+            compose.onNodeWithText("수업 시작").performClick()
+            waitFor("classroom mode") { exists(hasText("수업방 모드")) }
+        }
         screenshot("03-native-meeting")
 
         if (arguments.getString("mediaOnly") == "true") {

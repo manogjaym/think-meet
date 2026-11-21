@@ -162,9 +162,17 @@ data class ChatMessage(
 )
 
 @Serializable
+data class LessonInstruction(
+    val phase: String,
+    val startedAt: String?,
+)
+
+@Serializable
 data class MeetingSnapshot(
     val lessonId: String,
     val lesson: Lesson,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val instruction: LessonInstruction? = null,
     val participants: List<MeetingParticipant> = emptyList(),
     val messages: List<ChatMessage> = emptyList(),
     val share: Share? = null,
@@ -247,6 +255,14 @@ data class ChatSendPayload(
 @Serializable
 data class HandSetPayload(
     val raised: Boolean,
+)
+
+@Serializable
+data class LessonModeSetPayload(
+    val mode: String,
+    val expectedMode: String,
+    val expectedShareId: String?,
+    val expectedAssistanceId: String?,
 )
 
 @Serializable

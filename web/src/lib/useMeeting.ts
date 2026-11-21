@@ -48,14 +48,15 @@ export function useMeeting({ lesson, user, initialDevices, admission, onEnded, o
     if (value.lessonId !== lesson.id || !mounted.current) return
     if (snapshotRef.current && value.seq < snapshotRef.current.seq) return
     snapshotRef.current = value
-    screenRef.current?.observeShare(value.share)
+    screenRef.current?.observeShare(value.share, !value.instruction ||
+      (value.instruction.phase === "classroom" && value.lesson.teacher.id === user.id))
     setRemotePointer(current => current && matchesAssistancePointer(current, value) ? current : null)
     setSnapshot(value)
     setPreviews({})
     setServerOffset(Date.parse(value.serverTime) - Date.now())
     if (value.lesson.status === "ENDED") finish("ended")
     else if (value.lesson.status === "CANCELLED") finish("cancelled")
-  }, [lesson.id, finish])
+  }, [lesson.id, user.id, finish])
   const command = useCallback<Command>(async (type, payload = {}, expectedShareId) => {
     const socket = socketRef.current
     if (!socket?.connected) throw new Error("수업 연결을 복구하고 있어요. 연결 후 다시 시도해 주세요.")
@@ -73,10 +74,11 @@ export function useMeeting({ lesson, user, initialDevices, admission, onEnded, o
     socketRef.current = socket
     const subscribe = () => {
       if (cancelled || !socket.connected) return
-      setAppConnected(true)
       void requestSocket<Ack>(socket, Events.Subscribe, { lessonId: lesson.id }).then(ack => {
         if (cancelled) return
-        if (ack?.ok) { accept(ack.snapshot); screen?.controlReconnected() }
+        if (ack?.ok) {
+          if (socket.connected) { accept(ack.snapshot); setAppConnected(true); screen?.controlReconnected() }
+        }
         else if (ack?.error) { if (["KICKED", "NOT_INVITED", "ACCOUNT", "ENDED", "CANCELLED"].includes(ack.error.code)) finish(ack.error.code.toLowerCase()); else setError(ack.error.message) }
       }).catch(error => { if (!cancelled) setError(friendlyError(error)) })
     }

@@ -42,6 +42,7 @@ object DesignContent {
     const val MeetingPeopleControl = "참가자"
     const val MeetingChatPanel = "수업 채팅"
     const val MeetingPeoplePanel = "참석자"
+    const val PipRestoreFullscreen = "전체 화면으로 돌아가기"
     const val TextbookPicker = "교재 불러오기"
     const val TextbookTab = "교재"
     const val TextbookSelect = "PDF 교재 선택"

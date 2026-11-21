@@ -42,6 +42,7 @@
     "meetingPeopleControl": "참가자",
     "meetingChatPanel": "수업 채팅",
     "meetingPeoplePanel": "참석자",
+    "pipRestoreFullscreen": "전체 화면으로 돌아가기",
     "textbookPicker": "교재 불러오기",
     "textbookTab": "교재",
     "textbookSelect": "PDF 교재 선택",
@@ -242,6 +243,9 @@
         "grid": "표시 인원 × 폭 / 사용 가능 높이의 제곱근을 반올림하되 기존 열·행 수용 범위를 지킵니다.",
         "speaker": "폭이 사용 가능 높이 이하면 상하, 더 넓으면 좌우로 배치합니다.",
         "resize": "웹·Android·iOS에서 회전·창 크기·옆 패널 변경 시 다시 계산합니다."
+      },
+      "systemPip": {
+        "interaction": "작은 영상 창을 탭해 메뉴를 엽니다. Android는 전체 화면으로 돌아가기, iOS는 시스템 전체 화면 복귀 버튼으로 기존 수업에 돌아갑니다."
       },
       "textbookPicker": {
         "wide": ["shared-document", "participant-strip-above-textbook-panel"],

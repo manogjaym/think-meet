@@ -1,0 +1,20 @@
+{
+  "id": "mobile-pip-fullscreen",
+  "summary": "Android 시스템 PiP 메뉴에 전체 화면 복귀를 추가하고 iOS의 기본 복귀 버튼이 기존 수업 화면을 복원하도록 보완합니다.",
+  "scope": "platform-only",
+  "featureIds": ["meeting.pip"],
+  "platforms": {
+    "server": {"status": "not-applicable", "reason": "기존 수업 연결을 사용하는 OS 창 전환입니다."},
+    "web": {"status": "not-applicable", "reason": "Android·iOS의 네이티브 시스템 PiP 메뉴만 영향을 받습니다."},
+    "android": {"status": "implemented"},
+    "ios": {"status": "implemented"}
+  },
+  "verification": [
+    "2026-11-21 Asia/Seoul. 저장소 루트의 npm run shared:check -- --changed-files <이번 변경 파일 목록>과 git diff --check 통과.",
+    "mobile/에서 JDK 17·로컬 Android SDK로 ./gradlew --offline :composeApp:assembleDebug :composeApp:assembleDebugAndroidTest :composeApp:linkDebugFrameworkIosSimulatorArm64 통과.",
+    "Android API 35 에뮬레이터의 휴대폰 크기(1080×2400, 420dpi)에서 adb shell am instrument로 PictureInPictureSmokeTest 1개 통과. 새 복귀 버튼, 동일한 수업 연결·입장 기록·채팅 초안, Home 자동 PiP와 교사 본인만 퇴장하는 닫기 동작을 확인했습니다. 로그와 캡처는 mobile/artifacts/pip-fullscreen/phone/에 있습니다.",
+    "같은 계정과 수업으로 Android 태블릿 폭(1080×2400, 240dpi, 최소 폭 720dp)에서 같은 검사 1개 통과. 로그와 캡처는 mobile/artifacts/pip-fullscreen/tablet-width/에 있습니다. 검사 후 기존 해상도와 밀도(420dpi)를 확인했습니다.",
+    "mobile/에서 iOS Simulator arm64용 xcodebuild -project iosApp/ThinkMeet.xcodeproj -scheme ThinkMeet -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' ARCHS=arm64 SKIP_KOTLIN_BUILD=YES CODE_SIGNING_ALLOWED=NO KMP_FRAMEWORK_DIR=<위 Gradle 프레임워크 경로> build 통과. 로그는 mobile/artifacts/pip-fullscreen/ios-build.log에 있습니다.",
+    "기존 iPhone·iPad 시뮬레이터는 기기 데이터 디렉터리가 없어 부팅에 실패했습니다. 연결 가능한 iOS 실기기가 없어 PiP 복귀는 실행하지 못했습니다. Android 실물 태블릿과 원격 CI는 실행하지 않았습니다."
+  ]
+}

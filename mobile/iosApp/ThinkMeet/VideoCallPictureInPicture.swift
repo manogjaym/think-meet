@@ -33,7 +33,7 @@ final class VideoCallPictureInPicture: NSObject, @MainActor AVPictureInPictureCo
         super.init()
         NotificationCenter.default.addObserver(self, selector: #selector(prepareForBackground), name: UIApplication.willResignActiveNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(didEnterBackground), name: UIApplication.didEnterBackgroundNotification, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(willEnterForeground), name: UIApplication.willEnterForegroundNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(didBecomeActive), name: UIApplication.didBecomeActiveNotification, object: nil)
         publish(active: false, transitioning: false)
     }
 
@@ -47,13 +47,13 @@ final class VideoCallPictureInPicture: NSObject, @MainActor AVPictureInPictureCo
 
     @objc private func didEnterBackground() { appWasBackgrounded = true }
 
-    @objc private func willEnterForeground() {
+    @objc private func didBecomeActive() {
         guard appWasBackgrounded else { return }
         appWasBackgrounded = false
         guard enabled, controller?.isPictureInPictureActive == true || presentationStarted || requestedStart else { return }
         // Opening the app icon/App Switcher is restoration even when AVKit omits its restore delegate.
         returnedFromBackground = true
-        restoring = true
+        guard !restoring else { return }
         programmaticStop = true
         controller?.stopPictureInPicture()
     }
@@ -271,11 +271,15 @@ final class VideoCallPictureInPicture: NSObject, @MainActor AVPictureInPictureCo
 
     func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController,
                                    restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler: @escaping (Bool) -> Void) {
+        guard enabled, !state.closedByUser, let source = sourceView(), let window = source.window else {
+            completionHandler(false)
+            return
+        }
         restoring = true
-        let source = sourceView()
-        source?.window?.rootViewController?.view.layoutIfNeeded()
-        publish(active: state.active, transitioning: true, closedByUser: false)
+        window.layoutIfNeeded()
+        source.layoutIfNeeded()
+        publish(active: state.active, transitioning: true)
         // The common Meeting route and room remain alive; AVKit foregrounds the existing scene.
-        completionHandler(source != nil && enabled)
+        completionHandler(true)
     }
 }

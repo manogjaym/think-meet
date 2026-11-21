@@ -16,7 +16,9 @@ import androidx.test.uiautomator.BySelector
 import androidx.test.uiautomator.Configurator
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.UiObject2
+import com.woongjin.thinkmeet.data.Attendance
 import com.woongjin.thinkmeet.data.ThinkMeetApi
+import com.woongjin.thinkmeet.design.generated.DesignContent
 import com.woongjin.thinkmeet.platform.AppLinks
 import com.woongjin.thinkmeet.platform.createHttpClient
 import kotlinx.coroutines.Dispatchers
@@ -54,26 +56,34 @@ class PictureInPictureSmokeTest {
         val client = createHttpClient()
         val api = ThinkMeetApi(client, ServerConfig.ORIGIN)
         try {
+            val dashboard = By.text(DesignContent.HomeTitle)
             eventually("login screen or dashboard", 90_000) {
-                visible(By.text("오늘도 함께 배우는 시간")) != null || device.findObjects(By.clazz("android.widget.EditText")).size >= 2
+                visible(dashboard) != null || device.findObjects(By.clazz("android.widget.EditText")).size >= 2
             }
-            if (visible(By.text("오늘도 함께 배우는 시간")) == null) {
+            if (visible(dashboard) == null) {
                 val fields = device.findObjects(By.clazz("android.widget.EditText"))
                 fields[0].text = args.getString("username") ?: "teacher1"
                 fields[1].text = args.getString("password") ?: "test123"
                 clickPageText("로그인")
             }
-            eventually("authenticated dashboard", 90_000) { visible(By.text("오늘도 함께 배우는 시간")) != null }
+            eventually("authenticated dashboard", 90_000) { visible(dashboard) != null }
+            val self = runBlocking { api.me() }.id
+            val lesson = runBlocking { api.lesson(id) }
+            assertEquals("Sign in as the test lesson owner", lesson.teacher.id, self)
+            val meetingTitle = By.text(lesson.title)
             scenario.onActivity { AppLinks.receive("thinkmeet://join/$code") }
             eventually("lesson prejoin", 90_000) { visible(By.text("입장 전 장치 점검")) != null || visible(By.text("입장 준비")) != null }
             clickPageText("화상미팅 입장", "수업 시작하기", "수업 참여하기", "지금 참여하기")
             eventually("native room and companion video", 90_000) {
-                visible(By.text("실시간 수업")) != null && visible(By.text("김민준")) != null
+                visible(meetingTitle) != null && visible(By.text("김민준")) != null
+            }
+            // Video can render before the server records this connection's attendance.
+            var admission = emptyList<Attendance>()
+            eventually("active attendance for the joined meeting") {
+                admission = runBlocking { api.lesson(id) }.attendance.filter { it.userId == self }
+                admission.any { it.leftAt == null }
             }
             instrumentation.sendStatus(0, Bundle().apply { putString("stage", "joined-real-room") })
-            val self = runBlocking { api.me() }.id
-            val admission = runBlocking { api.lesson(id) }.attendance.filter { it.userId == self }
-            assertTrue("A real admission must exist", admission.isNotEmpty())
 
             screenshot("01-native-meeting")
 
@@ -83,30 +93,34 @@ class PictureInPictureSmokeTest {
             checkNotNull(visible(By.clazz("android.widget.EditText"))).text = "PiP 복귀 후 유지할 초안"
             clickDescription("패널 닫기")
             // Start through the platform controller to keep OS lifecycle checks independent of toolbar scrolling.
-            runBlocking(Dispatchers.Main) { checkNotNull(activity.pictureInPictureController).enter() }
+            val pip = runBlocking(Dispatchers.Main) { checkNotNull(activity.pictureInPictureController).also { it.enter() } }
             awaitCompactPip()
             screenshot("02-system-pip")
             assertEquals("PiP must not issue another admission", admission, runBlocking { api.lesson(id) }.attendance.filter { it.userId == self })
 
-            clickSystemControl("expand_button")
+            showPipControls()
+            screenshot("03-restore-action")
+            clickPipControl(By.desc(DesignContent.PipRestoreFullscreen))
             eventually("return from PiP") { !inPip() }
-            eventually("restored meeting controls", 90_000) { visible(By.text("실시간 수업")) != null && visible(By.desc("수업에서 나가기")) != null }
+            eventually("restored meeting controls") { visible(meetingTitle) != null && visible(By.desc("수업 종료")) != null }
+            scenario.onActivity { assertSame(pip, it.pictureInPictureController) }
             clickDescription("채팅")
             eventually("retained chat draft") { visible(By.text("PiP 복귀 후 유지할 초안")) != null }
-            screenshot("03-restored-with-draft")
+            screenshot("04-restored-with-draft")
 
             // Home must work while a separate modal-sheet window is open as well.
             device.pressHome()
             awaitCompactPip()
-            screenshot("04-home-auto-pip")
+            screenshot("05-home-auto-pip")
             assertEquals(admission, runBlocking { api.lesson(id) }.attendance.filter { it.userId == self })
-            clickSystemControl("dismiss")
+            showPipControls()
+            clickPipControl(By.res("com.android.systemui", "dismiss"))
             eventually("system PiP dismissed") { !inPip() }
             eventually("owner personally disconnected", 90_000) {
                 runBlocking { api.snapshot(id) }.participants.none { it.user.id == self && it.online }
             }
             assertEquals("Closing teacher PiP must not end the lesson", "LIVE", runBlocking { api.lesson(id) }.status)
-            screenshot("05-dismissed-owner-only")
+            screenshot("06-dismissed-owner-only")
         } catch (error: Throwable) {
             runCatching { screenshot("99-pip-failure") }
             runCatching { device.dumpWindowHierarchy(File(output, "99-window.xml")) }
@@ -124,7 +138,8 @@ class PictureInPictureSmokeTest {
 
     private fun clickDescription(description: String) {
         eventually("control $description") {
-            visible(By.desc(description))?.let { it.click(); true } ?: false
+            val control = visible(By.desc(description)) ?: visible(By.descStartsWith("$description, "))
+            control?.let { it.click(); true } ?: false
         }
     }
 
@@ -166,22 +181,26 @@ class PictureInPictureSmokeTest {
             val bounds = pipBounds()
             if (bounds.isEmpty || bounds.width() >= device.displayWidth * .8f || bounds.height() >= device.displayHeight * .8f) return@eventually false
             // Hidden retained Compose nodes may still exist; only visible OS accessibility bounds count.
-            device.findObjects(By.desc("수업에서 나가기")).none { node ->
+            device.findObjects(By.desc("수업 종료")).none { node ->
                 val header = node.visibleBounds
                 !header.isEmpty && Rect.intersects(header, bounds)
             }
         }
     }
 
-    private fun clickSystemControl(id: String) {
-        eventually("AOSP PiP control $id") {
-            val button = visible(By.res("com.android.systemui", id))
-            if (button != null) { button.click(); true }
-            else {
-                val bounds = pipBounds()
-                if (!bounds.isEmpty) device.click(bounds.centerX(), bounds.centerY())
-                false
-            }
+    private fun showPipControls() {
+        val dismiss = By.res("com.android.systemui", "dismiss")
+        if (visible(dismiss) == null) {
+            val bounds = pipBounds()
+            assertTrue("The PiP window must be visible", !bounds.isEmpty)
+            device.click(bounds.centerX(), bounds.centerY())
+            eventually("AOSP PiP menu", 5_000) { visible(dismiss) != null }
+        }
+    }
+
+    private fun clickPipControl(selector: BySelector) {
+        eventually("AOSP PiP control $selector", 5_000) {
+            visible(selector)?.let { it.click(); true } ?: false
         }
     }
 

@@ -2,11 +2,16 @@ package com.woongjin.thinkmeet.platform
 
 import android.app.AppOpsManager
 import android.app.KeyguardManager
+import android.app.PendingIntent
 import android.app.PictureInPictureParams
+import android.app.RemoteAction
+import android.content.ComponentName
 import android.content.Context
 import android.content.ContextWrapper
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Rect
+import android.graphics.drawable.Icon
 import android.os.Build
 import android.os.Process
 import android.os.PowerManager
@@ -17,6 +22,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import com.woongjin.thinkmeet.MainActivity
+import com.woongjin.thinkmeet.R
+import com.woongjin.thinkmeet.design.generated.DesignContent
 import io.livekit.android.room.Room
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -44,6 +51,15 @@ internal class AndroidPictureInPictureController(
     private var lastParameters: ParametersKey? = null
     private var fullscreenSourceTarget: Pair<String, Boolean>? = null
     private var fullscreenSourceBounds: Rect? = null
+    private val restoreAction by lazy {
+        activity?.let { host ->
+            // MainActivity is singleTask, so the launcher intent brings the same call forward.
+            val intent = Intent.makeMainActivity(ComponentName(host, MainActivity::class.java))
+            val pendingIntent = PendingIntent.getActivity(host, 0, intent, PendingIntent.FLAG_IMMUTABLE)
+            val label = DesignContent.PipRestoreFullscreen
+            RemoteAction(Icon.createWithResource(host, R.drawable.ic_pip_fullscreen), label, label, pendingIntent)
+        }
+    }
 
     init { activity?.attachPictureInPictureController(this) }
 
@@ -164,6 +180,7 @@ internal class AndroidPictureInPictureController(
     private fun parameters(automatic: Boolean, source: Rect?): PictureInPictureParams {
         return PictureInPictureParams.Builder().apply {
             setAspectRatio(aspectRatio())
+            setActions(listOfNotNull(restoreAction.takeIf { target != null }))
             if (source != null && !source.isEmpty) setSourceRectHint(source)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 setAutoEnterEnabled(automatic)

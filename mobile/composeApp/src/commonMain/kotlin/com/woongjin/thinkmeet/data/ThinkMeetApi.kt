@@ -22,6 +22,7 @@ import io.ktor.http.URLProtocol
 import io.ktor.http.contentType
 import io.ktor.http.encodedPath
 import io.ktor.http.encodeURLPathPart
+import io.ktor.http.encodeURLQueryComponent
 import io.ktor.utils.io.ByteReadChannel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -153,6 +154,13 @@ class ThinkMeetApi(internal val client: HttpClient, origin: String) {
     suspend fun logout() { operationResponse("authLogout") }
     suspend fun lessons(): List<Lesson> = json("listLessons")
     suspend fun students(): List<User> = json("listStudents")
+    suspend fun studentAttendance(studentId: String, month: String): StudentAttendanceMonth {
+        val path = apiPath("listStudentAttendance", mapOf("studentId" to studentId))
+        return ThinkMeetJson.decodeFromString(response("$path?month=${month.encodeURLQueryComponent()}").bodyAsText())
+    }
+    suspend fun saveStudentAttendance(studentId: String, lessonId: String, input: StudentAttendanceInput): StudentAttendanceMonth = json(
+        "saveStudentAttendance", mapOf("studentId" to studentId, "lessonId" to lessonId), ThinkMeetJson.encodeToString(input),
+    )
     suspend fun subjects(): List<TeacherSubject> = json("listTeacherSubjects")
     suspend fun lesson(id: String): Lesson = json("getLesson", mapOf("id" to id))
     suspend fun resolve(code: String): Lesson = json("resolveLesson", mapOf("code" to code.trim()))

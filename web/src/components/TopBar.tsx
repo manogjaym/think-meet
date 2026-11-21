@@ -11,6 +11,7 @@ export function TopBar({
   onLogout,
   screen,
   setScreen,
+  attendanceEnabled = false,
   isEditing = false,
   prejoinEnabled = false,
   onBack,
@@ -21,6 +22,7 @@ export function TopBar({
   onLogout: () => Promise<void>
   screen: Screen
   isEditing?: boolean
+  attendanceEnabled?: boolean
   prejoinEnabled?: boolean
   onBack?: () => void
   backLabel?: string
@@ -44,7 +46,7 @@ export function TopBar({
     }
   }, [])
   if (screen === "meeting") return null
-  const isRoot = screen === "home" || (screen === "form" && !isEditing)
+  const isRoot = screen === "home" || (screen === "form" && !isEditing) || (screen === "students" && attendanceEnabled)
   if (!isRoot) {
     const canGoBack =
       screen === "detail" ||
@@ -52,6 +54,8 @@ export function TopBar({
       (screen === "form" && isEditing)
     const titles: Partial<Record<Screen, string>> = {
       detail: "수업 상세",
+      students: designContent.attendanceStudents,
+      attendance: designContent.attendanceTitle,
       prejoin: prejoinEnabled ? designContent.prejoinTitle : "입장 준비",
       form: "수업 일정 수정",
       waiting: "입장 대기",
@@ -120,6 +124,13 @@ export function TopBar({
               <Icon name="plus" size={22} />
             </span>
             <span>{designContent.rootBookingTab}</span>
+          </button>
+        )}
+        {role === "teacher" && attendanceEnabled && (
+          <button className={screen === "students" ? "active" : ""}
+            onClick={() => setScreen("students")} aria-current={screen === "students" ? "page" : undefined}>
+            <span className="root-tab-icon"><Icon name="users" size={22} /></span>
+            <span>{designContent.attendanceStudents}</span>
           </button>
         )}
       </nav>

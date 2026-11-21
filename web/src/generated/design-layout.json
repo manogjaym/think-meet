@@ -1,4 +1,6 @@
 {
+  "attendanceDialogWidth": 480,
+  "attendanceMaxWidth": 1000,
   "dashboardCompact": 680,
   "dashboardFeatureWide": 800,
   "dashboardIntermediate": 1050,

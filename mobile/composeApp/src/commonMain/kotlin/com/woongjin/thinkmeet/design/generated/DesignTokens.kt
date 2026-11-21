@@ -8,6 +8,7 @@ import androidx.compose.ui.unit.sp
 /** Canonical web design values, identical on Android and iOS. */
 object DesignTokens {
     object Colors {
+        val AttendanceCanvas = Color(0xFFF5F3FB)
         val AvatarBackground = Color(0xFF46506D)
         val AvatarBlue = Color(0xFF4D698E)
         val AvatarClay = Color(0xFF9D7771)
@@ -102,6 +103,7 @@ object DesignTokens {
         val TextSecondary = Color(0xFF273951)
         val TileBackground = Color(0xFF1D2B40)
         val WarningSurface = Color(0xFFFFF4D8)
+        val WarningText = Color(0xFFA44705)
         val White = Color(0xFFFFFFFF)
     }
 
@@ -234,6 +236,8 @@ object DesignTokens {
     }
 
     object Layout {
+        val AttendanceDialogWidth = 480.dp
+        val AttendanceMaxWidth = 1000.dp
         val DashboardCompact = 680.dp
         val DashboardFeatureWide = 800.dp
         val DashboardIntermediate = 1050.dp

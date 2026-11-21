@@ -41,8 +41,11 @@ fun App() {
         val scope = rememberCoroutineScope()
         val controller = remember(api) { AppState(api, scope) }
         val state = controller.state.collectAsState().value
-        val prejoinEnabled = api.capabilities.collectAsState().value.supports("classroom.prejoin")
+        val capabilities = api.capabilities.collectAsState().value
+        val prejoinEnabled = capabilities.supports("classroom.prejoin")
         val user = state.user
+        val attendanceEnabled = user?.isTeacher == true && capabilities.supports("classroom.attendance")
+        val openStudents = (controller::attendanceStudents).takeIf { attendanceEnabled }
         val route = state.route
         val inMeeting = route is Route.Meeting
         val pendingLink = AppLinks.code.collectAsState().value
@@ -59,7 +62,11 @@ fun App() {
             if (state.error != null && user != null) snackbar.showSnackbar(state.error, actionLabel = "닫기", withDismissAction = true)
         }
         BackHandler(user != null && route != Route.Home && !inMeeting) {
-            if (route is Route.Prejoin || route is Route.Edit) controller.detail() else controller.home()
+            when {
+                route is Route.Prejoin || route is Route.Edit -> controller.detail()
+                route is Route.Attendance && openStudents != null -> openStudents()
+                else -> controller.home()
+            }
         }
         Surface(Modifier.fillMaxSize(), color = Canvas) {
             when {
@@ -75,16 +82,23 @@ fun App() {
                 else -> BoxWithConstraints(Modifier.fillMaxSize()) {
                     val mobile = maxWidth <= LayoutToken.RootNavigationMobile
                     val compact = maxWidth <= LayoutToken.RootHeaderCompact
-                    val rootRoute = route == Route.Home || route == Route.Create
+                    val rootRoute = route == Route.Home || route == Route.Create || (route == Route.Students && attendanceEnabled)
                     val rootTabs = rootRoute && mobile && user.isTeacher
                     Scaffold(containerColor = Canvas, contentWindowInsets = WindowInsets(0, 0, 0, 0),
                         snackbarHost = { SnackbarHost(snackbar) },
-                        topBar = { AppHeader(state, mobile, compact, maxWidth, controller::home, controller::form, controller::logout, controller::detail, prejoinEnabled) },
-                        bottomBar = { if (rootTabs) RootNavigation(route, true, controller::home, controller::form) },
+                        topBar = {
+                            if (route is Route.Attendance && openStudents != null) AttendanceHeader(route.student.name, mobile, openStudents)
+                            else AppHeader(state, mobile, compact, maxWidth, controller::home, controller::form, controller::logout, controller::detail, openStudents, prejoinEnabled)
+                        },
+                        bottomBar = { if (rootTabs) RootNavigation(route, true, controller::home, controller::form, openStudents) },
                     ) { padding ->
                         Box(Modifier.fillMaxSize().padding(padding).then(if (rootTabs) Modifier else Modifier.navigationBarsPadding())) {
                             when (route) {
                                 Route.Home -> savedScreens.SaveableStateProvider("home:${user.id}") { HomeScreen(state, controller) }
+                                Route.Students -> if (attendanceEnabled) key(user.id) { AttendanceStudentsScreen(api, controller::studentAttendance) }
+                                    else PageColumn { ErrorCard(DesignContent.AttendanceUnavailable) }
+                                is Route.Attendance -> if (attendanceEnabled) key(user.id, route.student.id) { StudentAttendanceScreen(api, route.student.id) }
+                                    else PageColumn { ErrorCard(DesignContent.AttendanceUnavailable) }
                                 Route.Create -> LessonForm(state, controller, existing = null)
                                 is Route.Edit -> LessonForm(state, controller, existing = route.lesson)
                                 is Route.Detail -> LessonDetail(route.lesson, state, controller, api.origin)
@@ -114,11 +128,11 @@ fun BrandMark(compact: Boolean = false) {
 
 @Composable
 private fun AppHeader(state: AppUiState, mobile: Boolean, compact: Boolean, width: androidx.compose.ui.unit.Dp,
-    home: () -> Unit, form: () -> Unit, logout: () -> Unit, detail: () -> Unit,
+    home: () -> Unit, form: () -> Unit, logout: () -> Unit, detail: () -> Unit, students: (() -> Unit)?,
     prejoinEnabled: Boolean,
 ) {
     val route = state.route
-    val rootRoute = route == Route.Home || route == Route.Create
+    val rootRoute = route == Route.Home || route == Route.Create || (route == Route.Students && students != null)
     val height = if (if (rootRoute) compact else mobile) LayoutToken.RootHeaderCompactHeight else LayoutToken.RootHeaderHeight
     Surface(color = Palette.White) {
         Column(Modifier.statusBarsPadding()) {
@@ -136,7 +150,7 @@ private fun AppHeader(state: AppUiState, mobile: Boolean, compact: Boolean, widt
                     if (!mobile) {
                         val gap = when { width <= LayoutToken.DashboardFeatureWide -> 24.dp; width <= LayoutToken.DashboardIntermediate -> 32.dp; else -> 48.dp }
                         Spacer(Modifier.width(gap))
-                        RootNavigation(route, false, home, form, state.user!!.isTeacher)
+                        RootNavigation(route, false, home, form, students, state.user!!.isTeacher)
                     }
                     Spacer(Modifier.weight(1f))
                     AccountMenu(state, width <= LayoutToken.HeaderProfileCompact, logout)
@@ -145,6 +159,8 @@ private fun AppHeader(state: AppUiState, mobile: Boolean, compact: Boolean, widt
                 val backToDetail = route is Route.Prejoin || route is Route.Edit
                 val canBack = backToDetail || route is Route.Detail
                 val title = when (route) {
+                    Route.Students -> DesignContent.AttendanceStudents
+                    is Route.Attendance -> DesignContent.AttendanceTitle
                     is Route.Detail -> "수업 상세"
                     is Route.Prejoin -> if (prejoinEnabled) DesignContent.PrejoinTitle else "입장 준비"
                     is Route.Edit -> "수업 일정 수정"
@@ -165,10 +181,16 @@ private fun AppHeader(state: AppUiState, mobile: Boolean, compact: Boolean, widt
 }
 
 @Composable
-private fun RootNavigation(route: Route, mobile: Boolean, home: () -> Unit, form: () -> Unit, teacher: Boolean = true) {
+private fun RootNavigation(route: Route, mobile: Boolean, home: () -> Unit, form: () -> Unit, students: (() -> Unit)?, teacher: Boolean = true) {
     val tabs: @Composable RowScope.() -> Unit = {
-        listOf(Triple(DesignContent.RootHomeTab, "calendar", home), Triple(DesignContent.RootBookingTab, "plus", form)).take(if (teacher) 2 else 1).forEachIndexed { index, (label, icon, action) ->
-            val selected = if (index == 0) route == Route.Home else route == Route.Create
+        val destinations = buildList {
+            add(Triple(DesignContent.RootHomeTab, "calendar", home) to Route.Home)
+            if (teacher) add(Triple(DesignContent.RootBookingTab, "plus", form) to Route.Create)
+            if (students != null) add(Triple(DesignContent.AttendanceStudents, "users", students) to Route.Students)
+        }
+        destinations.forEach { (tab, destination) ->
+            val (label, icon, action) = tab
+            val selected = route == destination
             val color = if (selected) Brand else Muted
             if (mobile) Column(Modifier.weight(1f).fillMaxHeight().clickable(onClick = action).padding(vertical = 4.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                 DesignIcon(icon, Modifier.size(22.dp), color)

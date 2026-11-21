@@ -226,6 +226,130 @@
         "x-feature": "classroom.core"
       }
     },
+    "/students/{studentId}/attendance": {
+      "get": {
+        "operationId": "listStudentAttendance",
+        "tags": [
+          "students"
+        ],
+        "description": "담당 학생의 월별 출결",
+        "parameters": [
+          {
+            "name": "studentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "month",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[2-9]\\d{3}-(0[1-9]|1[0-2])$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudentAttendanceMonth"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "x-feature": "classroom.attendance"
+      }
+    },
+    "/students/{studentId}/attendance/{lessonId}": {
+      "put": {
+        "operationId": "saveStudentAttendance",
+        "tags": [
+          "students"
+        ],
+        "description": "출결 수정 내용을 저장하고 수업이 속한 월의 출결을 반환",
+        "parameters": [
+          {
+            "name": "studentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "lessonId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudentAttendanceMonth"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "x-feature": "classroom.attendance",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StudentAttendanceInput"
+              }
+            }
+          }
+        }
+      }
+    },
     "/subjects": {
       "get": {
         "operationId": "listTeacherSubjects",
@@ -2479,6 +2603,182 @@
             }
           }
         }
+      },
+      "StudentAttendanceStatus": {
+        "type": "string",
+        "x-feature": "classroom.attendance",
+        "enum": [
+          "PRESENT",
+          "LATE",
+          "ABSENT"
+        ]
+      },
+      "StudentAttendanceReason": {
+        "type": "string",
+        "x-feature": "classroom.attendance",
+        "enum": [
+          "DEVICE",
+          "NETWORK",
+          "OTHER"
+        ]
+      },
+      "StudentAttendanceStudent": {
+        "type": "object",
+        "x-feature": "classroom.attendance",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "StudentAttendanceSummary": {
+        "type": "object",
+        "x-feature": "classroom.attendance",
+        "properties": {
+          "rate": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100,
+            "nullable": true
+          },
+          "present": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "late": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "absent": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "rate",
+          "present",
+          "late",
+          "absent"
+        ]
+      },
+      "StudentAttendanceRow": {
+        "type": "object",
+        "x-feature": "classroom.attendance",
+        "properties": {
+          "lessonId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "lessonTitle": {
+            "type": "string"
+          },
+          "startsAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "firstJoinedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "lastLeftAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "durationSeconds": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "status": {
+            "$ref": "#/components/schemas/StudentAttendanceStatus"
+          },
+          "reason": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/StudentAttendanceReason"
+              }
+            ],
+            "nullable": true
+          },
+          "memo": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "lessonId",
+          "lessonTitle",
+          "startsAt",
+          "firstJoinedAt",
+          "lastLeftAt",
+          "durationSeconds",
+          "status",
+          "reason",
+          "memo"
+        ]
+      },
+      "StudentAttendanceMonth": {
+        "type": "object",
+        "x-feature": "classroom.attendance",
+        "properties": {
+          "student": {
+            "$ref": "#/components/schemas/StudentAttendanceStudent"
+          },
+          "month": {
+            "type": "string",
+            "pattern": "^[2-9]\\d{3}-(0[1-9]|1[0-2])$"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/StudentAttendanceSummary"
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StudentAttendanceRow"
+            }
+          }
+        },
+        "required": [
+          "student",
+          "month",
+          "summary",
+          "rows"
+        ]
+      },
+      "StudentAttendanceInput": {
+        "type": "object",
+        "x-feature": "classroom.attendance",
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/StudentAttendanceStatus"
+          },
+          "reason": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/StudentAttendanceReason"
+              }
+            ],
+            "nullable": true
+          },
+          "memo": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "status"
+        ]
       }
     }
   }

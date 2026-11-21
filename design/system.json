@@ -69,7 +69,36 @@
     "prejoinWaitingFailed": "학생 대기 상태를 확인하지 못했어요.",
     "prejoinServer": "수업 서버",
     "prejoinSystemOutput": "기기 기본 출력",
-    "prejoinRecheck": "장치 다시 점검하기"
+    "prejoinRecheck": "장치 다시 점검하기",
+    "attendanceStudents": "학생 관리",
+    "attendanceTitle": "출결",
+    "attendanceRate": "출석률",
+    "attendancePresent": "출석",
+    "attendanceLate": "지각",
+    "attendanceAbsent": "결석",
+    "attendanceJoined": "입장",
+    "attendanceLeft": "퇴장",
+    "attendanceDuration": "참여 시간",
+    "attendanceEdit": "출결 수정",
+    "attendanceEditAction": "수정",
+    "attendanceReason": "사유",
+    "attendanceDevice": "기기 문제",
+    "attendanceNetwork": "네트워크",
+    "attendanceOther": "기타",
+    "attendanceMemo": "메모",
+    "attendanceCancel": "취소",
+    "attendanceSave": "저장",
+    "attendanceSaving": "저장 중",
+    "attendancePreviousMonth": "이전 달",
+    "attendanceNextMonth": "다음 달",
+    "attendanceEmpty": "이 달의 출결 기록이 없어요.",
+    "attendanceEmptyStudents": "담당 학생이 없어요.",
+    "attendanceLoading": "출결 정보를 불러오는 중이에요.",
+    "attendanceLoadingStudents": "담당 학생을 불러오는 중이에요.",
+    "attendanceLoadError": "정보를 불러오지 못했어요.",
+    "attendanceSaveError": "출결을 저장하지 못했어요.",
+    "attendanceUnavailable": "학생 관리를 이용할 수 없어요.",
+    "attendanceRetry": "다시 시도"
   },
   "screens": {
     "login": {
@@ -179,6 +208,23 @@
           "color.danger"
         ]
       }
+    },
+    "studentAttendance": {
+      "web": "web/src/screens/StudentAttendance.tsx",
+      "native": "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/ui/StudentAttendance.kt",
+      "sections": [
+        "teacher-student-list",
+        "student-header",
+        "attendance-summary",
+        "attendance-month",
+        "attendance-rows",
+        "attendance-edit-dialog"
+      ],
+      "layout": [
+        "layout.dashboardCompact",
+        "layout.attendanceMaxWidth",
+        "layout.attendanceDialogWidth"
+      ]
     }
   },
   "nativeAdaptations": [

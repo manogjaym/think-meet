@@ -339,6 +339,134 @@
           ]
         }
       }
+    },
+    {
+      "id": "classroom.attendance",
+      "title": "선생님용 학생별 출결",
+      "stage": "in-progress",
+      "requiresRevision": 8,
+      "defaultEnabled": true,
+      "platforms": [
+        "web",
+        "android",
+        "ios"
+      ],
+      "spec": "classroom-attendance.md",
+      "contracts": {
+        "operations": [
+          "listStudentAttendance",
+          "saveStudentAttendance"
+        ],
+        "events": [],
+        "commands": []
+      },
+      "implementation": {
+        "server": {
+          "status": "done",
+          "files": [
+            "server/src/student-attendance.ts",
+            "server/src/controllers.ts"
+          ]
+        },
+        "web": {
+          "status": "done",
+          "files": [
+            "web/src/screens/StudentAttendance.tsx"
+          ]
+        },
+        "android": {
+          "status": "done",
+          "files": [
+            "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/ui/StudentAttendance.kt"
+          ]
+        },
+        "ios": {
+          "status": "done",
+          "files": [
+            "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/ui/StudentAttendance.kt"
+          ]
+        }
+      },
+      "verification": {
+        "server": {
+          "status": "passed",
+          "checks": [
+            "server/test/student-attendance.integration.mjs"
+          ],
+          "evidence": [
+            "features/evidence/student-attendance/design-qa.md"
+          ]
+        },
+        "web": {
+          "status": "passed",
+          "checks": [
+            "web/e2e/student-attendance.spec.ts"
+          ],
+          "evidence": [
+            "features/evidence/student-attendance/design-qa.md"
+          ],
+          "screens": {
+            "phone": {
+              "status": "passed",
+              "evidence": [
+                "features/evidence/student-attendance/web-phone-list.png",
+                "features/evidence/student-attendance/web-phone-edit.png"
+              ]
+            },
+            "tablet": {
+              "status": "passed",
+              "evidence": [
+                "features/evidence/student-attendance/web-tablet-list.png",
+                "features/evidence/student-attendance/web-tablet-edit.png"
+              ]
+            }
+          }
+        },
+        "android": {
+          "status": "passed",
+          "checks": [
+            "mobile/composeApp/src/commonTest/kotlin/com/woongjin/thinkmeet/data/CapabilitiesContractTest.kt"
+          ],
+          "evidence": [
+            "features/evidence/student-attendance/design-qa.md"
+          ],
+          "screens": {
+            "phone": {
+              "status": "passed",
+              "evidence": [
+                "features/evidence/student-attendance/android-phone-list.png",
+                "features/evidence/student-attendance/android-phone-edit.png"
+              ]
+            },
+            "tablet": {
+              "status": "passed",
+              "evidence": [
+                "features/evidence/student-attendance/android-tablet-list.png",
+                "features/evidence/student-attendance/android-tablet-edit.png"
+              ]
+            }
+          }
+        },
+        "ios": {
+          "status": "pending",
+          "checks": [
+            "mobile/composeApp/src/commonTest/kotlin/com/woongjin/thinkmeet/data/CapabilitiesContractTest.kt"
+          ],
+          "evidence": [
+            "features/evidence/student-attendance/design-qa.md"
+          ],
+          "screens": {
+            "phone": {
+              "status": "pending",
+              "evidence": []
+            },
+            "tablet": {
+              "status": "pending",
+              "evidence": []
+            }
+          }
+        }
+      }
     }
   ]
 }

@@ -26,6 +26,7 @@ object ContractProtocol {
         const val MeetingRemoteAssistance = "meeting.remote-assistance"
         const val ClassroomSubjects = "classroom.subjects"
         const val ClassroomPrejoin = "classroom.prejoin"
+        const val ClassroomAttendance = "classroom.attendance"
     }
     val HttpOperations = listOf(
         ContractHttpOperation("health", "GET", "/api/v1/health", null),
@@ -34,6 +35,8 @@ object ContractProtocol {
         ContractHttpOperation("authLogin", "POST", "/api/v1/auth/login", null),
         ContractHttpOperation("authLogout", "POST", "/api/v1/auth/logout", null),
         ContractHttpOperation("listStudents", "GET", "/api/v1/students", "classroom.core"),
+        ContractHttpOperation("listStudentAttendance", "GET", "/api/v1/students/{studentId}/attendance", "classroom.attendance"),
+        ContractHttpOperation("saveStudentAttendance", "PUT", "/api/v1/students/{studentId}/attendance/{lessonId}", "classroom.attendance"),
         ContractHttpOperation("listTeacherSubjects", "GET", "/api/v1/subjects", "classroom.subjects"),
         ContractHttpOperation("listLessons", "GET", "/api/v1/lessons", "classroom.core"),
         ContractHttpOperation("createLesson", "POST", "/api/v1/lessons", "classroom.core"),
@@ -63,6 +66,7 @@ object ContractProtocol {
         ContractFeature("meeting.remote-assistance", "in-progress", 4, true, setOf("web", "android", "ios")),
         ContractFeature("classroom.subjects", "in-progress", 7, true, setOf("web", "android", "ios")),
         ContractFeature("classroom.prejoin", "in-progress", 9, true, setOf("web", "android", "ios")),
+        ContractFeature("classroom.attendance", "in-progress", 8, true, setOf("web", "android", "ios")),
     )
     private val commandFeatures: Map<String, String?> = mapOf(
         "chat.send" to "classroom.core",

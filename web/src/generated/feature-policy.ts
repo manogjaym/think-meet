@@ -57,6 +57,17 @@ export const FEATURE_DEFINITIONS = [
       "android",
       "ios"
     ]
+  },
+  {
+    "id": "classroom.attendance",
+    "stage": "in-progress",
+    "requiresRevision": 8,
+    "defaultEnabled": true,
+    "platforms": [
+      "web",
+      "android",
+      "ios"
+    ]
   }
 ] as const satisfies readonly FeatureDefinition[];
 export type FeatureId = typeof FEATURE_DEFINITIONS[number]["id"];
@@ -91,6 +102,18 @@ export const HTTP_OPERATIONS: readonly { id: string; method: string; path: strin
     "method": "GET",
     "path": "/api/v1/students",
     "feature": "classroom.core"
+  },
+  {
+    "id": "listStudentAttendance",
+    "method": "GET",
+    "path": "/api/v1/students/{studentId}/attendance",
+    "feature": "classroom.attendance"
+  },
+  {
+    "id": "saveStudentAttendance",
+    "method": "PUT",
+    "path": "/api/v1/students/{studentId}/attendance/{lessonId}",
+    "feature": "classroom.attendance"
   },
   {
     "id": "listTeacherSubjects",

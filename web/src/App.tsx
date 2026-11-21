@@ -1,3 +1,5 @@
+import { AttendanceStudents, StudentAttendance, attendanceFeature } from "./screens/StudentAttendance"
+import { designContent } from "./generated/design-content"
 import {
   lazy,
   Suspense,
@@ -101,6 +103,7 @@ function Application() {
   const location = useLocation(),
     navigate = useNavigate()
   const parts = location.pathname.split("/").filter(Boolean)
+  const attendanceEnabled = useFeature(attendanceFeature) && user?.role === "teacher"
   const lessonId =
     parts[0] === "lessons" && parts[1] !== "new"
       ? parts[1]
@@ -118,6 +121,7 @@ function Application() {
             : "detail"
       : parts[0] === "error"
         ? "exception"
+        : parts[0] === "students" ? (parts[1] && parts[2] === "attendance" ? "attendance" : "students")
         : "home"
   const { lessons, students, loading, error, refresh } = useLessonDirectory(
     user,
@@ -260,6 +264,7 @@ function Application() {
       if (screen !== "meeting")
         scrollPositions.current[location.pathname] = window.scrollY
       if (next === "home") navigate("/")
+      else if (next === "students") navigate("/students")
       else if (next === "form")
         navigate(
           lessonId && screen === "detail"
@@ -452,6 +457,10 @@ function Application() {
         }}
       />
     )
+  else if (screen === "students" || screen === "attendance")
+    content = !attendanceEnabled ? <Status error={designContent.attendanceUnavailable} />
+      : screen === "students" ? <AttendanceStudents key={user.id} unauthorized={auth.retry} />
+      : <StudentAttendance key={user.id} studentId={parts[1]} unauthorized={auth.retry} />
   else if (screen === "form" && !lessonId)
     content = loading ? (
       <Status />
@@ -604,17 +613,18 @@ function Application() {
             ? "app-home"
             : ""
       } ${
-        (screen === "home" || (screen === "form" && !lessonId)) &&
+        (screen === "home" || (screen === "students" && attendanceEnabled) || (screen === "form" && !lessonId)) &&
         user.role === "teacher"
           ? "app-with-tabs"
           : ""
       }`}
     >
-      <TopBar
+      {!(screen === "attendance" && attendanceEnabled) && <TopBar
         user={user}
         role={user.role}
         onLogout={auth.logout}
         screen={screen}
+        attendanceEnabled={attendanceEnabled}
         isEditing={screen === "form" && !!lessonId}
         setScreen={setScreen}
         prejoinEnabled={prejoinEnabled}
@@ -630,7 +640,7 @@ function Application() {
             navigate(`/lessons/${lessonId}`)
           else setScreen("home")
         }}
-      />
+      />}
       <Suspense fallback={<Status />}>
         <ScreenTransition
           key={location.pathname}

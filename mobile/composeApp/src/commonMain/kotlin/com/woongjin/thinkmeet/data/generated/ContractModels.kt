@@ -367,3 +367,49 @@ data class PrejoinStatus(
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     val waitingStudents: List<PrejoinStudent>? = null,
 )
+
+typealias StudentAttendanceStatus = String
+
+typealias StudentAttendanceReason = String
+
+@Serializable
+data class StudentAttendanceStudent(
+    val id: String,
+    val name: String,
+)
+
+@Serializable
+data class StudentAttendanceSummary(
+    val rate: Int?,
+    val present: Int,
+    val late: Int,
+    val absent: Int,
+)
+
+@Serializable
+data class StudentAttendanceRow(
+    val lessonId: String,
+    val lessonTitle: String,
+    val startsAt: String,
+    val firstJoinedAt: String?,
+    val lastLeftAt: String?,
+    val durationSeconds: Int,
+    val status: StudentAttendanceStatus,
+    val reason: StudentAttendanceReason?,
+    val memo: String?,
+)
+
+@Serializable
+data class StudentAttendanceMonth(
+    val student: StudentAttendanceStudent,
+    val month: String,
+    val summary: StudentAttendanceSummary,
+    val rows: List<StudentAttendanceRow>,
+)
+
+@Serializable
+data class StudentAttendanceInput(
+    val status: StudentAttendanceStatus,
+    val reason: StudentAttendanceReason? = null,
+    val memo: String? = null,
+)

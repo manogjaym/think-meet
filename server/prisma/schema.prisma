@@ -15,6 +15,7 @@ model User {
   sessions LoginSession[]
   teacherLinks TeacherStudent[] @relation("teacher")
   studentLinks TeacherStudent[] @relation("student")
+  attendanceOverrides StudentAttendanceOverride[]
   subjects TeacherSubject[]
 }
 model LoginSession {
@@ -64,6 +65,7 @@ model Lesson {
   messages Message[]
   strokes Stroke[]
   attendance Attendance[]
+  attendanceOverrides StudentAttendanceOverride[]
   @@index([teacherId, startsAt])
   @@index([subjectId])
   @@index([accessMode, status, startsAt])
@@ -100,6 +102,27 @@ model Attendance {
   leftAt DateTime?
   lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
   @@index([lessonId, userId])
+}
+enum StudentAttendanceStatus {
+  PRESENT
+  LATE
+  ABSENT
+}
+enum StudentAttendanceReason {
+  DEVICE
+  NETWORK
+  OTHER
+}
+model StudentAttendanceOverride {
+  lessonId String @db.Uuid
+  studentId String @db.Uuid
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  student User @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  status StudentAttendanceStatus
+  reason StudentAttendanceReason?
+  memo String? @db.VarChar(500)
+  @@id([lessonId, studentId])
+  @@index([studentId])
 }
 model Message {
   id String @id @default(uuid()) @db.Uuid

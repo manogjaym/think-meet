@@ -10,6 +10,7 @@ import { Lessons } from './lessons'
 import { Materials } from './materials'
 import { ApiError } from './errors'
 import { FeaturePolicy } from './features'
+import { StudentAttendance } from './student-attendance'
 import type { CapabilitiesResponse, LoginInput, LessonInput, KickInput, InviteInput } from './generated/contracts'
 @Injectable()
 class TeacherUploadGuard implements CanActivate {
@@ -19,7 +20,7 @@ class TeacherUploadGuard implements CanActivate {
 @ApiTags('service')
 @Controller('api/v1')
 export class ApiController {
-  constructor(readonly auth: Auth, readonly db: Database, readonly lessons: Lessons, readonly materials: Materials, readonly features: FeaturePolicy) {}
+  constructor(readonly auth: Auth, readonly db: Database, readonly lessons: Lessons, readonly materials: Materials, readonly features: FeaturePolicy, readonly attendance: StudentAttendance) {}
   @Get('capabilities')
   capabilities(@Req() req: Request): CapabilitiesResponse { return this.features.capabilities(req.headers) }
   @Get('health')
@@ -33,6 +34,14 @@ export class ApiController {
   login(@Req() req: Request, @Res({ passthrough: true }) res: Response, @Body() body: LoginInput) { return this.auth.login(req, res, body) }
   @Post('auth/logout') logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) { return this.auth.logout(req, res) }
   @Get('students') async students(@Req() req: Request) { return this.lessons.roster(await this.auth.user(req)) }
+  @Get('students/:studentId/attendance')
+  async studentAttendance(@Req() req: Request, @Param('studentId') studentId: string, @Query('month') month?: string) {
+    return this.attendance.list(await this.auth.user(req), studentId, month)
+  }
+  @Put('students/:studentId/attendance/:lessonId')
+  async saveStudentAttendance(@Req() req: Request, @Param('studentId') studentId: string, @Param('lessonId') lessonId: string, @Body() body: unknown) {
+    return this.attendance.save(await this.auth.user(req), studentId, lessonId, body)
+  }
   @Get('subjects') async subjects(@Req() req: Request) { return this.lessons.subjects(await this.auth.user(req)) }
   @Get('lessons') async list(@Req() req: Request) { return this.lessons.list(await this.auth.user(req)) }
   @Post('lessons') async create(@Req() req: Request, @Body() body: LessonInput) {

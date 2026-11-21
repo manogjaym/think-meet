@@ -1,0 +1,28 @@
+{
+  "id": "student-attendance",
+  "summary": "선생님 웹·앱에 담당 학생의 월별 출결 조회와 수정 기능을 추가합니다.",
+  "scope": "shared",
+  "featureIds": [
+    "classroom.attendance"
+  ],
+  "platforms": {
+    "server": {
+      "status": "implemented"
+    },
+    "web": {
+      "status": "implemented"
+    },
+    "android": {
+      "status": "implemented"
+    },
+    "ios": {
+      "status": "implemented"
+    }
+  },
+  "verification": [
+    "공통 검사, 서버 통합 테스트, 웹 휴대폰·태블릿 회귀 테스트가 통과했습니다.",
+    "Android 핵심 테스트·APK와 휴대폰·태블릿 폭의 실행 검증이 통과했습니다.",
+    "iOS 시뮬레이터 호스트 앱 빌드는 통과했습니다. 시뮬레이터 실행 문제로 화면은 미검증입니다.",
+    "화면과 검사 결과는 features/evidence/student-attendance/design-qa.md에 기록했습니다."
+  ]
+}

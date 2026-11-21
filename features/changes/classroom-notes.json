@@ -26,6 +26,8 @@
     "Android 35 기존 에뮬레이터의 휴대폰·태블릿 너비에서 웹과 같은 계정과 자료를 비교. 수업 중 공유 화면·PDF·영상 저장 후 서버 JPEG의 프레임과 확정 판서 픽셀 확인. 가상 카메라 촬영 취소, 화면 크기와 밀도 변경 뒤 사진 유지, 제출과 보관함 확인.",
     "Android 35 에뮬레이터 휴대폰에서 촬영 가이드, 촬영, 재촬영, 한 장 제출과 보관함의 원본 확인. 1024dp 태블릿 크기에서 촬영, 미리보기, 재촬영과 닫기 확인.",
     "iPhone 16 Pro·iPad Pro 11인치 iOS 18.4에서 앱 시작 확인. 서명 없는 빌드에서 Keychain 권한이 없어 로그인 이후 검증을 진행하지 못함. 자동 심사가 시뮬레이터용 권한 서명을 차단함.",
-    "Android·iOS 실기기 카메라 및 원격 CI 미실행. 기능은 in-progress 유지. 실행 조건과 화면 증거는 features/classroom-notes.md 참고."
+    "Android·iOS 실기기 카메라 및 원격 CI 미실행. 기능은 in-progress 유지. 실행 조건과 화면 증거는 features/classroom-notes.md 참고.",
+    "공개 브랜치에서 shared:check와 변경 목록 검사, npm run verify, Playwright 수업 노트 통합 검사 1개, Android 핵심 테스트 40개·Debug APK, iOS 프레임워크·Xcode 호스트 빌드를 다시 통과했습니다.",
+    "2026-11-21 한국 시간. main 병합 결과에서 변경 파일을 포함한 shared:check, npm run verify, 격리 서버의 Playwright 수업 노트 통합 검사 1개, Android 핵심 테스트 40개·Debug APK와 iOS 프레임워크·호스트 빌드 통과."
   ]
 }

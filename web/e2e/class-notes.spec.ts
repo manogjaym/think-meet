@@ -234,7 +234,7 @@ test("class notes round trip preserves the submission target and capture privacy
 
     // Attendance is what unlocks teacher captures. Even another attendee cannot read a student's private captures.
     await enter(await invitee.newPage(), lesson.id)
-    expect((await captureList(invitee.request)).map((row: { source: string }) => row.source)).toEqual(["teacher", "teacher", "teacher"])
+    await expect.poll(async () => (await captureList(invitee.request)).map((row: { source: string }) => row.source)).toEqual(["teacher", "teacher", "teacher"])
     for (const row of thisLesson) {
       const response = await invitee.request.get(`${notes}/images/${row.image.id}`, { headers })
       expect(response.status()).toBe(row.source === "teacher" ? 200 : 404)

@@ -2,8 +2,8 @@
 services:
   api:
     environment:
-      PUBLIC_ORIGIN: https://${THINK_MEET_LAN_IP:?Set THINK_MEET_LAN_IP}
-      LIVEKIT_PUBLIC_URL: wss://${THINK_MEET_LAN_IP}/livekit
+      PUBLIC_ORIGIN: https://${THINK_MEET_LAN_AUTHORITY:-${THINK_MEET_LAN_IP:?Set THINK_MEET_LAN_IP}}
+      LIVEKIT_PUBLIC_URL: wss://${THINK_MEET_LAN_AUTHORITY:-${THINK_MEET_LAN_IP:?Set THINK_MEET_LAN_IP}}/livekit
   web:
     environment:
       LAN_IP: ${THINK_MEET_LAN_IP}

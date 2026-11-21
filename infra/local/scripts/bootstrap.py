@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Start the local Compose storage and prepare Think Meet resources."""
 from pathlib import Path
-import base64, json, os, secrets, socket, subprocess, time, urllib.parse
+import base64, json, os, secrets, subprocess, time, urllib.parse
 from database_config import bootstrap_sql
-from local_stack import LEGACY_CONTAINERS, compose, migrate_runtime, read_env, service_exec, update_env
+from local_stack import LEGACY_CONTAINERS, compose, detect_lan_ip, migrate_runtime, read_env, service_exec, update_env
 
 ROOT = Path(__file__).resolve().parent.parent
 LOCAL_INFRA = ROOT
@@ -23,12 +23,7 @@ def load_env():
             update_env(additions)
             env.update(additions)
         return env
-    address = os.environ.get('LAN_IP')
-    if not address:
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as route:
-            # Route lookup only: UDP connect does not send a packet.
-            route.connect(('192.0.2.1', 80))
-            address = route.getsockname()[0]
+    address = os.environ.get('LAN_IP') or detect_lan_ip()
     db_password = secrets.token_hex(24)
     port = os.environ.get('HTTPS_PORT', '443')
     authority = address + (':' + port if port != '443' else '')

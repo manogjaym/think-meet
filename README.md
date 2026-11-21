@@ -14,7 +14,7 @@
 | [web/](web/README.md) | React 화면과 브라우저 기기·미디어 연결 |
 | [mobile/](mobile/README.md) | Android/iOS Compose 화면과 미디어·PiP 연결 |
 
-로컬 서비스는 `infra/local/`에서 `./scripts/start.sh`로 시작하고 `./scripts/stop.sh`로 중지합니다. [설정·데이터 이전과 테스트 안내](infra/local/README.md)를 확인하세요.
+로컬 서비스는 `infra/local/`에서 `./scripts/start.sh`로 시작하고 `./scripts/stop.sh`로 중지합니다. 현재 Mac IP를 적용하려면 `./scripts/start.sh --lan`을 사용하세요. [설정·데이터 이전과 테스트 안내](infra/local/README.md)
 
 ## 공통 명령
 

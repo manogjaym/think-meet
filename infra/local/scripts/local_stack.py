@@ -2,12 +2,20 @@
 from pathlib import Path
 import json
 import os
+import socket
 import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parent.parent
 LEGACY_ROOT = ROOT.parents[1] / 'server'
 LEGACY_CONTAINERS = {'postgres': 'postgre-container-db-1', 'minio': 'minio'}
+
+
+def detect_lan_ip():
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as route:
+        # UDP connect selects a route without sending a packet.
+        route.connect(('192.0.2.1', 80))
+        return route.getsockname()[0]
 
 
 def migrate_runtime():

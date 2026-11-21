@@ -143,9 +143,49 @@ class LocalStackTest(unittest.TestCase):
         command = data['services']['livekit']['command']
         self.assertEqual(command[command.index('--rtc.node_ip.ipv4') + 1], address)
         lan_address = '192.0.2.9'
-        data = json.loads(subprocess.check_output(['docker', 'compose', '--env-file', str(LOCAL / '.env.example'), '-f', str(LOCAL / 'compose.yaml'), '-f', str(LOCAL / 'compose.lan.yaml'), 'config', '--format', 'json'], env=dict(os.environ, LAN_IP=address, THINK_MEET_LAN_IP=lan_address), text=True))
-        command = data['services']['livekit']['command']
+        data = json.loads(subprocess.check_output(['docker', 'compose', '--env-file', str(LOCAL / '.env.example'), '-f', str(LOCAL / 'compose.yaml'), '-f', str(LOCAL / 'compose.lan.yaml'), 'config', '--format', 'json'], env=dict(os.environ, LAN_IP=address, THINK_MEET_LAN_IP=lan_address, THINK_MEET_LAN_AUTHORITY=lan_address + ':9443', HTTPS_PORT='9443'), text=True))
+        services = data['services']
+        command = services['livekit']['command']
         self.assertEqual(command[command.index('--rtc.node_ip.ipv4') + 1], lan_address)
+        self.assertEqual(services['api']['environment']['PUBLIC_ORIGIN'], 'https://' + lan_address + ':9443')
+        self.assertEqual(services['api']['environment']['LIVEKIT_PUBLIC_URL'], 'wss://' + lan_address + ':9443/livekit')
+        self.assertEqual(services['web']['environment']['LAN_IP'], lan_address)
+        self.assertEqual(str(services['web']['ports'][0]['published']), '9443')
+
+    def test_start_script_uses_saved_or_temporary_public_address(self):
+        scripts = self.root / 'scripts'
+        scripts.mkdir()
+        start = scripts / 'start.sh'
+        start.write_bytes((LOCAL / 'scripts/start.sh').read_bytes())
+        stack = (LOCAL / 'scripts/local_stack.py').read_text()
+        (scripts / 'local_stack.py').write_text(stack + "\ndef detect_lan_ip():\n    return '192.0.2.9'\n")
+        (scripts / 'bootstrap.py').write_text('import os; print(os.environ.get("LAN_IP", ""))\n')
+        docker = self.root / 'docker'
+        docker.write_text(
+            "#!/bin/sh\n"
+            'printf \'%s|%s|%s|%s\\n\' "$1 $2" "${COMPOSE_FILE:-}" "${THINK_MEET_LAN_IP:-}" '
+            '"${THINK_MEET_LAN_AUTHORITY:-}" >> "$STARTUP_LOG"\n'
+        )
+        docker.chmod(0o755)
+        saved_env = 'LAN_IP=192.0.2.1\nPUBLIC_ORIGIN=https://192.0.2.1:9443\nHTTPS_PORT=9443\n'
+        (self.root / '.env').write_text(saved_env)
+        log = self.root / 'docker.log'
+        env = dict(os.environ, PATH=str(self.root) + os.pathsep + os.environ['PATH'], STARTUP_LOG=str(log))
+        for key in ('COMPOSE_FILE', 'LAN_IP', 'HTTPS_PORT', 'THINK_MEET_LAN_IP', 'THINK_MEET_LAN_AUTHORITY'):
+            env.pop(key, None)
+        for args, expected_ip, authority, port_override in (
+            ([], '', '192.0.2.1:9443', {}),
+            (['--lan'], '192.0.2.9', '192.0.2.9:9443', {}),
+            (['--lan-ip', '192.0.2.8'], '192.0.2.8', '192.0.2.8', {'HTTPS_PORT': '443'}),
+        ):
+            with self.subTest(args=args):
+                log.write_text('')
+                result = subprocess.check_output(['sh', str(start), *args], env=dict(env, **port_override), text=True)
+                self.assertIn('Think Meet: https://' + authority + '\n', result)
+                self.assertEqual(result.splitlines()[0], expected_ip)
+                compose_settings = 'compose.yaml:compose.lan.yaml|' + expected_ip + '|' + authority if expected_ip else '||'
+                self.assertIn('compose up|' + compose_settings + '\n', log.read_text())
+                self.assertEqual((self.root / '.env').read_text(), saved_env)
 
     def test_runtime_relocation_preserves_private_files_and_rebases_workers(self):
         old = self.root / 'old-server'

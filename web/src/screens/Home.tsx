@@ -3,6 +3,7 @@ import { useState } from "react"
 import { colorFor, displayLesson, type User } from "../lib/api"
 import type { Role, Screen } from "../models"
 import { Avatar, Icon } from "../components/ui"
+import { useFeature } from "../lib/useFeature"
 
 export type Lesson = ReturnType<typeof displayLesson>
 
@@ -55,6 +56,7 @@ export function Home({
   view?: HomeView
   onViewChange?: (view: HomeView) => void
 }) {
+  const subjectsEnabled = useFeature("classroom.subjects")
   const [localView, setLocalView] = useState<HomeView>({
     tab: "upcoming",
     search: "",
@@ -169,22 +171,12 @@ export function Home({
               aria-live="polite"
               aria-atomic="true"
             >
-              <p
-                className={
-                  live.accessMode === "OPEN"
-                    ? "session-access-label"
-                    : undefined
-                }
-              >
-                {live.accessMode === "OPEN" ? (
-                  <>
-                    <Icon name="globe" size={15} />
-                    공개 수업<span aria-hidden="true">·</span>누구나 참여 가능
-                  </>
-                ) : (
-                  "초등 5학년 수학"
-                )}
-              </p>
+              {live.accessMode === "OPEN" ? (
+                <p className="session-access-label">
+                  <Icon name="globe" size={15} />
+                  공개 수업<span aria-hidden="true">·</span>누구나 참여 가능
+                </p>
+              ) : subjectsEnabled && live.subject && <p>{live.subject.name}</p>}
               <h2>{live.title}</h2>
               <span>{live.teacher.name} 선생님과 함께하는 화상 수업</span>
             </div>
@@ -421,15 +413,21 @@ export function Home({
                 <span className="dashboard-row-lesson">
                   <strong>{lesson.title}</strong>
                   <span>
-                    {lesson.accessMode === "OPEN" ? (
-                      <span className="dashboard-access-label">
-                        <Icon name="globe" size={13} />
-                        공개 수업
-                      </span>
-                    ) : (
-                      "초등 5학년 수학"
+                    {lesson.accessMode === "OPEN" && (
+                      <>
+                        <span className="dashboard-access-label">
+                          <Icon name="globe" size={13} />
+                          공개 수업
+                        </span>
+                        <span aria-hidden="true">·</span>
+                      </>
                     )}
-                    <span aria-hidden="true">·</span>
+                    {subjectsEnabled && lesson.subject && (
+                      <>
+                        <span>{lesson.subject.name}</span>
+                        <span aria-hidden="true">·</span>
+                      </>
+                    )}
                     {lesson.duration}
                   </span>
                 </span>

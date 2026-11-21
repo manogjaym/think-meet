@@ -22,6 +22,10 @@ export class FeaturePolicy {
     throw new ApiError(decision.code, '현재 사용할 수 없는 기능입니다.', 409)
   }
 
+  assertHttpFeature(id: string, headers: ClientHeaders) {
+    this.assertFeature(id, featureClient(headers))
+  }
+
   assertHttp(method: string, path: string, headers: ClientHeaders) {
     const verb = method.toUpperCase() === 'HEAD' ? 'GET' : method.toUpperCase()
     // A new client-facing handler must first be registered in the common contract.
@@ -30,7 +34,7 @@ export class FeaturePolicy {
       return
     }
     const feature = featureForHttp(verb, path)
-    if (feature) this.assertFeature(feature, featureClient(headers))
+    if (feature) this.assertHttpFeature(feature, headers)
   }
 
   assertEvent(event: string, payload: unknown, headers: ClientHeaders, auth?: unknown) {

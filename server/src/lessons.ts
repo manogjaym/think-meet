@@ -10,8 +10,10 @@ import type { PublicUser, Share, Command } from './types'
 import { AssistanceSessions, assistanceGeometrySchema, type AssistanceBinding, type AssistanceCommandContext } from './assistance'
 const ids = z.array(z.string().uuid()).min(1).max(100)
 const screenShareRecoveryMs = 30_000
+const subjectSelect = { id: true, name: true } as const
 export const lessonInput = z.object({
   title: z.string().trim().min(1, '학습 제목을 입력해 주세요.').max(200),
+  subjectId: z.string().uuid().nullable().optional(),
   description: z.string().trim().max(5000).default(''),
   startsAt: z.string().datetime({ offset: true }), endsAt: z.string().datetime({ offset: true }).nullable(),
   accessMode: z.enum(['INVITE_ONLY', 'OPEN']).default('INVITE_ONLY'), studentIds: z.array(z.string().uuid()).max(100).default([]),
@@ -80,6 +82,15 @@ export class Lessons implements OnModuleInit, OnModuleDestroy {
     const rows = await this.db.teacherStudent.findMany({ where: { teacherId: user.id }, include: { student: true }, orderBy: { student: { name: 'asc' } } })
     return rows.map(row => publicUser(row.student))
   }
+  async subjects(user: PublicUser) {
+    this.teacher(user)
+    return this.db.teacherSubject.findMany({ where: { teacherId: user.id }, select: subjectSelect, orderBy: { name: 'asc' } })
+  }
+  private async validateSubject(teacherId: string, subjectId: string | null | undefined) {
+    if (!subjectId) return
+    const subject = await this.db.teacherSubject.findFirst({ where: { id: subjectId, teacherId }, select: { id: true } })
+    if (!subject) throw new ApiError('FORBIDDEN', '내 과목 목록에서 선택해 주세요.', 403)
+  }
   async validateRoster(teacherId: string, studentIds: string[]) {
     if (new Set(studentIds).size !== studentIds.length) throw new ApiError('VALIDATION', '중복된 학생이 있습니다.')
     const count = await this.db.teacherStudent.count({ where: { teacherId, studentId: { in: studentIds } } })
@@ -87,7 +98,7 @@ export class Lessons implements OnModuleInit, OnModuleDestroy {
   }
   async get(id: string) {
     if (!z.string().uuid().safeParse(id).success) throw new ApiError('INVALID', '수업을 찾을 수 없습니다.', 404)
-    const lesson = await this.db.lesson.findUnique({ where: { id }, include: { members: true } })
+    const lesson = await this.db.lesson.findUnique({ where: { id }, include: { members: true, subject: { select: subjectSelect } } })
     if (!lesson) throw new ApiError('INVALID', '수업을 찾을 수 없습니다.', 404)
     return lesson
   }
@@ -107,6 +118,7 @@ export class Lessons implements OnModuleInit, OnModuleDestroy {
     const attendance = await this.db.attendance.findMany({ where: { lessonId: lesson.id }, orderBy: { joinedAt: 'asc' } })
     return {
       id: lesson.id, title: lesson.title, description: lesson.description, accessMode: lesson.accessMode || 'INVITE_ONLY', teacher: publicUser(teacher),
+      ...(lesson.subject ? { subject: lesson.subject } : {}),
       students: users.filter(user => user.id !== lesson.teacherId).map(publicUser),
       startsAt: lesson.startsAt.toISOString(), endsAt: lesson.endsAt?.toISOString() || null, status: lesson.status, code: lesson.code,
       startedAt: lesson.startedAt?.toISOString() || null, endedAt: lesson.endedAt?.toISOString() || null,
@@ -115,15 +127,17 @@ export class Lessons implements OnModuleInit, OnModuleDestroy {
     }
   }
   async list(user: PublicUser) {
-    const lessons = await this.db.lesson.findMany({ where: { OR: [{ teacherId: user.id }, { members: { some: { userId: user.id } } }, { accessMode: 'OPEN', status: { in: ['SCHEDULED', 'LIVE'] } }] }, include: { members: true }, orderBy: { startsAt: 'asc' } })
+    const lessons = await this.db.lesson.findMany({ where: { OR: [{ teacherId: user.id }, { members: { some: { userId: user.id } } }, { accessMode: 'OPEN', status: { in: ['SCHEDULED', 'LIVE'] } }] }, include: { members: true, subject: { select: subjectSelect } }, orderBy: { startsAt: 'asc' } })
     return Promise.all(lessons.map(lesson => this.dto(lesson)))
   }
   async create(user: PublicUser, input: unknown) {
     this.teacher(user)
     const data = lessonInput.parse(input)
+    await this.validateSubject(user.id, data.subjectId)
     if (data.studentIds.length) await this.validateRoster(user.id, data.studentIds)
-    const lesson = await this.db.lesson.create({ data: {
+    const lesson = await this.db.lesson.create({ include: { subject: { select: subjectSelect } }, data: {
       teacherId: user.id, title: data.title, description: data.description, accessMode: data.accessMode, startsAt: new Date(data.startsAt), endsAt: data.endsAt === null ? null : new Date(data.endsAt),
+      subjectId: data.subjectId,
       code: randomBytes(6).toString('hex'), roomName: `lesson-${randomUUID()}`,
       members: { create: [user.id, ...data.studentIds].map(userId => ({ userId })) },
     } })
@@ -136,9 +150,10 @@ export class Lessons implements OnModuleInit, OnModuleDestroy {
       const lesson = await this.access(id, user, false, true)
       if (lesson.status !== 'SCHEDULED') throw new ApiError('CONFLICT', '예정된 수업만 수정할 수 있습니다.', 409)
       const data = lessonInput.parse(input)
+      await this.validateSubject(user.id, data.subjectId)
       if (data.studentIds.length) await this.validateRoster(user.id, data.studentIds)
       await this.db.$transaction([
-        this.db.lesson.update({ where: { id }, data: { title: data.title, description: data.description, accessMode: data.accessMode, startsAt: new Date(data.startsAt), endsAt: data.endsAt === null ? null : new Date(data.endsAt) } }),
+        this.db.lesson.update({ where: { id }, data: { title: data.title, description: data.description, accessMode: data.accessMode, startsAt: new Date(data.startsAt), endsAt: data.endsAt === null ? null : new Date(data.endsAt), subjectId: data.subjectId } }),
         ...(data.accessMode === 'INVITE_ONLY' ? [this.db.lessonMember.deleteMany({ where: { lessonId: id, userId: { notIn: [user.id, ...data.studentIds] } } })] : []),
         ...data.studentIds.map(userId => this.db.lessonMember.upsert({ where: { lessonId_userId: { lessonId: id, userId } }, create: { lessonId: id, userId }, update: {} })),
       ])
@@ -160,9 +175,9 @@ export class Lessons implements OnModuleInit, OnModuleDestroy {
     })
   }
   async resolve(code: string, user: PublicUser) {
-    const lesson = await this.db.lesson.findUnique({ where: { code } })
-    if (!lesson) throw new ApiError('INVALID', '링크 또는 참여 코드가 올바르지 않습니다.', 404)
-    await this.access(lesson.id, user)
+    const match = await this.db.lesson.findUnique({ where: { code }, select: { id: true } })
+    if (!match) throw new ApiError('INVALID', '링크 또는 참여 코드가 올바르지 않습니다.', 404)
+    const lesson = await this.access(match.id, user)
     if (lesson.status === 'CANCELLED' || lesson.status === 'ENDED') throw new ApiError(lesson.status, lesson.status === 'ENDED' ? '이미 종료된 수업입니다.' : '취소된 수업입니다.', 409)
     return this.dto(lesson)
   }

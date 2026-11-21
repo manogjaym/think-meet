@@ -5,7 +5,7 @@ data class ContractHttpOperation(val id: String, val method: String, val path: S
 data class ContractFeature(val id: String, val stage: String, val requiresRevision: Int, val defaultEnabled: Boolean, val platforms: Set<String>)
 
 object ContractProtocol {
-    const val Revision = 5
+    const val Revision = 7
     const val ApiBasePath = "/api/v1"
     const val SocketPath = "/socket.io"
     const val PlatformHeader = "X-ThinkMeet-Platform"
@@ -24,6 +24,7 @@ object ContractProtocol {
         const val ClassroomCore = "classroom.core"
         const val MeetingPip = "meeting.pip"
         const val MeetingRemoteAssistance = "meeting.remote-assistance"
+        const val ClassroomSubjects = "classroom.subjects"
     }
     val HttpOperations = listOf(
         ContractHttpOperation("health", "GET", "/api/v1/health", null),
@@ -32,6 +33,7 @@ object ContractProtocol {
         ContractHttpOperation("authLogin", "POST", "/api/v1/auth/login", null),
         ContractHttpOperation("authLogout", "POST", "/api/v1/auth/logout", null),
         ContractHttpOperation("listStudents", "GET", "/api/v1/students", "classroom.core"),
+        ContractHttpOperation("listTeacherSubjects", "GET", "/api/v1/subjects", "classroom.subjects"),
         ContractHttpOperation("listLessons", "GET", "/api/v1/lessons", "classroom.core"),
         ContractHttpOperation("createLesson", "POST", "/api/v1/lessons", "classroom.core"),
         ContractHttpOperation("resolveLesson", "GET", "/api/v1/join/{code}", "classroom.core"),
@@ -55,6 +57,7 @@ object ContractProtocol {
         ContractFeature("classroom.core", "baseline", 0, true, setOf("web", "android", "ios")),
         ContractFeature("meeting.pip", "baseline", 0, true, setOf("android", "ios")),
         ContractFeature("meeting.remote-assistance", "in-progress", 4, true, setOf("web", "android", "ios")),
+        ContractFeature("classroom.subjects", "in-progress", 7, true, setOf("web", "android", "ios")),
     )
     private val commandFeatures: Map<String, String?> = mapOf(
         "chat.send" to "classroom.core",

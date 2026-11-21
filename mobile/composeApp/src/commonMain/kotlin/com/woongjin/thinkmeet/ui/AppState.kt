@@ -225,13 +225,13 @@ class AppState(val api: ThinkMeetApi, private val scope: CoroutineScope) {
         cancelWaiting()
         mutable.update { it.copy(route = Route.Prejoin(lesson)) }
     }
-    fun save(input: LessonInput) = work {
+    fun save(input: LessonInput, clearSubject: Boolean = false) = work {
         val lessonId = when (val route = state.value.route) {
             Route.Create -> null
             is Route.Edit -> route.lesson.id
             else -> return@work
         }
-        val lesson = api.saveLesson(input, lessonId)
+        val lesson = api.saveLesson(input, lessonId, clearSubject)
         mutable.update { it.copy(route = if (lessonId == null) Route.Created(lesson) else Route.Detail(lesson)) }
         refresh()
     }

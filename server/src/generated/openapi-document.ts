@@ -6,7 +6,7 @@ export const OPENAPI_DOCUMENT = {
     "version": "1.0.0",
     "description": "Canonical REST schemas shared by NestJS, React and KMP. Socket.IO is defined in realtime.json."
   },
-  "x-contract-revision": 5,
+  "x-contract-revision": 7,
   "servers": [
     {
       "url": "/api/v1"
@@ -225,6 +225,45 @@ export const OPENAPI_DOCUMENT = {
           }
         ],
         "x-feature": "classroom.core"
+      }
+    },
+    "/subjects": {
+      "get": {
+        "operationId": "listTeacherSubjects",
+        "tags": [
+          "lessons"
+        ],
+        "responses": {
+          "200": {
+            "description": "Signed-in teacher's subjects",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TeacherSubject"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "x-feature": "classroom.subjects"
       }
     },
     "/lessons": {
@@ -1179,6 +1218,22 @@ export const OPENAPI_DOCUMENT = {
           "leftAt"
         ]
       },
+      "TeacherSubject": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
       "Lesson": {
         "type": "object",
         "properties": {
@@ -1202,6 +1257,9 @@ export const OPENAPI_DOCUMENT = {
           },
           "teacher": {
             "$ref": "#/components/schemas/User"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/TeacherSubject"
           },
           "students": {
             "type": "array",
@@ -1281,6 +1339,12 @@ export const OPENAPI_DOCUMENT = {
             "type": "string",
             "minLength": 1,
             "maxLength": 200
+          },
+          "subjectId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Omit on update to preserve the subject, or send null to clear it."
           },
           "description": {
             "type": "string",

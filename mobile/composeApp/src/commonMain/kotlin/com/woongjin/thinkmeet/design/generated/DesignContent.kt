@@ -38,4 +38,11 @@ object DesignContent {
     const val RemoteAssistActiveStudent = "다른 앱에서도 선생님의 위치 안내를 받을 수 있어요."
     const val RemoteAssistGeometryWaiting = "화면 방향을 맞추고 있어요. 잠시 기다려 주세요."
     const val RemoteAssistUseApproval = "화면 보기 요청의 승인 버튼으로 공유를 시작해 주세요."
+    const val LessonSubjectLabel = "과목"
+    const val LessonSubjectOptional = "과목 (선택)"
+    const val LessonSubjectNone = "선택 안 함"
+    const val LessonSubjectsLoading = "과목을 불러오는 중이에요."
+    const val LessonSubjectsEmpty = "등록된 과목이 없어요."
+    const val LessonSubjectsError = "과목을 불러오지 못했어요."
+    const val LessonSubjectsRetry = "다시 불러오기"
 }

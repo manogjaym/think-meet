@@ -33,11 +33,20 @@ export class ApiController {
   login(@Req() req: Request, @Res({ passthrough: true }) res: Response, @Body() body: LoginInput) { return this.auth.login(req, res, body) }
   @Post('auth/logout') logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) { return this.auth.logout(req, res) }
   @Get('students') async students(@Req() req: Request) { return this.lessons.roster(await this.auth.user(req)) }
+  @Get('subjects') async subjects(@Req() req: Request) { return this.lessons.subjects(await this.auth.user(req)) }
   @Get('lessons') async list(@Req() req: Request) { return this.lessons.list(await this.auth.user(req)) }
-  @Post('lessons') async create(@Req() req: Request, @Body() body: LessonInput) { return this.lessons.create(await this.auth.user(req), body) }
+  @Post('lessons') async create(@Req() req: Request, @Body() body: LessonInput) {
+    const user = await this.auth.user(req)
+    if (body?.subjectId !== undefined) this.features.assertHttpFeature('classroom.subjects', req.headers)
+    return this.lessons.create(user, body)
+  }
   @Get('join/:code') async resolve(@Req() req: Request, @Param('code') code: string) { return this.lessons.resolve(code, await this.auth.user(req)) }
   @Get('lessons/:id') async detail(@Req() req: Request, @Param('id') id: string) { return this.lessons.dto(await this.lessons.access(id, await this.auth.user(req))) }
-  @Patch('lessons/:id') async edit(@Req() req: Request, @Param('id') id: string, @Body() body: LessonInput) { return this.lessons.edit(id, await this.auth.user(req), body) }
+  @Patch('lessons/:id') async edit(@Req() req: Request, @Param('id') id: string, @Body() body: LessonInput) {
+    const user = await this.auth.user(req)
+    if (body?.subjectId !== undefined) this.features.assertHttpFeature('classroom.subjects', req.headers)
+    return this.lessons.edit(id, user, body)
+  }
   @Post('lessons/:id/cancel') async cancel(@Req() req: Request, @Param('id') id: string) { return this.lessons.cancel(id, await this.auth.user(req)) }
   @Post('lessons/:id/join') async join(@Req() req: Request, @Param('id') id: string) { return this.lessons.join(id, await this.auth.user(req)) }
   @Post('lessons/:id/connected') async connected(@Req() req: Request, @Param('id') id: string) { return this.lessons.connected(id, await this.auth.user(req)) }

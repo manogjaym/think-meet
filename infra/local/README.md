@@ -47,6 +47,8 @@ cd /Users/pang/Project/woongjin/think-meet/infra/local
 
 기존 계정 비밀번호·수업·파일은 유지합니다. DB·버킷·계정 이름은 `.env`를 따르며, 로컬 DB 접속 호스트는 `postgres`, 파일 저장소는 `minio`입니다. `POSTGRES_PASSWORD`, `MINIO_ROOT_PASSWORD`는 로컬 관리자 비밀번호로 자동 생성하며 재실행 때 재사용합니다. 외부 DB를 지정한 설정은 이 로컬 시작 스크립트가 변경하지 않고 중단합니다.
 
+로컬 시작 시 모든 선생님에게 바로셈·수학·국어·영어를 등록합니다. 로컬 API 이미지가 최신이면 `docker compose exec -T api npm run seed`로 새로 추가한 선생님의 과목도 채울 수 있습니다.
+
 기존 `.env`가 `postgre-container-db-1`을 가리키면 첫 실행 때 ThinkMeet API·가상 학생을 중지하고 해당 DB·버킷만 백업한 뒤 새 전용 볼륨으로 복사합니다. 필요하면 이전 PostgreSQL·MinIO를 잠시 시작하고 원래 실행 상태로 돌려놓습니다. 기존 컨테이너·볼륨·다른 DB·버킷은 그대로 보존합니다. 복사가 끝난 뒤에만 `.env`의 DB 호스트를 바꾸며, 실패하면 같은 백업으로 재시도합니다.
 
 이전 백업은 `artifacts/backups/<UTC시각>/`에 SQL·파일·기존 `.env.before`로 저장하고 `.env`의 `LOCAL_STORAGE_BACKUP`에 기록합니다. 복사 대상에 별도 데이터가 이미 있으면 덮어쓰지 않고 중단합니다. PostgreSQL·MinIO 데이터는 `think-meet_postgres_data`, `think-meet_minio_data` 볼륨에 저장합니다. `docker compose down -v`는 이 볼륨과 인증서를 삭제하므로 데이터 보존용 중지는 아래 명령을 사용합니다.

@@ -5,12 +5,18 @@ import { randomBytes, randomUUID } from 'node:crypto'
 import { prepareLoadClass } from './load-test'
 import { accountPassword, resetAllUserPasswords } from './passwords'
 const db = new PrismaClient()
+const sampleSubjects = ['바로셈', '수학', '국어', '영어']
 async function main() {
   const [command, ...args] = process.argv.slice(2)
   if (command === 'seed') {
     const password = accountPassword(process.env.SEED_PASSWORD, 'SEED_PASSWORD')
     const hash = await argon2.hash(password, { type: argon2.argon2id })
     const teacher = await db.user.upsert({ where: { username: 'teacher1' }, update: {}, create: { username: 'teacher1', name: '윤지아', role: 'teacher', passwordHash: hash } })
+    const teachers = await db.user.findMany({ where: { role: 'teacher' }, select: { id: true } })
+    await db.teacherSubject.createMany({
+      data: teachers.flatMap(({ id }) => sampleSubjects.map(name => ({ teacherId: id, name }))),
+      skipDuplicates: true,
+    })
     const names = ['김민준','이서윤','박지후','최하은']
     const students = []
     for (let index = 0; index < names.length; index++) {
@@ -22,7 +28,7 @@ async function main() {
       const startsAt = new Date(Date.now() + 3600000)
       await db.lesson.create({ data: { title: '분수의 덧셈과 뺄셈', description: '초등 5학년 수학 · 함께 배우는 화상 수업', teacherId: teacher.id, startsAt, endsAt: new Date(startsAt.getTime() + 50 * 60000), code: randomBytes(6).toString('hex'), roomName: `lesson-${randomUUID()}`, members: { create: [teacher.id, ...students.map(s => s.id)].map(userId => ({ userId })) } } })
     }
-    console.log('Seed ready: teacher1, student1, student2, student3, student4. Existing passwords are preserved.')
+    console.log('Seed ready: teacher1, student1, student2, student3, student4, and sample teacher subjects. Existing passwords are preserved.')
   } else if (command === 'load:prepare') {
     const result = await prepareLoadClass(db, args[0] === undefined ? 10 : Number(args[0]), process.env.LOAD_TEST_PASSWORD || '')
     console.log(JSON.stringify(result))

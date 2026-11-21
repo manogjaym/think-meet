@@ -35,7 +35,14 @@ export const designContent = {
   "remoteAssistTitle": "선생님의 화면 보기 요청",
   "remoteAssistActiveStudent": "다른 앱에서도 선생님의 위치 안내를 받을 수 있어요.",
   "remoteAssistGeometryWaiting": "화면 방향을 맞추고 있어요. 잠시 기다려 주세요.",
-  "remoteAssistUseApproval": "화면 보기 요청의 승인 버튼으로 공유를 시작해 주세요."
+  "remoteAssistUseApproval": "화면 보기 요청의 승인 버튼으로 공유를 시작해 주세요.",
+  "lessonSubjectLabel": "과목",
+  "lessonSubjectOptional": "과목 (선택)",
+  "lessonSubjectNone": "선택 안 함",
+  "lessonSubjectsLoading": "과목을 불러오는 중이에요.",
+  "lessonSubjectsEmpty": "등록된 과목이 없어요.",
+  "lessonSubjectsError": "과목을 불러오지 못했어요.",
+  "lessonSubjectsRetry": "다시 불러오기"
 } as const;
 export const screenContract = {
   "login": {
@@ -65,7 +72,7 @@ export const screenContract = {
       "quick-join",
       "schedule-heading",
       "schedule-tabs-and-search",
-      "lesson-list"
+      "lesson-list-with-optional-subject"
     ],
     "layout": [
       "layout.dashboardMaxWidth",
@@ -78,7 +85,7 @@ export const screenContract = {
     "native": "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/ui/LessonScreens.kt",
     "sections": [
       "hierarchical-appbar",
-      "lesson-or-form-card",
+      "lesson-or-form-card-with-optional-subject",
       "roster-or-invitation",
       "primary-action"
     ],

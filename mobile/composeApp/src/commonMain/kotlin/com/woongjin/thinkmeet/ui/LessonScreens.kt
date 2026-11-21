@@ -14,16 +14,22 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import com.woongjin.thinkmeet.ErrorCard
 import com.woongjin.thinkmeet.data.*
 import com.woongjin.thinkmeet.design.*
+import com.woongjin.thinkmeet.design.generated.DesignContent
 import com.woongjin.thinkmeet.design.generated.DesignTokens.Colors as Palette
 import com.woongjin.thinkmeet.design.generated.DesignTokens.Component as ComponentToken
 import com.woongjin.thinkmeet.design.generated.DesignTokens.Layout as LayoutToken
@@ -65,6 +71,7 @@ private val LocalLessonWidth = staticCompositionLocalOf { LayoutToken.PageMaxWid
     var cancelling by remember(lesson.id) { mutableStateOf(false) }
     var copied by remember(lesson.id) { mutableStateOf(false) }
     val owner = lesson.teacher.id == state.user?.id
+    val capabilities = controller.capabilities.collectAsState().value
     val link = "$origin/join/${lesson.code}"
     PageColumn {
         val width = LocalLessonWidth.current
@@ -77,7 +84,15 @@ private val LocalLessonWidth = staticCompositionLocalOf { LayoutToken.PageMaxWid
                 Spacer(Modifier.height(Space.S8))
                 LessonText(lesson.description.ifBlank { "${lesson.teacher.name} 선생님과 함께하는 화상 수업" }, color = Muted, fontSize = Type.Body, lineHeight = Type.Body * 1.5f)
                 Spacer(Modifier.height(Space.S32))
-                val info = listOf(Triple("calendar", "날짜", lessonDay(lesson.startsAt)), Triple("clock", "수업 시간", lessonTimeRange(lesson)), Triple("users", "선생님", "${lesson.teacher.name} 선생님"), Triple(if (lesson.isOpen) "globe" else "lock", "참여 방식", if (lesson.isOpen) "누구나 참여 가능" else "선택한 학생만 참여"))
+                val info = buildList {
+                    add(Triple("calendar", "날짜", lessonDay(lesson.startsAt)))
+                    add(Triple("clock", "수업 시간", lessonTimeRange(lesson)))
+                    add(Triple("users", "선생님", "${lesson.teacher.name} 선생님"))
+                    add(Triple(if (lesson.isOpen) "globe" else "lock", "참여 방식", if (lesson.isOpen) "누구나 참여 가능" else "선택한 학생만 참여"))
+                    if (capabilities.supports(ContractProtocol.FeatureIds.ClassroomSubjects)) lesson.subject?.let {
+                        add(Triple("file", DesignContent.LessonSubjectLabel, it.name))
+                    }
+                }
                 Column(verticalArrangement = Arrangement.spacedBy(Space.S24)) {
                     info.chunked(if (phone) 1 else 2).forEach { row ->
                         Row(horizontalArrangement = Arrangement.spacedBy(Space.S32)) { row.forEach { (icon, label, value) -> DetailInfo(icon, label, value, Modifier.weight(1f)) } }
@@ -190,6 +205,9 @@ private val LocalLessonWidth = staticCompositionLocalOf { LayoutToken.PageMaxWid
     val initial = remember(existing?.id) { existing?.let { localDateTime(it.startsAt) } ?: (Clock.System.now() + 1.days).toLocalDateTime(Seoul).date.atTime(16, 0) }
     var title by remember(existing?.id) { mutableStateOf(existing?.title.orEmpty()) }
     var description by remember(existing?.id) { mutableStateOf(existing?.description.orEmpty()) }
+    val subjectsEnabled = controller.capabilities.collectAsState().value.supports(ContractProtocol.FeatureIds.ClassroomSubjects)
+    val savedSubject = existing?.subject
+    var subject by remember(existing?.id, savedSubject) { mutableStateOf(savedSubject) }
     var date by remember(existing?.id) { mutableStateOf(initial.date.toString()) }
     var start by remember(existing?.id) { mutableStateOf(clockText(initial)) }
     var end by remember(existing?.id) { mutableStateOf(existing?.endsAt?.let { localDateTime(it) }?.let(::clockText) ?: clockText((initial.toInstant(Seoul) + 50.minutes).toLocalDateTime(Seoul))) }
@@ -209,7 +227,19 @@ private val LocalLessonWidth = staticCompositionLocalOf { LayoutToken.PageMaxWid
             require(startInstant > Clock.System.now()) { "현재 시간 이후의 시작 시간을 선택해 주세요." }
             val endInstant = if (noEnd) null else LocalDateTime.parse("${date}T${end}:00").toInstant(Seoul)
             require(endInstant == null || endInstant > startInstant) { "종료 시간은 시작 시간보다 늦어야 해요." }
-            controller.save(LessonInput(title.trim(), description.trim(), startInstant.toString(), endInstant?.toString(), if (open) "OPEN" else "INVITE_ONLY", if (open) emptyList() else selected.toList()))
+            val subjectChanged = subjectsEnabled && subject?.id != savedSubject?.id
+            controller.save(
+                LessonInput(
+                    title = title.trim(),
+                    description = description.trim(),
+                    startsAt = startInstant.toString(),
+                    endsAt = endInstant?.toString(),
+                    accessMode = if (open) "OPEN" else "INVITE_ONLY",
+                    studentIds = if (open) emptyList() else selected.toList(),
+                    subjectId = subject?.id.takeIf { subjectChanged },
+                ),
+                clearSubject = subjectChanged && subject == null,
+            )
         } catch (e: IllegalArgumentException) { validation = e.message?.takeIf { !it.contains("parse", true) } ?: "날짜와 시간을 확인해 주세요. 시간은 HH:mm 형식이에요." }
     }
     PageColumn(verticalArrangement = Arrangement.Top) {
@@ -226,6 +256,10 @@ private val LocalLessonWidth = staticCompositionLocalOf { LayoutToken.PageMaxWid
                 LessonText("수업 정보", fontSize = Type.Heading, fontWeight = DesignWeight.Bold); Spacer(Modifier.height(Space.S22))
                 DesignTextField(title, { title = it.take(200) }, Modifier.fillMaxWidth(), label = "학습 제목 *", placeholder = "예: 분수의 덧셈과 뺄셈", isError = validation != null && title.isBlank())
                 Spacer(Modifier.height(Space.S24))
+                if (subjectsEnabled) {
+                    LessonSubjectField(controller.api, subject, !state.busy) { subject = it }
+                    Spacer(Modifier.height(Space.S24))
+                }
                 DesignTextField(description, { description = it.take(5000) }, Modifier.fillMaxWidth(), label = "학습 내용", placeholder = "함께 배울 내용을 간단히 적어 주세요.", singleLine = false, minLines = 3)
                 Spacer(Modifier.height(Space.S24))
                 val dateField: @Composable (Modifier) -> Unit = { m -> DesignTextField(date, { date = it.take(10) }, m, label = "날짜 *", trailingIcon = { IconButton({ datePicker = true }, Modifier.size(Space.S24)) { DesignIcon("calendar", Modifier.size(Space.S20), tint = Muted, contentDescription = "날짜 선택") } }) }
@@ -306,6 +340,65 @@ private val LocalLessonWidth = staticCompositionLocalOf { LayoutToken.PageMaxWid
         DatePickerDialog(onDismissRequest = { datePicker = false }, confirmButton = { TextButton({ picker.selectedDateMillis?.let { date = Instant.fromEpochMilliseconds(it).toLocalDateTime(TimeZone.UTC).date.toString() }; datePicker = false }) { LessonText("선택") } }, dismissButton = { TextButton({ datePicker = false }) { LessonText("취소") } }) { DatePicker(picker) }
     }
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun LessonSubjectField(api: ThinkMeetApi, selected: TeacherSubject?, enabled: Boolean, onSelect: (TeacherSubject?) -> Unit) {
+    var subjects by remember(api) { mutableStateOf<List<TeacherSubject>?>(null) }
+    var failed by remember(api) { mutableStateOf(false) }
+    var retry by remember(api) { mutableIntStateOf(0) }
+    var expanded by remember { mutableStateOf(false) }
+    LaunchedEffect(api, retry) {
+        failed = false
+        try {
+            subjects = api.subjects()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            failed = true
+        }
+    }
+    val rows = subjects
+    val canSelect = enabled && rows != null && (rows.isNotEmpty() || selected != null)
+    val message = when {
+        failed -> DesignContent.LessonSubjectsError
+        rows == null -> DesignContent.LessonSubjectsLoading
+        rows.isEmpty() -> DesignContent.LessonSubjectsEmpty
+        else -> null
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(Space.S8)) {
+        LessonText(DesignContent.LessonSubjectOptional, color = Palette.TextSecondary, fontSize = Type.Support, fontWeight = DesignWeight.Medium)
+        ExposedDropdownMenuBox(expanded = canSelect && expanded, onExpandedChange = { expanded = it && canSelect }) {
+            Surface(
+                modifier = Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, enabled = canSelect)
+                    .semantics { contentDescription = DesignContent.LessonSubjectOptional }
+                    .alpha(if (canSelect) 1f else .45f),
+                color = Palette.White,
+                shape = RoundedCornerShape(ComponentToken.InputRadius),
+                border = BorderStroke(Space.S1, Palette.LineInput),
+            ) {
+                Row(
+                    Modifier.heightIn(min = ComponentToken.InputHeight).padding(horizontal = ComponentToken.InputPadding),
+                    horizontalArrangement = Arrangement.spacedBy(Space.S8),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(selected?.name ?: DesignContent.LessonSubjectNone, Modifier.weight(1f), maxLines = 1,
+                        overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
+                    DesignIcon("chevron", Modifier.size(Space.S16).rotate(90f), tint = Muted)
+                }
+            }
+            ExposedDropdownMenu(expanded = canSelect && expanded, onDismissRequest = { expanded = false }) {
+                DropdownMenuItem(text = { Text(DesignContent.LessonSubjectNone) }, onClick = { onSelect(null); expanded = false })
+                rows.orEmpty().forEach { subject ->
+                    DropdownMenuItem(text = { Text(subject.name) }, onClick = { onSelect(subject); expanded = false })
+                }
+            }
+        }
+        message?.let { LessonText(it, color = Muted, fontSize = Type.Support) }
+        if (failed) TextButton(onClick = { retry++ }, enabled = enabled) { Text(DesignContent.LessonSubjectsRetry) }
+    }
+}
+
 @Composable private fun AccessOption(icon: String, title: String, copy: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier, phone: Boolean) {
     Surface(onClick = onClick, modifier = modifier, color = if (selected) Brand.copy(alpha = .03f) else Palette.Surface, shape = RoundedCornerShape(Corner.R10), border = BorderStroke(if (selected) Space.S2 else Space.S1, if (selected) Brand else Palette.Line)) {
         Column(Modifier.padding(horizontal = if (phone) Space.S12 else Space.S16, vertical = if (phone) Space.S14 else Space.S16)) {

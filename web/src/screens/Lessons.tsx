@@ -1,4 +1,7 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
+import type { LessonInput, TeacherSubject } from "../generated/contracts"
+import { designContent } from "../generated/design-content"
+import { useFeature } from "../lib/useFeature"
 import {
   api,
   colorFor,
@@ -44,6 +47,7 @@ export function Detail({
   onCancel?: (lesson: Lesson) => Promise<void>
   onEdit?: (lesson: Lesson) => void
 }) {
+  const subjectsEnabled = useFeature("classroom.subjects")
   const [cancel, setCancel] = useState(false)
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">(
     "idle",
@@ -102,6 +106,9 @@ export function Detail({
               label="참여 방식"
               value={isOpen ? "누구나 참여 가능" : "선택한 학생만 참여"}
             />
+            {subjectsEnabled && lesson.subject && (
+              <Info icon="file" label={designContent.lessonSubjectLabel} value={lesson.subject.name} />
+            )}
           </div>
           {isOpen && (
             <div className="detail-access-note">
@@ -308,6 +315,29 @@ export function Form({
   students: User[]
 }) {
   const details = lesson
+  const subjectsEnabled = useFeature("classroom.subjects")
+  const [subjects, setSubjects] = useState<TeacherSubject[] | null>(null)
+  const [subjectsFailed, setSubjectsFailed] = useState(false)
+  const [subjectRetry, setSubjectRetry] = useState(0)
+  const [subjectChange, setSubjectChange] = useState<string | null>()
+  const savedSubjectId = lesson?.subject?.id ?? null
+  const selectedSubjectId = subjectChange === undefined ? savedSubjectId : subjectChange
+  const subjectsMessage = subjectsFailed
+    ? designContent.lessonSubjectsError
+    : subjects === null
+      ? designContent.lessonSubjectsLoading
+      : subjects.length === 0 ? designContent.lessonSubjectsEmpty : null
+  useEffect(() => {
+    if (!subjectsEnabled) return
+    const request = new AbortController()
+    setSubjects(null)
+    setSubjectsFailed(false)
+    void api<TeacherSubject[]>("/subjects", { signal: request.signal }).then(
+      (rows) => { if (!request.signal.aborted) setSubjects(rows) },
+      () => { if (!request.signal.aborted) setSubjectsFailed(true) },
+    )
+    return () => request.abort()
+  }, [subjectsEnabled, subjectRetry])
   const [title, setTitle] = useState(lesson?.title || "")
   const [description, setDescription] = useState(details?.description || "")
   const [date, setDate] = useState(
@@ -395,7 +425,8 @@ export function Form({
               : new Date(`${date}T${endTime}:00+09:00`).toISOString(),
             accessMode,
             studentIds: isOpen ? [] : selected,
-          }),
+            ...(subjectsEnabled && subjects !== null && subjectChange !== undefined ? { subjectId: subjectChange } : {}),
+          } satisfies LessonInput),
         },
       )
       onCreated?.(displayLesson(result))
@@ -441,6 +472,33 @@ export function Form({
               />
               {errors.title && <em id="title-error">{errors.title}</em>}
             </label>
+            {subjectsEnabled && (
+              <div className="field min-w-0">
+                <label htmlFor="lesson-subject">{designContent.lessonSubjectOptional}</label>
+                <select
+                  id="lesson-subject"
+                  value={selectedSubjectId ?? ""}
+                  disabled={saving || subjects === null || (subjects.length === 0 && selectedSubjectId === null)}
+                  aria-describedby={subjectsMessage ? "lesson-subject-status" : undefined}
+                  onChange={(event) => {
+                    const next = event.target.value || null
+                    setSubjectChange(next === savedSubjectId ? undefined : next)
+                  }}
+                >
+                  <option value="">{designContent.lessonSubjectNone}</option>
+                  {lesson?.subject && !subjects?.some(({ id }) => id === lesson.subject?.id) && (
+                    <option value={lesson.subject.id}>{lesson.subject.name}</option>
+                  )}
+                  {subjects?.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
+                </select>
+                {subjectsMessage && <p id="lesson-subject-status" role="status" className="text-[var(--muted)]">{subjectsMessage}</p>}
+                {subjectsFailed && (
+                  <button type="button" className="link-button" onClick={() => setSubjectRetry((attempt) => attempt + 1)}>
+                    {designContent.lessonSubjectsRetry}
+                  </button>
+                )}
+              </div>
+            )}
             <label className="field">
               <span>학습 내용</span>
               <textarea

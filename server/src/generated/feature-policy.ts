@@ -1,5 +1,5 @@
 // Generated from features/catalog.json and contracts/. Do not edit.
-export const CONTRACT_REVISION = 5 as const;
+export const CONTRACT_REVISION = 7 as const;
 export const CAPABILITY_HEADERS = {"platform":"X-ThinkMeet-Platform","revision":"X-ThinkMeet-Contract-Revision"} as const;
 export type ClientPlatform = "web" | "android" | "ios";
 export type FeatureDefinition = { readonly id: string; readonly stage: "baseline" | "planned" | "in-progress" | "ready"; readonly requiresRevision: number; readonly defaultEnabled: boolean; readonly platforms: readonly ClientPlatform[] };
@@ -29,6 +29,17 @@ export const FEATURE_DEFINITIONS = [
     "id": "meeting.remote-assistance",
     "stage": "in-progress",
     "requiresRevision": 4,
+    "defaultEnabled": true,
+    "platforms": [
+      "web",
+      "android",
+      "ios"
+    ]
+  },
+  {
+    "id": "classroom.subjects",
+    "stage": "in-progress",
+    "requiresRevision": 7,
     "defaultEnabled": true,
     "platforms": [
       "web",
@@ -69,6 +80,12 @@ export const HTTP_OPERATIONS: readonly { id: string; method: string; path: strin
     "method": "GET",
     "path": "/api/v1/students",
     "feature": "classroom.core"
+  },
+  {
+    "id": "listTeacherSubjects",
+    "method": "GET",
+    "path": "/api/v1/subjects",
+    "feature": "classroom.subjects"
   },
   {
     "id": "listLessons",

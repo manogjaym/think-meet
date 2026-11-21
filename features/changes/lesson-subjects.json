@@ -1,0 +1,19 @@
+{
+  "id": "lesson-subjects",
+  "summary": "선생님별 과목 조회·선택·저장과 수업 목록·상세 표시를 추가합니다.",
+  "scope": "shared",
+  "featureIds": ["classroom.subjects"],
+  "platforms": {
+    "server": {"status": "implemented"},
+    "web": {"status": "implemented"},
+    "android": {"status": "implemented"},
+    "ios": {"status": "implemented"}
+  },
+  "verification": [
+    "npm run shared:check 및 npm run verify 통과",
+    "로컬 PostgreSQL 마이그레이션, 시드 재실행, API 통합 검사 통과",
+    "Chromium 예약·수정 검사 및 웹 휴대폰·태블릿 확인",
+    "과목 검증본의 Android 핵심 테스트·APK 및 iOS 시뮬레이터 앱 빌드 통과",
+    "Android 휴대폰 화면 확인. Android 태블릿과 iPhone·iPad 화면 검증은 시뮬레이터 오류로 미완료"
+  ]
+}

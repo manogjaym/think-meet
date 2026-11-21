@@ -34,12 +34,20 @@ data class Attendance(
 )
 
 @Serializable
+data class TeacherSubject(
+    val id: String,
+    val name: String,
+)
+
+@Serializable
 data class Lesson(
     val id: String,
     val title: String,
     val description: String = "",
     val accessMode: LessonAccessMode = "INVITE_ONLY",
     val teacher: User,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val subject: TeacherSubject? = null,
     val students: List<User> = emptyList(),
     val startsAt: String,
     val endsAt: String? = null,
@@ -58,6 +66,7 @@ data class Lesson(
 @Serializable
 data class LessonInput(
     val title: String,
+    val subjectId: String? = null,
     val description: String = "",
     val startsAt: String,
     val endsAt: String?,

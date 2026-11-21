@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import com.woongjin.thinkmeet.data.Lesson
+import com.woongjin.thinkmeet.data.ContractProtocol
 import com.woongjin.thinkmeet.design.*
 import com.woongjin.thinkmeet.design.generated.DesignContent
 import com.woongjin.thinkmeet.design.generated.DesignTokens.Colors as Palette
@@ -62,6 +63,7 @@ import kotlin.time.Instant
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(state: AppUiState, controller: AppState) {
+    val subjectsEnabled = controller.capabilities.collectAsState().value.supports(ContractProtocol.FeatureIds.ClassroomSubjects)
     var tab by rememberSaveable { mutableStateOf("upcoming") }
     var search by rememberSaveable { mutableStateOf("") }
     var selectedLiveId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -104,7 +106,7 @@ fun HomeScreen(state: AppUiState, controller: AppState) {
                 }
                 item(key = "features") {
                     val session: @Composable (Modifier) -> Unit = { modifier ->
-                        SessionFeature(featured, upcoming.size, state, compact, featureWide, large, modifier,
+                        SessionFeature(featured, featured?.subject?.name.takeIf { subjectsEnabled }, upcoming.size, state, compact, featureWide, large, modifier,
                             onJoin = controller::prejoin, onSchedule = { scope.launch { scroll.animateScrollToItem(2) } })
                     }
                     val quick: @Composable (Modifier) -> Unit = { modifier ->
@@ -125,7 +127,7 @@ fun HomeScreen(state: AppUiState, controller: AppState) {
                 if (!compact && filtered.isNotEmpty()) item(key = "columns") { DashboardColumns(viewport, Modifier.listBoundary(first = true, last = false)) }
                 if (filtered.isEmpty()) item(key = "empty") { DashboardEmpty(tab, search) { search = "" } }
                 itemsIndexed(filtered, key = { _, lesson -> lesson.id }) { index, lesson ->
-                    DashboardLessonRow(lesson, viewport, compact, lesson.status == "LIVE" && lesson.id == featured?.id, !state.busy,
+                    DashboardLessonRow(lesson, lesson.subject?.name.takeIf { subjectsEnabled }, viewport, compact, lesson.status == "LIVE" && lesson.id == featured?.id, !state.busy,
                         Modifier.listBoundary(first = compact && index == 0, last = index == filtered.lastIndex)) {
                         if (lesson.status == "LIVE") { selectedLiveId = lesson.id; scope.launch { scroll.animateScrollToItem(1) } }
                         else controller.open(lesson)
@@ -155,7 +157,7 @@ private fun DashboardHeading(state: AppUiState, compact: Boolean, showToday: Boo
 }
 
 @Composable
-private fun SessionFeature(lesson: Lesson?, upcoming: Int, state: AppUiState, compact: Boolean, featureWide: Boolean, large: Boolean,
+private fun SessionFeature(lesson: Lesson?, subjectName: String?, upcoming: Int, state: AppUiState, compact: Boolean, featureWide: Boolean, large: Boolean,
     modifier: Modifier, onJoin: (Lesson) -> Unit, onSchedule: () -> Unit) {
     val px = when { compact -> Space.S20; large -> Space.S32; featureWide -> Space.S24; else -> Space.S28 }
     val py = if (large) Space.S28 else if (compact) Space.S20 else Space.S24
@@ -186,7 +188,10 @@ private fun SessionFeature(lesson: Lesson?, upcoming: Int, state: AppUiState, co
                 if (lesson?.isOpen == true) Row(horizontalArrangement = Arrangement.spacedBy(Space.S7), verticalAlignment = Alignment.CenterVertically) {
                     DesignIcon("globe", Modifier.size(Space.S15), tint = Palette.LineInput)
                     Text("공개 수업 · 누구나 참여 가능", style = homeText(Type.Support, DesignWeight.Medium), color = Palette.LineInput)
-                } else Text(if (lesson == null) "다음 만남을 준비하는 시간" else "초등 5학년 수학", style = homeText(Type.Support, DesignWeight.Medium), color = Palette.LineInput)
+                } else {
+                    val subtitle = if (lesson == null) "다음 만남을 준비하는 시간" else subjectName
+                    subtitle?.let { Text(it, style = homeText(Type.Support, DesignWeight.Medium), color = Palette.LineInput) }
+                }
                 Spacer(Modifier.height(Space.S6))
                 Text(lesson?.title ?: "지금 진행 중인 수업이 없어요", style = homeText(Type.Title, DesignWeight.Bold, Leading.Title), color = Palette.White)
                 Spacer(Modifier.height(Space.S8))
@@ -321,7 +326,7 @@ private fun DashboardColumns(viewport: Dp, modifier: Modifier) {
 }
 
 @Composable
-private fun DashboardLessonRow(lesson: Lesson, viewport: Dp, compact: Boolean, selected: Boolean, enabled: Boolean, modifier: Modifier, onClick: () -> Unit) {
+private fun DashboardLessonRow(lesson: Lesson, subjectName: String?, viewport: Dp, compact: Boolean, selected: Boolean, enabled: Boolean, modifier: Modifier, onClick: () -> Unit) {
     BoxWithConstraints(modifier.fillMaxWidth().background(if (selected) Palette.Selection else Palette.White).clickable(enabled = enabled, role = Role.Button, onClick = onClick).semantics { this.selected = selected }) {
         val c = dashboardColumns(maxWidth, viewport)
         if (selected) Box(Modifier.matchParentSize().drawWithContent { drawRect(Brand, size = Size(Space.S3.toPx(), size.height)) })
@@ -335,12 +340,19 @@ private fun DashboardLessonRow(lesson: Lesson, viewport: Dp, compact: Boolean, s
             Column(if (compact) Modifier.weight(1f) else Modifier.width(c.lesson), verticalArrangement = Arrangement.spacedBy(Space.S5)) {
                 Text(lesson.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = homeText(Type.Body, DesignWeight.SemiBold), color = if (selected) Palette.PrimaryPressed else Palette.TextSecondary)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(if (compact) Space.S5 else Space.S7), verticalArrangement = Arrangement.spacedBy(Space.S4)) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.S4)) {
-                        if (lesson.isOpen) DesignIcon("globe", Modifier.size(Space.S13), tint = Palette.PrimaryPressed)
-                        Text(if (lesson.isOpen) "공개 수업" else "초등 5학년 수학", style = homeText(if (compact) Type.Caption else Type.Support, if (lesson.isOpen) DesignWeight.Medium else DesignWeight.Regular), color = if (lesson.isOpen) Palette.PrimaryPressed else Muted)
+                    val size = if (compact) Type.Caption else Type.Support
+                    if (lesson.isOpen) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.S4)) {
+                            DesignIcon("globe", Modifier.size(Space.S13), tint = Palette.PrimaryPressed)
+                            Text("공개 수업", style = homeText(size, DesignWeight.Medium), color = Palette.PrimaryPressed)
+                        }
+                        Text("·", style = homeText(size), color = Muted)
                     }
-                    Text("·", style = homeText(if (compact) Type.Caption else Type.Support), color = Muted)
-                    Text(lessonDuration(lesson), style = homeText(if (compact) Type.Caption else Type.Support), color = Muted)
+                    if (subjectName != null) {
+                        Text(subjectName, style = homeText(size), color = Muted)
+                        Text("·", style = homeText(size), color = Muted)
+                    }
+                    Text(lessonDuration(lesson), style = homeText(size), color = Muted)
                 }
             }
             if (!compact) {

@@ -39,6 +39,8 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.encodeToJsonElement
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 private val HttpOperationsById = ContractProtocol.HttpOperations.associateBy { it.id }
@@ -151,14 +153,25 @@ class ThinkMeetApi(internal val client: HttpClient, origin: String) {
     suspend fun logout() { operationResponse("authLogout") }
     suspend fun lessons(): List<Lesson> = json("listLessons")
     suspend fun students(): List<User> = json("listStudents")
+    suspend fun subjects(): List<TeacherSubject> = json("listTeacherSubjects")
     suspend fun lesson(id: String): Lesson = json("getLesson", mapOf("id" to id))
     suspend fun resolve(code: String): Lesson = json("resolveLesson", mapOf("code" to code.trim()))
     suspend fun byCode(code: String): Lesson = resolve(code)
-    suspend fun saveLesson(input: LessonInput, id: String? = null): Lesson = json(
-        if (id == null) "createLesson" else "updateLesson",
-        id?.let { mapOf("id" to it) } ?: emptyMap(),
-        ThinkMeetJson.encodeToString(input),
-    )
+    suspend fun saveLesson(input: LessonInput, id: String? = null, clearSubject: Boolean = false): Lesson {
+        val payload = ThinkMeetJson.encodeToJsonElement(input).jsonObject
+        val body = if (input.subjectId != null || clearSubject) {
+            requireFeature(ContractProtocol.FeatureIds.ClassroomSubjects)
+            payload
+        } else {
+            // A missing subjectId preserves an existing subject; null clears it.
+            JsonObject(payload - "subjectId")
+        }
+        return json(
+            if (id == null) "createLesson" else "updateLesson",
+            id?.let { mapOf("id" to it) } ?: emptyMap(),
+            body.toString(),
+        )
+    }
     suspend fun cancel(id: String): Lesson = json("cancelLesson", mapOf("id" to id))
     suspend fun join(id: String): JoinResult = json("joinLesson", mapOf("id" to id))
     suspend fun connected(id: String): Lesson = json("connectedLesson", mapOf("id" to id))

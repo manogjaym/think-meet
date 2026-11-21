@@ -239,6 +239,56 @@
           ]
         }
       }
+    },
+    {
+      "id": "classroom.subjects",
+      "title": "수업 과목 선택",
+      "stage": "in-progress",
+      "requiresRevision": 7,
+      "defaultEnabled": true,
+      "platforms": [
+        "web",
+        "android",
+        "ios"
+      ],
+      "spec": "lesson-subjects.md",
+      "contracts": {
+        "operations": [
+          "listTeacherSubjects"
+        ],
+        "events": [],
+        "commands": []
+      },
+      "implementation": {
+        "server": {
+          "status": "done",
+          "files": [
+            "server/src/lessons.ts",
+            "server/src/controllers.ts"
+          ]
+        },
+        "web": {
+          "status": "done",
+          "files": [
+            "web/src/screens/Lessons.tsx",
+            "web/src/screens/Home.tsx"
+          ]
+        },
+        "android": {
+          "status": "done",
+          "files": [
+            "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/ui/LessonScreens.kt",
+            "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/ui/HomeScreen.kt"
+          ]
+        },
+        "ios": {
+          "status": "done",
+          "files": [
+            "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/ui/LessonScreens.kt",
+            "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/ui/HomeScreen.kt"
+          ]
+        }
+      }
     }
   ]
 }

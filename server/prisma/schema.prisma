@@ -42,6 +42,11 @@ model TeacherSubject {
   @@unique([teacherId, name])
 }
 
+enum LessonInstructionPhase {
+  preparing
+  classroom
+  mirroring
+}
 model Lesson {
   id String @id @default(uuid()) @db.Uuid
   teacherId String @db.Uuid
@@ -55,6 +60,8 @@ model Lesson {
   status String @default("SCHEDULED")
   code String @unique
   startedAt DateTime?
+  instructionPhase LessonInstructionPhase?
+  instructionStartedAt DateTime?
   endedAt DateTime?
   roomName String @unique
   seq Int @default(0)

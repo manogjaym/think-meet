@@ -79,10 +79,19 @@ fun MeetingScreen(
     val realtime = remember(api, lesson.id) { MeetingRealtime(api, scope, lesson.id) }
     val liveSnapshot by realtime.snapshot.collectAsState()
     val socketConnected by realtime.connected.collectAsState()
+    val subscribed by realtime.subscribed.collectAsState()
     val snapshot = liveSnapshot
     val currentLesson = snapshot?.lesson ?: lesson
     val owner = currentLesson.teacher.id == user.id
     val assistance = snapshot?.assistance
+    val phase = snapshot?.instruction?.phase
+    val lessonModes = capabilities.supports(ContractProtocol.FeatureIds.ClassroomLessonModes)
+    val canShare = snapshot != null && (phase == null || (owner && phase == "classroom"))
+    val showMaterials = owner && canShare
+    val modeReady = subscribed && mediaState.connected &&
+        snapshot?.participants?.any { it.user.id == user.id && it.online } == true
+    var modeConfirm by remember { mutableStateOf<LessonModeSetPayload?>(null) }
+    var modeBusy by remember { mutableStateOf(false) }
     val assistanceEnabled = capabilities.supports(ContractProtocol.FeatureIds.MeetingRemoteAssistance)
     val snackbar = remember { SnackbarHostState() }
     var panel by remember { mutableStateOf<Panel?>(null) }
@@ -135,6 +144,33 @@ fun MeetingScreen(
     DisposableEffect(assistanceSession) { onDispose { assistanceSession.close() } }
     fun execute(block: suspend () -> Unit) { scope.launch { try { block() } catch (e: Throwable) { report(e) } } }
     val command: (String, JsonObject) -> Unit = { type, payload -> execute { realtime.command(type, payload) } }
+
+    fun updateInstruction(change: LessonModeSetPayload? = null) {
+        if (!modeReady || modeBusy) return
+        modeBusy = true
+        execute {
+            try {
+                val updated = if (change == null) realtime.command("lesson.start")
+                else realtime.command("lesson.mode.set", ThinkMeetJson.encodeToJsonElement(change).jsonObject)
+                if (change?.mode == "mirroring" && updated.instruction?.phase == "mirroring") panel = Panel.People
+            } finally { modeBusy = false }
+        }
+    }
+
+    fun selectMode(mode: String) {
+        if (phase != "classroom" && phase != "mirroring") return
+        if (phase == mode) {
+            if (mode == "mirroring") panel = Panel.People
+            return
+        }
+        val change = LessonModeSetPayload(mode, phase, snapshot.share?.id, assistance?.id)
+        if (change.expectedShareId != null || change.expectedAssistanceId != null) modeConfirm = change
+        else updateInstruction(change)
+    }
+
+    LaunchedEffect(showMaterials, panel) {
+        if (!showMaterials && panel == Panel.Materials) panel = null
+    }
 
     DisposableEffect(session) {
         session.start(admission, camera, microphone)
@@ -189,13 +225,20 @@ fun MeetingScreen(
             val bodyPadding = if (compact) Space.S10 else if (maxWidth <= LayoutToken.MeetingMediumBreakpoint) Space.S16 else Space.S20
             CompositionLocalProvider(LocalMeetingCompact provides compact, LocalMeetingViewportWidth provides maxWidth, LocalMeetingShort provides (maxHeight <= LayoutToken.MeetingShortHeight && !compact)) {
             Column(Modifier.fillMaxSize()) {
-                MeetingHeader(currentLesson, mediaState, socketConnected, snapshot?.serverTime, grid, compact, windowWidth, onLayout = { grid = !grid })
+                MeetingHeader(currentLesson, mediaState, socketConnected, snapshot?.serverTime, grid, compact, windowWidth,
+                    instructionPhase = phase, instructionStartedAt = snapshot?.instruction?.startedAt, onLayout = { grid = !grid })
+                if (owner && lessonModes && phase != null && !compactSystemPip) {
+                    MeetingLessonModes(phase, modeReady && !modeBusy && !busy, assistanceEnabled,
+                        onStart = { updateInstruction() }, onMode = ::selectMode)
+                }
                 if (assistanceEnabled && assistance != null && (owner || assistance.studentId == user.id)) {
                     RemoteAssistanceControls(assistance, user, remoteState.supported && pipState.supported, assistanceBusy,
                         Modifier.fillMaxWidth().padding(horizontal = bodyPadding, vertical = Space.S4),
                         onApprove = { assistanceSession.approve(assistance.id) },
                         onDecline = { execute { realtime.command("assistance.respond", ThinkMeetJson.encodeToJsonElement(AssistanceRespondPayload(assistance.id, false)).jsonObject) } },
-                        onStop = { execute { assistanceSession.stop(assistance.id) } })
+                        onStop = { execute { assistanceSession.stop(assistance.id) } },
+                        requestCancel = owner && phase != null && assistance.status == "pending",
+                        studentName = people.firstOrNull { it.id == assistance.studentId }?.name)
                 }
                 if (!socketConnected && snapshot != null) {
                     Text("실시간 상태를 다시 연결하고 있어요. 연결 후 자동으로 복원됩니다.",
@@ -238,6 +281,8 @@ fun MeetingScreen(
                     sharing = ownScreen != null || mediaState.screenCaptureId != 0L || (assistance?.studentId == user.id && mediaState.screenSharing),
                     raised = snapshot?.participants?.find { it.user.id == user.id }?.raised == true,
                     count = mediaState.participants.size.coerceAtLeast(1), panel = panel, unread = unread, busy = busy,
+                    showShare = canShare || ownScreen != null || mediaState.screenCaptureId != 0L ||
+                        (assistance?.studentId == user.id && mediaState.screenSharing), showMaterials = showMaterials,
                     onMicrophone = { execute { media.setMicrophone(!mediaState.microphone) } },
                     onCamera = { execute { media.setCamera(!mediaState.camera) } },
                     onHand = { command("hand.set", buildJsonObject { put("raised", snapshot?.participants?.find { it.user.id == user.id }?.raised != true) }) },
@@ -263,6 +308,18 @@ fun MeetingScreen(
         }
         if (compactSystemPip) CompactVideo(media, mediaState, pipTarget, videoName(pipTarget), Modifier.fillMaxSize())
     }
+    }
+    modeConfirm?.takeUnless { compactSystemPip }?.let { change ->
+        MeetingLightTheme {
+            AlertDialog(onDismissRequest = { modeConfirm = null },
+                title = { Text(DesignContent.MeetingLessonSwitchTitle) },
+                text = { Text(DesignContent.MeetingLessonSwitchCopy) },
+                confirmButton = { TextButton(enabled = modeReady && !modeBusy, onClick = {
+                    modeConfirm = null
+                    updateInstruction(change)
+                }) { Text(DesignContent.MeetingLessonSwitchAction) } },
+                dismissButton = { TextButton(onClick = { modeConfirm = null }) { Text("취소") } })
+        }
     }
     if (confirmLeave && !compactSystemPip) AlertDialog(
         onDismissRequest = { if (!busy) confirmLeave = false },
@@ -456,7 +513,9 @@ private fun MeetingPanel(
         when (panel) {
             Panel.Chat -> ChatPanel(snapshot, user, realtime, report, chatDraft)
             Panel.People -> PeoplePanel(api, lesson, user, snapshot, mediaState, realtime, report)
-            Panel.Materials -> MaterialsPanel(api, lesson, snapshot, realtime, report, onClose)
+            Panel.Materials -> if (snapshot?.instruction?.phase.let { it == null || it == "classroom" }) {
+                MaterialsPanel(api, lesson, snapshot, realtime, report, onClose)
+            }
             Panel.Settings -> DevicePanel(media, mediaState, report)
             Panel.Invite -> InvitePanel(api, lesson, report)
             Panel.More -> MorePanel(lesson, user, snapshot, realtime, report, onPanel, unread, miniVisible, onMini, pipState, pipEnabled, onPip)
@@ -475,7 +534,9 @@ private fun ColumnScope.MorePanel(
         item { MeetingMenuItem("chat", "수업 채팅", "함께 이야기 나누기", badge = unread) { onPanel(Panel.Chat) } }
         if (lesson.isOwner(user)) {
             item { MeetingMenuItem(if (lesson.isOpen) "link" else "users", if (lesson.isOpen) "참여 링크 공유" else "다른 참석자 추가", if (lesson.isOpen) "누구나 참여할 수 있는 공개 수업" else "초대 학생과 참여 링크 관리") { onPanel(Panel.Invite) } }
-            item { MeetingMenuItem("folder", "수업 자료", "영상과 PDF를 함께 보기") { onPanel(Panel.Materials) } }
+            if (snapshot?.instruction?.phase.let { it == null || it == "classroom" }) {
+                item { MeetingMenuItem("folder", "수업 자료", "영상과 PDF를 함께 보기") { onPanel(Panel.Materials) } }
+            }
         }
         item { MeetingMenuItem("settings", "카메라·마이크 설정", "입력·출력 장치 설정") { onPanel(Panel.Settings) } }
         item { MeetingMenuItem("pip", "화면 속 화면", if (!pipState.supported) "기기에서 지원하지 않아요" else "다른 앱을 보면서 수업 계속하기", enabled = pipState.supported && pipEnabled && !pipState.active && !pipState.transitioning) { onPip() } }
@@ -598,7 +659,8 @@ private fun ColumnScope.PeoplePanel(api: ThinkMeetApi, lesson: Lesson, user: Use
     val scope = rememberCoroutineScope()
     val capabilities by api.capabilities.collectAsState()
     val socketConnected by realtime.connected.collectAsState()
-    val assistanceEnabled = capabilities.supports(ContractProtocol.FeatureIds.MeetingRemoteAssistance)
+    val assistanceEnabled = capabilities.supports(ContractProtocol.FeatureIds.MeetingRemoteAssistance) &&
+        snapshot?.instruction?.phase.let { it == null || it == "mirroring" }
     var search by remember { mutableStateOf("") }
     var kickPerson by remember { mutableStateOf<User?>(null) }
     var pending by remember { mutableStateOf(false) }

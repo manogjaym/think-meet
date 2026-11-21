@@ -103,7 +103,7 @@ test("participant and speaker updates keep the camera preview and microphone met
 
     const prejoin = `/lessons/${lesson.id}/prejoin`
     await teacher.goto(prejoin)
-    await teacher.getByRole("button", { name: "수업 시작하기", exact: true }).click()
+    await teacher.getByRole("button", { name: "화상미팅 입장", exact: true }).click()
     await expect(teacher.locator(".call-connected")).toHaveText("연결됨")
     const controls = teacher.locator(".call-controls")
     await controls.getByRole("button", { name: "더보기", exact: true }).click()

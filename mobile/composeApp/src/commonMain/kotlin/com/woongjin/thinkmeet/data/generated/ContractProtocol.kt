@@ -5,7 +5,7 @@ data class ContractHttpOperation(val id: String, val method: String, val path: S
 data class ContractFeature(val id: String, val stage: String, val requiresRevision: Int, val defaultEnabled: Boolean, val platforms: Set<String>)
 
 object ContractProtocol {
-    const val Revision = 9
+    const val Revision = 10
     const val ApiBasePath = "/api/v1"
     const val SocketPath = "/socket.io"
     const val PlatformHeader = "X-ThinkMeet-Platform"
@@ -27,6 +27,7 @@ object ContractProtocol {
         const val ClassroomSubjects = "classroom.subjects"
         const val ClassroomPrejoin = "classroom.prejoin"
         const val ClassroomAttendance = "classroom.attendance"
+        const val ClassroomLessonModes = "classroom.lesson-modes"
     }
     val HttpOperations = listOf(
         ContractHttpOperation("health", "GET", "/api/v1/health", null),
@@ -67,8 +68,11 @@ object ContractProtocol {
         ContractFeature("classroom.subjects", "in-progress", 7, true, setOf("web", "android", "ios")),
         ContractFeature("classroom.prejoin", "in-progress", 9, true, setOf("web", "android", "ios")),
         ContractFeature("classroom.attendance", "in-progress", 8, true, setOf("web", "android", "ios")),
+        ContractFeature("classroom.lesson-modes", "in-progress", 10, true, setOf("web", "android", "ios")),
     )
     private val commandFeatures: Map<String, String?> = mapOf(
+        "lesson.start" to "classroom.lesson-modes",
+        "lesson.mode.set" to "classroom.lesson-modes",
         "chat.send" to "classroom.core",
         "hand.set" to "classroom.core",
         "share.start" to "classroom.core",

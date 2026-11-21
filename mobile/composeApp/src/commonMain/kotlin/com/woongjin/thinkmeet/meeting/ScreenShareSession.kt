@@ -36,6 +36,9 @@ internal class ScreenShareSession(
     private var sendingStop: Job? = null
     private var retryOnCompletion = false
     private val share get() = link.snapshot.value?.share
+    private val canPublish get() = link.snapshot.value.let { snapshot ->
+        snapshot?.instruction == null || (snapshot.instruction.phase == "classroom" && snapshot.lesson.teacher.id == userId)
+    }
 
     fun observe() {
         if (observer != null) return
@@ -53,7 +56,7 @@ internal class ScreenShareSession(
     }
 
     fun startCapture() {
-        if (!job.isActive || opening?.isActive == true || startRequest?.isActive == true || cleanup?.isActive == true ||
+        if (!canPublish || !job.isActive || opening?.isActive == true || startRequest?.isActive == true || cleanup?.isActive == true ||
             media.state.value.screenCaptureId != 0L || media.state.value.screenSharing) return
         if (!media.state.value.connected || !link.subscribed.value) {
             report(IllegalStateException("수업 연결 후 화면을 공유해 주세요."))
@@ -102,6 +105,10 @@ internal class ScreenShareSession(
             }
         }
         val captureId = state.screenCaptureId
+        if (!canPublish) {
+            if (opening?.isActive == true || (captureId != 0L && captureId != attemptedCapture)) stopCapture()
+            return
+        }
         if (captureId == 0L || captureId == attemptedCapture || cleanup?.isActive == true || startRequest?.isActive == true ||
             !state.screenSharing || !state.connected || !link.subscribed.value) return
         attemptedCapture = captureId

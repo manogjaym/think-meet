@@ -57,7 +57,9 @@ export class ApiController {
     return this.lessons.edit(id, user, body)
   }
   @Post('lessons/:id/cancel') async cancel(@Req() req: Request, @Param('id') id: string) { return this.lessons.cancel(id, await this.auth.user(req)) }
-  @Post('lessons/:id/join') async join(@Req() req: Request, @Param('id') id: string) { return this.lessons.join(id, await this.auth.user(req)) }
+  @Post('lessons/:id/join') async join(@Req() req: Request, @Param('id') id: string) {
+    return this.lessons.join(id, await this.auth.user(req), this.features.capabilities(req.headers).features['classroom.lesson-modes'] === true)
+  }
   @Get('lessons/:id/prejoin') async prejoin(@Req() req: Request, @Param('id') id: string) {
     return this.lessons.prejoin(id, await this.auth.user(req))
   }

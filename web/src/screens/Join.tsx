@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react"
+import { useFeature } from "../lib/useFeature"
 import type { Lesson } from "./Home"
 import type { Role, Screen } from "../models"
 import type { User } from "../lib/api"
@@ -55,6 +56,7 @@ export function Prejoin({
   enhanced?: boolean
   onUnavailable?: (error: ApiError) => void
 }) {
+  const lessonModes = useFeature("classroom.lesson-modes")
   const [devices, setDevices] = useState<JoinDevices>(
     initialDevices || initialJoinDevices,
   )
@@ -589,7 +591,7 @@ export function Prejoin({
             {busy
               ? "입장 확인 중…"
               : scheduled && lesson.teacher.id === user.id
-                ? "수업 시작하기"
+                ? lessonModes ? copy.meetingEnter : "수업 시작하기"
                 : enhanced && scheduled
                   ? copy.prejoinWaitAction
                   : "지금 참여하기"}
@@ -708,6 +710,7 @@ export function Waiting({
   error?: string
   enhanced?: boolean
 }) {
+  const lessonModes = useFeature("classroom.lesson-modes")
   return (
     <main className="center-page join-waiting-page">
       <section className="waiting-card">
@@ -719,7 +722,7 @@ export function Waiting({
         <p>
           {lesson.title} · {lesson.teacher.name} 선생님
           <br />
-          선생님이 수업을 시작할 때까지 잠시 기다려 주세요.
+          {lessonModes ? copy.meetingWaitForTeacher : "선생님이 수업을 시작할 때까지 잠시 기다려 주세요."}
         </p>
         <div className="wait-account">
           <Avatar name={user.name} color={colorFor(user.id)} small />

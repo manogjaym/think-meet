@@ -136,13 +136,18 @@ class DesignParityCaptureTest {
                 visible(By.desc("마이크 끄기"))?.click()
                 eventually("neutral camera-off preview") { visible(By.text("카메라가 꺼져 있습니다")) != null }
                 capture("06-prejoin", By.text("카메라가 꺼져 있습니다"))
-                val join = reveal("수업 시작하기", "지금 참여하기", "수업 참여하기")
+                val join = reveal("화상미팅 입장", "수업 시작하기", "지금 참여하기", "수업 참여하기")
                 capture("07-prejoin-ready", By.text(join.text ?: "수업 시작하기"))
                 fixtureJoinAttempted = true
                 join.click()
                 eventually("connected native lesson", 90_000) {
                     val meeting = visible(By.desc("발표자 보기로 전환")) != null || visible(By.desc("바둑판 보기로 전환")) != null
                     meeting && runBlocking { api.snapshot(lessonId) }.participants.any { it.user.id == self && it.online }
+                }
+                if (visible(By.text("수업 시작")) != null) {
+                    capture("08-meeting-preparing", By.text("수업 시작"))
+                    reveal("수업 시작").click()
+                    eventually("classroom mode") { visible(By.text("수업방 모드")) != null }
                 }
                 capture("08-meeting", By.desc("카메라 켜기"))
                 clickDescription("채팅")

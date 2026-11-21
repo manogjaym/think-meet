@@ -83,7 +83,7 @@ export class Gateway implements OnGatewayConnection, OnGatewayDisconnect, OnModu
       return socket?.rooms.has(room) && socket.data.user?.id === userId && this.subscriptions.get(`${session.lessonId}:${userId}`) === socketId
     })
   }
-  private assertAssistanceSocket(socket: Socket, lessonId: string, userId: string) {
+  private assertLessonSocket(socket: Socket, lessonId: string, userId: string) {
     if (!socket.rooms.has(`lesson:${lessonId}`) || this.subscriptions.get(`${lessonId}:${userId}`) !== socket.id) throw new ApiError('FORBIDDEN', '현재 수업에 연결된 기기에서 요청해 주세요.', 403)
   }
   private assertAndroidRecipient(socket: Socket) {
@@ -125,9 +125,10 @@ export class Gateway implements OnGatewayConnection, OnGatewayDisconnect, OnModu
       const command: CommandEnvelope = commandSchema.parse(input)
       const user = command.type.startsWith('assistance.') ? await this.assistanceUser(socket) : await this.auth.userFromCookie(socket.handshake.headers.cookie)
       this.features.assertEvent(SOCKET_EVENTS.Command, command, socket.handshake.headers, socket.handshake.auth)
+      if (command.type === 'lesson.start' || command.type === 'lesson.mode.set') this.assertLessonSocket(socket, command.lessonId, user.id)
       let context: AssistanceCommandContext | undefined
       if (command.type.startsWith('assistance.')) {
-        this.assertAssistanceSocket(socket, command.lessonId, user.id)
+        this.assertLessonSocket(socket, command.lessonId, user.id)
         context = { socketId: socket.id }
         if (command.type === 'assistance.request') {
           const { studentId } = z.object({ studentId: z.string().uuid() }).parse(command.payload)
@@ -174,7 +175,7 @@ export class Gateway implements OnGatewayConnection, OnGatewayDisconnect, OnModu
       const lesson = await this.lessons.access(body.lessonId, user, true, true)
       const session = this.lessons.assistance.require(body.lessonId, body.sessionId)
       if (session !== candidate || !order) return
-      this.assertAssistanceSocket(socket, body.lessonId, user.id)
+      this.assertLessonSocket(socket, body.lessonId, user.id)
       if (session.teacherId !== user.id || session.teacherSocketId !== socket.id) throw new ApiError('FORBIDDEN', '이 요청의 선생님만 위치를 알려줄 수 있어요.', 403)
       const current = () => this.lessons.assistance.current(body.lessonId) === session && session.status === 'active'
         && session.shareId === body.shareId && session.geometry?.version === body.geometryVersion && this.assistanceConnected(session)

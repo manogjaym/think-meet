@@ -1,0 +1,17 @@
+{
+  "id": "classroom-lesson-modes",
+  "summary": "화상미팅 안에서 소유자가 수업을 시작하고 수업방·미러링 모드를 전환합니다.",
+  "scope": "shared",
+  "featureIds": ["classroom.lesson-modes"],
+  "platforms": {
+    "server": {"status": "implemented"},
+    "web": {"status": "implemented"},
+    "android": {"status": "implemented"},
+    "ios": {"status": "implemented"}
+  },
+  "verification": [
+    "npm run shared:check",
+    "npm run verify",
+    "features/evidence/classroom-lesson-modes.md"
+  ]
+}

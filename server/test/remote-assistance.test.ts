@@ -3,6 +3,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { Prisma } from '@prisma/client'
+import { TrackSource } from 'livekit-server-sdk'
 import { AssistanceSessions } from '../src/assistance'
 import { Lessons } from '../src/lessons'
 import { Gateway } from '../src/gateway'
@@ -26,7 +27,7 @@ async function fixture(features = new FeaturePolicy()) {
       update: async ({ data }: any) => {
         if (data.seq) lesson.seq += data.seq.increment
         if ('share' in data) lesson.share = data.share === Prisma.DbNull ? null : structuredClone(data.share)
-        for (const key of ['status', 'endedAt']) if (key in data) lesson[key] = data[key]
+        for (const key of ['status', 'endedAt', 'instructionPhase', 'instructionStartedAt']) if (key in data) lesson[key] = data[key]
         return lesson
       },
     },
@@ -42,8 +43,8 @@ async function fixture(features = new FeaturePolicy()) {
   }
   const lessons = new Lessons(db)
   ;(lessons as any).assistance = new AssistanceSessions(() => clock.now)
-  const media = { published: true }
-  lessons.livekit.getParticipant = async () => ({ identity: student.id, metadata: JSON.stringify({ admissionId: lesson.members[1].admissionId }), tracks: media.published ? [{ source: 3, muted: false }] : [] }) as any
+  const media = { published: true, trackSid: 'current-student-track' }
+  lessons.livekit.getParticipant = async () => ({ identity: student.id, metadata: JSON.stringify({ admissionId: lesson.members[1].admissionId }), tracks: media.published ? [{ source: TrackSource.SCREEN_SHARE, muted: false, sid: media.trackSid }] : [] }) as any
   lessons.livekit.removeParticipant = async () => {}; lessons.livekit.deleteRoom = async () => {}
   lessons.livekit.listParticipants = async () => lesson.members.filter((m: any) => m.online).map((m: any) => ({ identity: m.userId }))
   const gateway = new Gateway({ userFromCookie: async (cookie: string) => {
@@ -65,7 +66,8 @@ async function fixture(features = new FeaturePolicy()) {
   gateway.server = { sockets: { sockets }, to: () => ({ emit: () => {} }), emit: () => {} } as any
   gateway.onModuleInit()
   for (const socket of sockets.values()) assert.equal((await gateway.subscribe(socket as any, { lessonId: id })).ok, true)
-  const command = (socket: typeof teacherSocket, type: CommandEnvelope['type'], payload: any) => gateway.command(socket as any, { lessonId: id, type, payload, requestId: randomUUID() })
+  const command = (socket: typeof teacherSocket, type: CommandEnvelope['type'], payload: any, expectedShareId?: string) =>
+    gateway.command(socket as any, { lessonId: id, type, payload, expectedShareId, requestId: randomUUID() })
   const request = async () => {
     const result = await command(teacherSocket, 'assistance.request', { studentId: student.id })
     assert.equal(result.ok, true, JSON.stringify(result))
@@ -83,6 +85,74 @@ async function fixture(features = new FeaturePolicy()) {
 }
 const code = (response: any) => response.error?.code
 const pointers = (socket: { events: Array<{ event: string; payload: any }> }) => socket.events.filter(entry => entry.event === 'assistance.pointer')
+
+test('lesson modes require a connected owner and preserve the start time and legacy rooms', async () => {
+  const f = await fixture()
+  assert.equal(code(await f.command(f.teacherSocket, 'lesson.start', {})), 'CLIENT_UPDATE_REQUIRED')
+  f.teacherSocket.handshake.auth.contractRevision = 10
+  f.studentSocket.handshake.auth.contractRevision = 10
+  assert.equal(code(await f.command(f.teacherSocket, 'lesson.start', {})), 'FEATURE_UNAVAILABLE')
+  f.lesson.instructionPhase = 'preparing'
+  assert.deepEqual((await f.lessons.snapshot(f.id)).instruction, { phase: 'preparing', startedAt: null })
+  assert.equal(code(await f.command(f.studentSocket, 'lesson.start', {})), 'FORBIDDEN')
+  f.lesson.members[0].online = false
+  assert.equal(code(await f.command(f.teacherSocket, 'lesson.start', {})), 'NOT_CONNECTED')
+  f.lesson.members[0].online = true
+  assert.equal((await f.command(f.teacherSocket, 'share.stop', {}, randomUUID())).ok, true)
+  const unconnected = f.makeSocket('teacher', f.teacher, 'web')
+  unconnected.handshake.auth.contractRevision = 10
+  assert.equal(code(await f.command(unconnected, 'lesson.start', {})), 'FORBIDDEN')
+  assert.equal(code(await f.command(f.teacherSocket, 'share.start', { type: 'screen' })), 'LESSON_MODE_REQUIRED')
+  assert.equal(code(await f.command(f.teacherSocket, 'assistance.request', { studentId: f.student.id })), 'LESSON_MODE_REQUIRED')
+  assert.equal((await f.command(f.teacherSocket, 'lesson.start', {})).ok, true)
+  const started = (await f.lessons.snapshot(f.id)).instruction
+  assert.equal(started?.phase, 'classroom')
+  assert.ok(started?.startedAt)
+  assert.equal((await f.command(f.teacherSocket, 'lesson.start', {})).ok, true)
+  assert.deepEqual((await f.lessons.snapshot(f.id)).instruction, started)
+  assert.equal(code(await f.command(f.studentSocket, 'share.start', { type: 'screen' })), 'FORBIDDEN')
+})
+
+test('mode changes clear only confirmed shares or requests and reject late approvals and cleanup', async () => {
+  const f = await fixture()
+  f.teacherSocket.handshake.auth.contractRevision = 10
+  f.studentSocket.handshake.auth.contractRevision = 10
+  f.lesson.instructionPhase = 'classroom'
+  const change = (mode: 'classroom' | 'mirroring', shareId: string | null, assistanceId: string | null, socket = f.teacherSocket) =>
+    f.command(socket, 'lesson.mode.set', { mode, expectedMode: mode === 'classroom' ? 'mirroring' : 'classroom',
+      expectedShareId: shareId, expectedAssistanceId: assistanceId })
+  assert.equal(code(await change('mirroring', null, null, f.studentSocket)), 'FORBIDDEN')
+  assert.equal((await f.command(f.teacherSocket, 'share.start', { type: 'screen' })).ok, true)
+  const firstShare = f.lesson.share.id
+  assert.equal(code(await change('mirroring', null, null)), 'LESSON_MODE_CHANGED')
+  assert.equal(f.lesson.share.id, firstShare)
+  assert.equal((await change('mirroring', firstShare, null)).ok, true)
+  assert.equal(f.lesson.share, null)
+  assert.equal(code(await f.command(f.teacherSocket, 'share.start', { type: 'screen' })), 'LESSON_MODE_REQUIRED')
+  const denied = await f.request()
+  assert.equal((await f.command(f.studentSocket, 'assistance.respond', { sessionId: denied.id, approved: false })).ok, true)
+  const cancelled = await f.request()
+  assert.equal((await f.command(f.teacherSocket, 'assistance.stop', { sessionId: cancelled.id })).ok, true)
+  const pending = await f.request()
+  assert.equal(code(await change('classroom', null, cancelled.id)), 'LESSON_MODE_CHANGED')
+  assert.equal((await change('classroom', null, pending.id)).ok, true)
+  assert.equal(code(await f.command(f.studentSocket, 'assistance.respond', { sessionId: pending.id, approved: true })), 'LESSON_MODE_REQUIRED')
+  assert.equal((await change('mirroring', null, null)).ok, true)
+  const mirrored = await f.activate()
+  assert.equal('trackSid' in mirrored, false)
+  f.lessons.receiver.receive = (async () => ({
+    event: 'track_unpublished', room: { name: f.lesson.roomName }, participant: { identity: f.student.id },
+    track: { source: TrackSource.SCREEN_SHARE, sid: 'previous-student-track' },
+  })) as typeof f.lessons.receiver.receive
+  await f.lessons.webhook('', '')
+  assert.equal(f.lesson.share.id, mirrored.shareId)
+  assert.equal((await change('classroom', mirrored.shareId, mirrored.id)).ok, true)
+  assert.equal(f.lesson.share, null)
+  assert.equal((await f.command(f.teacherSocket, 'share.start', { type: 'screen' })).ok, true)
+  const newShare = f.lesson.share.id
+  await f.command(f.teacherSocket, 'share.stop', {}, firstShare)
+  assert.equal(f.lesson.share.id, newShare)
+})
 
 test('only the requested student can consent, and published screen plus approval are required', async () => {
   const f = await fixture(), session = await f.request()

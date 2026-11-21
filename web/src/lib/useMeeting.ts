@@ -18,6 +18,7 @@ export function useMeeting({ lesson, user, initialDevices, admission, onEnded, o
   const [connection, setConnection] = useState<ConnectionState>(ConnectionState.Connecting)
   const [error, setError] = useState("")
   const [appConnected, setAppConnected] = useState(false)
+  const [admissionId, setAdmissionId] = useState<string>()
   const [previews, setPreviews] = useState<Record<string, PreviewStroke>>({})
   const [remotePointer, setRemotePointer] = useState<RemotePointer | null>(null)
   const assistanceEnabled = useFeature("meeting.remote-assistance")
@@ -139,6 +140,7 @@ export function useMeeting({ lesson, user, initialDevices, admission, onEnded, o
         await nextRoom.connect(livekitUrl, join.token)
         if (cancelled) { await nextRoom.disconnect(); return }
         await api(`/lessons/${lesson.id}/connected`, { method: "POST" })
+        if (!cancelled) setAdmissionId(join.admissionId)
         const results = await Promise.allSettled([
           nextRoom.localParticipant.setMicrophoneEnabled(devices.mic),
           nextRoom.localParticipant.setCameraEnabled(devices.cam),
@@ -210,5 +212,5 @@ export function useMeeting({ lesson, user, initialDevices, admission, onEnded, o
     setRemotePointer({ ...frame, receivedAt: now })
     remotePointerTimer.current = setTimeout(() => setRemotePointer(null), REMOTE_POINTER_TTL_MS)
   }, [lesson.id, user.id])
-  return { room, snapshot, connection, error, setError, appConnected, previews, remotePointer, sendAssistancePointer, serverOffset, command, setMic, setCam, startScreen, stopShare, leave, sendPreview }
+  return { room, snapshot, connection, error, setError, appConnected, admissionId, previews, remotePointer, sendAssistancePointer, serverOffset, command, setMic, setCam, startScreen, stopShare, leave, sendPreview }
 }

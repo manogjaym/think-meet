@@ -41,6 +41,8 @@ import com.woongjin.thinkmeet.design.generated.DesignTokens.Typography as Type
 import com.woongjin.thinkmeet.design.generated.DesignTokens.FontSize as FontSize
 import com.woongjin.thinkmeet.data.*
 import com.woongjin.thinkmeet.platform.*
+import com.woongjin.thinkmeet.ui.NoteDialog
+import com.woongjin.thinkmeet.ui.NotePreview
 import kotlinx.datetime.toLocalDateTime
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
@@ -56,6 +58,8 @@ private class MeetingChatDraft {
     var text by mutableStateOf("")
     var pendingId by mutableStateOf<String?>(null)
 }
+
+private data class CapturePreview(val shareId: String, val page: Int, val draft: NoteDraft)
 
 /** Uses the same authenticated HTTP and Socket.IO session as the existing web client. */
 @Composable
@@ -83,6 +87,10 @@ fun MeetingScreen(
     val currentLesson = snapshot?.lesson ?: lesson
     val owner = currentLesson.teacher.id == user.id
     val assistance = snapshot?.assistance
+    val notesEnabled = capabilities.supports("classroom.notes") && (owner || user.role == "student")
+    var capturePreview by remember { mutableStateOf<CapturePreview?>(null) }
+    var captureBusy by remember { mutableStateOf(false) }
+    var captureError by remember { mutableStateOf<String?>(null) }
     val assistanceEnabled = capabilities.supports(ContractProtocol.FeatureIds.MeetingRemoteAssistance)
     val snackbar = remember { SnackbarHostState() }
     var panel by remember { mutableStateOf<Panel?>(null) }
@@ -206,7 +214,9 @@ fun MeetingScreen(
                     Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(Space.S16)) {
                         Box(Modifier.weight(1f).fillMaxHeight()) {
                             val current = snapshot
-                            if (current?.share != null) SharedStage(api, current, user, media, realtime, Modifier.fillMaxSize(), report, screenShare::stop)
+                            if (current?.share != null) SharedStage(api, current, user, media, realtime, Modifier.fillMaxSize(), report, screenShare::stop,
+                                captureEnabled = notesEnabled && admission.admissionId != null && !compactSystemPip,
+                                onCapture = { shareId, page, bytes -> captureError = null; capturePreview = CapturePreview(shareId, page, NoteDraft(bytes)) })
                             else ParticipantGallery(current, currentLesson, user, media, mediaState, grid, Modifier.fillMaxSize())
                             if (miniVisible && miniTarget != null && !pipState.active && !pipState.transitioning && fatalError == null && !exited && !busy) {
                                 FloatingMiniVideo(media, mediaState, miniTarget, videoName(miniTarget), !compact, miniPosition,
@@ -263,6 +273,31 @@ fun MeetingScreen(
         }
         if (compactSystemPip) CompactVideo(media, mediaState, pipTarget, videoName(pipTarget), Modifier.fillMaxSize())
     }
+    }
+    if (notesEnabled && !compactSystemPip) capturePreview?.let { preview ->
+        val share = snapshot?.share
+        val changed = share == null || share.id != preview.shareId || share.page != preview.page || share.assistanceId != null
+        MeetingLightTheme {
+            NoteDialog(DesignContent.NotesCapture, captureBusy, onClose = { capturePreview = null }) {
+                NotePreview(preview.draft.bytes, "저장할 수업 화면")
+                if (owner) Text(DesignContent.NotesShareNotice)
+                (if (changed) DesignContent.NotesShareChanged else captureError)?.let { Text(it, color = Palette.DangerText) }
+                DesignButton(if (captureBusy) "저장 중…" else "저장하기", {
+                    val id = admission.admissionId ?: return@DesignButton
+                    if (captureBusy || changed) return@DesignButton
+                    captureBusy = true; captureError = null
+                    scope.launch {
+                        try {
+                            api.saveNoteCapture(lesson.id, preview.draft.bytes, preview.draft.requestId, preview.shareId, preview.page, id)
+                            capturePreview = null; showMessage("화면을 저장했어요.")
+                        } catch (error: Throwable) {
+                            if (error is CancellationException) throw error
+                            captureError = error.message ?: "화면을 저장하지 못했어요."
+                        } finally { captureBusy = false }
+                    }
+                }, enabled = !changed && !captureBusy && socketConnected && mediaState.connected)
+            }
+        }
     }
     if (confirmLeave && !compactSystemPip) AlertDialog(
         onDismissRequest = { if (!busy) confirmLeave = false },

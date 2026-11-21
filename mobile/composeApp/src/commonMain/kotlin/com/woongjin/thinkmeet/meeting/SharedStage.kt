@@ -29,6 +29,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Canvas as ImageCanvas
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -66,9 +74,17 @@ internal fun SharedStage(
     modifier: Modifier,
     report: (Throwable) -> Unit,
     onStopShare: (String) -> Unit,
+    captureEnabled: Boolean = false,
+    onCapture: (String, Int, ByteArray) -> Unit = { _, _, _ -> },
 ) {
     val share = snapshot.share ?: return
     val owner = snapshot.lesson.teacher.id == user.id
+    val noteFrame = remember(share.id, share.page) { NoteFrameSource() }
+    val captureSource = noteFrame.takeIf { captureEnabled && share.assistanceId == null }
+    var captureSize by remember(share.id) { mutableStateOf(IntSize.Zero) }
+    var readingFrame by remember(share.id) { mutableStateOf(false) }
+    val density = LocalDensity.current
+    val direction = LocalLayoutDirection.current
     val mediaState by media.state.collectAsState()
     val capabilities by api.capabilities.collectAsState()
     val socketConnected by realtime.connected.collectAsState()
@@ -142,8 +158,8 @@ internal fun SharedStage(
                 Box(Modifier.fillMaxSize().horizontalScroll(rememberScrollState()).verticalScroll(rememberScrollState()), contentAlignment = Alignment.Center) {
                 Box(Modifier.size(fitWidth * zoom, fitHeight * zoom).background(if (share.type == "document") Palette.White else Palette.MeetingSharedBackground)) {
                     if (share.type == "screen") {
-                        if (LocalMeetingVideoRendering.current) VideoSurface(media, share.ownerId, screen = true, modifier = Modifier.fillMaxSize())
-                    } else MaterialSurface(api, share, snapshot.lessonId, Modifier.fillMaxSize(), onAspectRatio = { if (it > .05f && it < 20f) aspect = it })
+                        if (LocalMeetingVideoRendering.current) VideoSurface(media, share.ownerId, screen = true, modifier = Modifier.fillMaxSize(), noteFrame = captureSource)
+                    } else MaterialSurface(api, share, snapshot.lessonId, Modifier.fillMaxSize(), noteFrame = captureSource, onAspectRatio = { if (it > .05f && it < 20f) aspect = it })
                 var erasedThisGesture by remember { mutableStateOf<Set<String>>(emptySet()) }
                 var previewAt by remember { mutableLongStateOf(0L) }
                 var surfaceSize by remember { mutableStateOf(IntSize.Zero) }
@@ -207,7 +223,7 @@ internal fun SharedStage(
                         } finally { draft = null }
                     }
                 }
-                Canvas(Modifier.fillMaxSize().onSizeChanged { surfaceSize = it }.then(if (assistance != null) guideModifier else drawModifier).semantics { contentDescription = if (guideReady) DesignContent.RemoteAssistActive else "수업 판서 영역" }) {
+                Canvas(Modifier.fillMaxSize().onSizeChanged { surfaceSize = it; captureSize = it }.then(if (assistance != null) guideModifier else drawModifier).semantics { contentDescription = if (guideReady) DesignContent.RemoteAssistActive else "수업 판서 영역" }) {
                     cachedStrokes.forEach { drawAnnotationPath(it.tool, it.color, it.path) }
                     previews.values.forEach { (preview, _) -> drawAnnotation(preview.tool, preview.color, preview.points) }
                     optimistic.values.forEach { drawAnnotation(it.tool, it.color, it.points) }
@@ -273,6 +289,37 @@ internal fun SharedStage(
             val ownerName = snapshot.participants.firstOrNull { it.user.id == share.ownerId }?.user?.name ?: "참여자"
             Text(if (share.type == "screen") "$ownerName 님의 화면 공유 중" else "${share.material?.name ?: "수업 자료"} 공유 중", Modifier.weight(1f),
                 style = MaterialTheme.typography.bodySmall.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f), color = Palette.MeetingShareText, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (captureEnabled) Surface(onClick = {
+                val read = captureSource?.read ?: return@Surface
+                if (readingFrame || !socketConnected || !mediaState.connected || captureSize.width <= 0) return@Surface
+                readingFrame = true
+                val visibleWidth = captureSize.width
+                scope.launch {
+                    try {
+                        val frame = read() ?: error("공유 화면을 불러오는 중이에요.")
+                        val bytes = withContext(Dispatchers.Default) {
+                            val image = ImageBitmap(frame.width, frame.height)
+                            val bounds = Size(frame.width.toFloat(), frame.height.toFloat())
+                            CanvasDrawScope().draw(density, direction, ImageCanvas(image), bounds) {
+                                drawRect(Color.White)
+                                drawImage(frame)
+                                strokes.forEach { stroke ->
+                                    val path = annotationPath(stroke.points, size.width, size.height)
+                                    drawAnnotationPath(stroke.tool, hexColor(stroke.color), path, widthScale = size.width / visibleWidth)
+                                }
+                            }
+                            encodeNoteImage(image) ?: error("공유 화면의 이미지를 만들지 못했어요.")
+                        }
+                        onCapture(share.id, share.page, bytes)
+                    } catch (error: Throwable) { report(error) }
+                    finally { readingFrame = false }
+                }
+            }, enabled = !readingFrame && socketConnected && mediaState.connected && captureSource?.read != null && captureSize.width > 0,
+                color = Palette.MeetingShareText, contentColor = Palette.MeetingShareInk, shape = RoundedCornerShape(Corner.R6)) {
+                Box(Modifier.heightIn(min = Space.S36).padding(horizontal = if (compact) Space.S8 else Space.S12), contentAlignment = Alignment.Center) {
+                    Text(DesignContent.NotesCapture, style = MaterialTheme.typography.labelMedium.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f))
+                }
+            }
             if (owner || share.ownerId == user.id) Surface(onClick = { onStopShare(share.id) },
                 enabled = !pending, color = Palette.MeetingShareText, contentColor = Palette.MeetingShareInk, shape = RoundedCornerShape(Corner.R6)) {
                 Box(Modifier.heightIn(min = Space.S36).padding(horizontal = if (compact) Space.S8 else Space.S12), contentAlignment = Alignment.Center) { Text("공유 중지", style = MaterialTheme.typography.labelMedium.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f)) }
@@ -368,7 +415,7 @@ private fun DrawScope.drawAnnotation(tool: String, color: String, points: List<P
     else drawAnnotationPath(tool, ink, path)
 }
 private fun annotationPath(points: List<Point>, width: Float, height: Float): Path = Path().apply { points.forEachIndexed { index, point -> if (index == 0) moveTo((point.x * width).toFloat(), (point.y * height).toFloat()) else lineTo((point.x * width).toFloat(), (point.y * height).toFloat()) } }
-private fun DrawScope.drawAnnotationPath(tool: String, ink: Color, path: Path) = drawPath(path, ink, alpha = if (tool == "highlighter") .38f else 1f, style = DrawStroke(if (tool == "highlighter") 18.dp.toPx() else 4.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+private fun DrawScope.drawAnnotationPath(tool: String, ink: Color, path: Path, widthScale: Float = 1f) = drawPath(path, ink, alpha = if (tool == "highlighter") .38f else 1f, style = DrawStroke((if (tool == "highlighter") 18.dp else 4.dp).toPx() * widthScale, cap = StrokeCap.Round, join = StrokeJoin.Round))
 /** Segment distance, rather than only point distance, also erases quickly drawn sparse strokes. */
 private fun hitsStroke(point: Point, points: List<Point>, width: Float, height: Float): Boolean {
     val px = point.x * width; val py = point.y * height

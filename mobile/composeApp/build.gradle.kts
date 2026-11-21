@@ -173,6 +173,9 @@ kotlin {
         }
         androidMain.dependencies {
             implementation("androidx.activity:activity-compose:1.10.1")
+            implementation("androidx.camera:camera-camera2:1.4.2")
+            implementation("androidx.camera:camera-lifecycle:1.4.2")
+            implementation("androidx.camera:camera-view:1.4.2")
             implementation("io.ktor:ktor-client-okhttp:3.3.1")
             implementation("io.livekit:livekit-android:2.29.1")
             implementation("androidx.media3:media3-exoplayer:1.8.0")

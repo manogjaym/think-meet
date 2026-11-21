@@ -73,6 +73,8 @@ data class JoinResult(
     val token: String? = null,
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     val livekitUrl: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val admissionId: String? = null,
 )
 
 @Serializable
@@ -344,4 +346,38 @@ data class AssistanceGeometryPayload(
 @Serializable
 data class AssistanceStopPayload(
     val sessionId: String,
+)
+
+@Serializable
+data class ClassNoteLesson(
+    val id: String,
+    val title: String,
+    val startsAt: String,
+    val teacherName: String,
+)
+
+@Serializable
+data class ClassNoteTarget(
+    val lesson: ClassNoteLesson?,
+)
+
+@Serializable
+data class ClassNoteImage(
+    val id: String,
+    val createdAt: String,
+)
+
+@Serializable
+data class ClassNoteWorksheet(
+    val lesson: ClassNoteLesson,
+    val studentName: String,
+    val original: ClassNoteImage,
+    val correction: ClassNoteImage?,
+)
+
+@Serializable
+data class ClassNoteCapture(
+    val lesson: ClassNoteLesson,
+    val image: ClassNoteImage,
+    val source: String,
 )

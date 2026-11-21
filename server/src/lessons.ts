@@ -184,7 +184,7 @@ export class Lessons implements OnModuleInit, OnModuleDestroy {
       await this.db.lessonMember.update({ where: { lessonId_userId: { lessonId: id, userId: user.id } }, data: { admissionId } })
       const token = new AccessToken(process.env.LIVEKIT_API_KEY, process.env.LIVEKIT_API_SECRET, { identity: user.id, name: user.name, ttl: '2m', metadata: JSON.stringify({ admissionId, userId: user.id, role: user.id === lesson.teacherId ? 'teacher' : 'student' }) })
       token.addGrant({ roomJoin: true, room: lesson.roomName, canPublish: true, canSubscribe: true, canPublishData: false })
-      return { waiting: false, lesson: await this.dto(lesson), token: await token.toJwt(), livekitUrl: process.env.LIVEKIT_PUBLIC_URL || `${process.env.PUBLIC_ORIGIN?.replace(/^http/, 'ws')}/livekit` }
+      return { waiting: false, lesson: await this.dto(lesson), admissionId, token: await token.toJwt(), livekitUrl: process.env.LIVEKIT_PUBLIC_URL || `${process.env.PUBLIC_ORIGIN?.replace(/^http/, 'ws')}/livekit` }
     })
   }
   async connected(id: string, user: PublicUser) {

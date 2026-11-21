@@ -11,6 +11,7 @@ import kotlin.time.Instant
 sealed interface Route {
     data object Home : Route
     data object Create : Route
+    data class Notes(val tab: NotesTab) : Route
 
     sealed interface ForLesson : Route { val lesson: Lesson }
     data class Detail(override val lesson: Lesson) : ForLesson
@@ -203,6 +204,7 @@ class AppState(val api: ThinkMeetApi, private val scope: CoroutineScope) {
         currentCoroutineContext().ensureActive()
         mutable.update { it.copy(route = destination(fetched)) }
     }
+    internal fun notes(tab: NotesTab) = show(Route.Notes(tab))
     fun form() = show(Route.Create)
     fun edit(lesson: Lesson) = show(Route.Edit(lesson))
 

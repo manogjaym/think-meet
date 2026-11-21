@@ -1,3 +1,5 @@
+import { ClassNotes } from "./screens/ClassNotes"
+import { notesFeature } from "./lib/classNotes"
 import {
   lazy,
   Suspense,
@@ -9,7 +11,7 @@ import {
 } from "react"
 import { BrowserRouter, useLocation, useNavigate } from "react-router-dom"
 import { createAppSocket, requestSocket } from "./lib/socket"
-import { useCapabilityRefresh } from "./lib/useFeature"
+import { useCapabilityRefresh, useFeature } from "./lib/useFeature"
 import { useLessonDirectory } from "./lib/useLessonDirectory"
 import type { CommandAck, MeetingSnapshot } from "./generated/contracts"
 import { SOCKET_EVENTS as Events } from "./generated/contracts"
@@ -100,6 +102,8 @@ function Application() {
   const location = useLocation(),
     navigate = useNavigate()
   const parts = location.pathname.split("/").filter(Boolean)
+  const notesEnabled = useFeature(notesFeature)
+  const notesTab = new URLSearchParams(location.search).get("tab") === "records" ? "records" : "worksheets"
   const lessonId =
     parts[0] === "lessons" && parts[1] !== "new"
       ? parts[1]
@@ -117,6 +121,7 @@ function Application() {
             : "detail"
       : parts[0] === "error"
         ? "exception"
+        : parts[0] === "class-notes" ? "class-notes"
         : "home"
   const { lessons, students, loading, error, refresh } = useLessonDirectory(
     user,
@@ -414,6 +419,10 @@ function Application() {
       <Home
         role={user.role}
         user={user}
+        onNotes={notesEnabled && user.role === "student" ? tab => {
+          scrollPositions.current[location.pathname] = window.scrollY
+          navigate(`/class-notes?tab=${tab}`)
+        } : undefined}
         lessons={lessons.map(displayLesson)}
         view={homeView}
         onViewChange={setHomeView}
@@ -444,6 +453,8 @@ function Application() {
         }}
       />
     )
+  else if (screen === "class-notes")
+    content = user.role === "student" && notesEnabled ? <ClassNotes tab={notesTab} onTab={tab => navigate(`/class-notes?tab=${tab}`, { replace: true })} /> : <Status error="수업 노트를 이용할 수 없어요." />
   else if (screen === "form" && !lessonId)
     content = loading ? (
       <Status />
@@ -478,6 +489,7 @@ function Application() {
       <Detail
         lesson={lesson}
         role={lessonRole}
+        notesEnabled={notesEnabled}
         setScreen={setScreen}
         onEdit={() => navigate(`/lessons/${lesson.id}/edit`)}
         onCancel={async () => {

@@ -7,11 +7,12 @@ import { Auth, Database } from './auth'
 import { Lessons } from './lessons'
 import { Materials } from './materials'
 import { Gateway } from './gateway'
-import { ApiController, InternalController, TeacherUploadGuard } from './controllers'
+import { ApiController, ClassNoteUploadGuard, InternalController, TeacherUploadGuard } from './controllers'
 import { Errors } from './errors'
+import { ClassNotes } from './class-notes'
 import { FeaturePolicy, HttpFeatureGuard } from './features'
 import { OPENAPI_DOCUMENT } from './generated/openapi-document'
-@Module({ controllers: [ApiController, InternalController], providers: [Database, Auth, Lessons, Materials, Gateway, TeacherUploadGuard, FeaturePolicy, { provide: APP_GUARD, useClass: HttpFeatureGuard }] })
+@Module({ controllers: [ApiController, InternalController], providers: [Database, Auth, Lessons, Materials, ClassNotes, Gateway, TeacherUploadGuard, ClassNoteUploadGuard, FeaturePolicy, { provide: APP_GUARD, useClass: HttpFeatureGuard }] })
 export class AppModule {}
 async function bootstrap() {
   for (const key of ['DATABASE_URL','LIVEKIT_API_KEY','LIVEKIT_API_SECRET','S3_ENDPOINT','S3_ACCESS_KEY','S3_SECRET_KEY','PROXY_AUTH_SECRET','PUBLIC_ORIGIN']) if (!process.env[key]) throw new Error(`${key} is required`)

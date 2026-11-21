@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
 import platform.Foundation.NSFileManager
+import platform.Foundation.NSData
 import platform.UIKit.UIView
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -49,6 +50,12 @@ interface IosNativeBridge {
     fun disposeMaterial(view: UIView)
     fun read(key: String, fallback: String): String
     fun write(key: String, value: String)
+    fun worksheetCameraView(onReady: (String?) -> Unit): UIView
+    fun captureWorksheetPhoto(view: UIView, completion: (NSData?, String?) -> Unit)
+    fun disposeWorksheetCamera(view: UIView)
+    fun pickNoteImage(completion: (NSData?, String?) -> Unit)
+    fun isNoteFrameReady(view: UIView, page: Int): Boolean
+    fun readNoteFrame(view: UIView, page: Int): NSData?
     fun pickFile(completion: (String?, String?, String?, Long) -> Unit)
     fun share(url: String)
     fun copy(text: String)
@@ -114,10 +121,12 @@ private class IosMediaController : MediaController {
     } }
     return media
 }
-@Composable actual fun VideoSurface(controller: MediaController, identity: String, screen: Boolean, modifier: Modifier) {
+@Composable actual fun VideoSurface(controller: MediaController, identity: String, screen: Boolean, modifier: Modifier, noteFrame: NoteFrameSource?) {
     val state by controller.state.collectAsState()
     key(identity, screen, state.participants.firstOrNull { it.identity == identity }?.let { if (screen) it.screen else it.camera }) {
-        UIKitView(factory = { native().videoView(identity, screen) }, modifier = modifier, interactive = false)
+        var view by remember { mutableStateOf<UIView?>(null) }
+        IosNoteFrame(noteFrame, view, page = 1)
+        UIKitView(factory = { native().videoView(identity, screen).also { if (noteFrame != null) view = it } }, modifier = modifier, interactive = false)
     }
 }
 @Composable actual fun CameraPreview(controller: MediaController, enabled: Boolean, modifier: Modifier) {
@@ -150,13 +159,15 @@ private fun fileChannel(path: String): ByteReadChannel {
     }
     return channel
 }
-@Composable actual fun MaterialSurface(api: ThinkMeetApi, share: Share, lessonId: String, modifier: Modifier, onAspectRatio: (Float) -> Unit) {
+@Composable actual fun MaterialSurface(api: ThinkMeetApi, share: Share, lessonId: String, modifier: Modifier, noteFrame: NoteFrameSource?, onAspectRatio: (Float) -> Unit) {
     val id = share.materialId ?: return
     var cookie by remember(id) { mutableStateOf("") }
     LaunchedEffect(id) { cookie = api.cookieHeader() }
     val aspect by rememberUpdatedState(onAspectRatio)
     key(id) {
-        UIKitView(factory = { native().materialView() }, modifier = modifier, update = { view ->
+        var material by remember { mutableStateOf<UIView?>(null) }
+        IosNoteFrame(noteFrame, material, share.page)
+        UIKitView(factory = { native().materialView().also { if (noteFrame != null) material = it } }, modifier = modifier, update = { view ->
             if (cookie.isNotEmpty()) native().updateMaterial(view, api.materialContentUrl(id, lessonId), cookie, share.type, share.page, share.playing, share.position, share.updatedAt, aspect)
         }, onRelease = { native().disposeMaterial(it) }, interactive = false)
     }

@@ -1,3 +1,4 @@
+import { TeacherWorksheets } from "./ClassNotes"
 import { useState } from "react"
 import {
   api,
@@ -37,8 +38,10 @@ export function Detail({
   lesson,
   onCancel,
   onEdit,
+  notesEnabled,
 }: {
   role: Role
+  notesEnabled?: boolean
   setScreen: (s: Screen) => void
   lesson: Lesson
   onCancel?: (lesson: Lesson) => Promise<void>
@@ -242,6 +245,7 @@ export function Detail({
           )}
         </aside>
       </div>
+      {notesEnabled && role === "teacher" && <TeacherWorksheets key={lesson.id} lessonId={lesson.id} />}
       {error && (
         <p className="service-error" role="alert">
           {error}

@@ -239,6 +239,122 @@
           ]
         }
       }
+    },
+    {
+      "id": "classroom.notes",
+      "title": "수업 노트",
+      "stage": "in-progress",
+      "requiresRevision": 6,
+      "defaultEnabled": true,
+      "platforms": [
+        "web",
+        "android",
+        "ios"
+      ],
+      "spec": "classroom-notes.md",
+      "contracts": {
+        "operations": [
+          "getClassNoteTarget",
+          "listClassNoteWorksheets",
+          "submitClassNoteWorksheet",
+          "submitClassNoteCorrection",
+          "listClassNoteCaptures",
+          "saveClassNoteCapture",
+          "getClassNoteImage"
+        ],
+        "events": [],
+        "commands": []
+      },
+      "implementation": {
+        "server": {
+          "status": "done",
+          "files": [
+            "server/src/class-notes.ts",
+            "server/src/controllers.ts"
+          ]
+        },
+        "web": {
+          "status": "done",
+          "files": [
+            "web/src/screens/ClassNotes.tsx",
+            "web/src/screens/Meeting.tsx"
+          ]
+        },
+        "android": {
+          "status": "done",
+          "files": [
+            "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/ui/ClassNotes.kt",
+            "mobile/composeApp/src/androidMain/kotlin/com/woongjin/thinkmeet/platform/AndroidNoteImages.kt"
+          ]
+        },
+        "ios": {
+          "status": "done",
+          "files": [
+            "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/ui/ClassNotes.kt",
+            "mobile/iosApp/ThinkMeet/NativeBridge.swift"
+          ]
+        }
+      },
+      "verification": {
+        "server": {
+          "status": "passed",
+          "checks": [
+            "web/e2e/class-notes.spec.ts"
+          ],
+          "evidence": [
+            "features/classroom-notes.md"
+          ]
+        },
+        "web": {
+          "status": "passed",
+          "checks": [
+            "web/e2e/class-notes.spec.ts"
+          ],
+          "evidence": [
+            "features/classroom-notes.md"
+          ],
+          "screens": {
+            "phone": {
+              "status": "passed",
+              "evidence": [
+                "features/evidence/classroom-notes/web-phone-records.png"
+              ]
+            },
+            "tablet": {
+              "status": "passed",
+              "evidence": [
+                "features/evidence/classroom-notes/web-tablet-records.png"
+              ]
+            }
+          }
+        },
+        "android": {
+          "status": "pending",
+          "evidence": [
+            "features/classroom-notes.md"
+          ],
+          "screens": {
+            "phone": {
+              "status": "passed",
+              "evidence": [
+                "features/evidence/classroom-notes/android-phone-records.png"
+              ]
+            },
+            "tablet": {
+              "status": "pending",
+              "evidence": [
+                "features/evidence/classroom-notes/android-tablet-width-records.png"
+              ]
+            }
+          }
+        },
+        "ios": {
+          "status": "pending",
+          "evidence": [
+            "features/classroom-notes.md"
+          ]
+        }
+      }
     }
   ]
 }

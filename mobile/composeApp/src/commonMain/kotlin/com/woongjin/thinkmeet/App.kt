@@ -41,16 +41,24 @@ fun App() {
         val scope = rememberCoroutineScope()
         val controller = remember(api) { AppState(api, scope) }
         val state = controller.state.collectAsState().value
+        val capabilities = api.capabilities.collectAsState().value
+        val notesEnabled = capabilities.supports("classroom.notes")
         val user = state.user
         val route = state.route
+        var worksheetStudent by rememberSaveable { mutableStateOf<String?>(null) }
+        var worksheetLesson by rememberSaveable { mutableStateOf<String?>(null) }
+        var worksheetLabel by rememberSaveable { mutableStateOf("") }
+        val inWorksheetCamera = route == Route.Home && user != null && worksheetStudent == user.id && worksheetLesson != null
+        val worksheetLessons = remember(state.lessons) { state.lessons.map { Triple(it.id, it.status, it.startsAt) } }
+        fun closeWorksheetCamera() { worksheetStudent = null; worksheetLesson = null; worksheetLabel = "" }
         val inMeeting = route is Route.Meeting
         val pendingLink = AppLinks.code.collectAsState().value
         val snackbar = remember { SnackbarHostState() }
         val savedScreens = rememberSaveableStateHolder()
-        ConfigureSystemAppearance(inMeeting && user != null)
+        ConfigureSystemAppearance((inMeeting || inWorksheetCamera) && user != null)
         DisposableEffect(controller) { onDispose { controller.close(); client.close() } }
-        LaunchedEffect(pendingLink, user, state.busy, inMeeting) {
-            if (pendingLink != null && user != null && !state.busy && !inMeeting) {
+        LaunchedEffect(pendingLink, user, state.busy, inMeeting, inWorksheetCamera) {
+            if (pendingLink != null && user != null && !state.busy && !inMeeting && !inWorksheetCamera) {
                 controller.joinCode(pendingLink); AppLinks.consume()
             }
         }
@@ -69,6 +77,11 @@ fun App() {
                     }
                 }
                 user == null -> LoginScreen(state.busy, state.error, controller::login)
+                inWorksheetCamera -> WorksheetCameraScreen(api, user.id, checkNotNull(worksheetLesson), worksheetLabel,
+                    worksheetLessons, notesEnabled, ::closeWorksheetCamera) {
+                    closeWorksheetCamera()
+                    controller.notes(NotesTab.Worksheets)
+                }
                 route is Route.Meeting ->
                     MeetingScreen(api, route.lesson, user, route.admission, state.camera, state.microphone, controller::meetingExit)
                 else -> BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -83,7 +96,12 @@ fun App() {
                     ) { padding ->
                         Box(Modifier.fillMaxSize().padding(padding).then(if (rootTabs) Modifier else Modifier.navigationBarsPadding())) {
                             when (route) {
-                                Route.Home -> savedScreens.SaveableStateProvider("home:${user.id}") { HomeScreen(state, controller) }
+                                Route.Home -> savedScreens.SaveableStateProvider("home:${user.id}") { HomeScreen(state, controller) { lesson ->
+                                    worksheetStudent = user.id
+                                    worksheetLesson = lesson.id
+                                    worksheetLabel = lesson.description()
+                                } }
+                                is Route.Notes -> if (notesEnabled && !user.isTeacher) ClassNotesScreen(api, route.tab) else PageColumn { ErrorCard("수업 노트를 이용할 수 없어요.") }
                                 Route.Create -> LessonForm(state, controller, existing = null)
                                 is Route.Edit -> LessonForm(state, controller, existing = route.lesson)
                                 is Route.Detail -> LessonDetail(route.lesson, state, controller, api.origin)
@@ -141,8 +159,9 @@ private fun AppHeader(state: AppUiState, mobile: Boolean, compact: Boolean, widt
                 }
             } else {
                 val backToDetail = route is Route.Prejoin || route is Route.Edit
-                val canBack = backToDetail || route is Route.Detail
+                val canBack = backToDetail || route is Route.Detail || route is Route.Notes
                 val title = when (route) {
+                    is Route.Notes -> DesignContent.NotesTitle
                     is Route.Detail -> "수업 상세"
                     is Route.Prejoin -> "입장 준비"
                     is Route.Edit -> "수업 일정 수정"

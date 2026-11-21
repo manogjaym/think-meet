@@ -1,5 +1,5 @@
 // Generated from features/catalog.json and contracts/. Do not edit.
-export const CONTRACT_REVISION = 5 as const;
+export const CONTRACT_REVISION = 6 as const;
 export const CAPABILITY_HEADERS = {"platform":"X-ThinkMeet-Platform","revision":"X-ThinkMeet-Contract-Revision"} as const;
 export type ClientPlatform = "web" | "android" | "ios";
 export type FeatureDefinition = { readonly id: string; readonly stage: "baseline" | "planned" | "in-progress" | "ready"; readonly requiresRevision: number; readonly defaultEnabled: boolean; readonly platforms: readonly ClientPlatform[] };
@@ -29,6 +29,17 @@ export const FEATURE_DEFINITIONS = [
     "id": "meeting.remote-assistance",
     "stage": "in-progress",
     "requiresRevision": 4,
+    "defaultEnabled": true,
+    "platforms": [
+      "web",
+      "android",
+      "ios"
+    ]
+  },
+  {
+    "id": "classroom.notes",
+    "stage": "in-progress",
+    "requiresRevision": 6,
     "defaultEnabled": true,
     "platforms": [
       "web",
@@ -176,6 +187,48 @@ export const HTTP_OPERATIONS: readonly { id: string; method: string; path: strin
     "id": "livekitWebhook",
     "method": "POST",
     "path": "/api/v1/webhooks/livekit"
+  },
+  {
+    "id": "getClassNoteTarget",
+    "method": "GET",
+    "path": "/api/v1/class-notes/target",
+    "feature": "classroom.notes"
+  },
+  {
+    "id": "listClassNoteWorksheets",
+    "method": "GET",
+    "path": "/api/v1/class-notes/worksheets",
+    "feature": "classroom.notes"
+  },
+  {
+    "id": "submitClassNoteWorksheet",
+    "method": "POST",
+    "path": "/api/v1/class-notes/lessons/{id}/worksheets",
+    "feature": "classroom.notes"
+  },
+  {
+    "id": "submitClassNoteCorrection",
+    "method": "POST",
+    "path": "/api/v1/class-notes/worksheets/{id}/correction",
+    "feature": "classroom.notes"
+  },
+  {
+    "id": "listClassNoteCaptures",
+    "method": "GET",
+    "path": "/api/v1/class-notes/captures",
+    "feature": "classroom.notes"
+  },
+  {
+    "id": "saveClassNoteCapture",
+    "method": "POST",
+    "path": "/api/v1/class-notes/lessons/{id}/captures",
+    "feature": "classroom.notes"
+  },
+  {
+    "id": "getClassNoteImage",
+    "method": "GET",
+    "path": "/api/v1/class-notes/images/{id}",
+    "feature": "classroom.notes"
   }
 ];
 const COMMAND_FEATURES: Record<string, string | undefined> = {"chat.send":"classroom.core","hand.set":"classroom.core","share.start":"classroom.core","share.stop":undefined,"media.update":"classroom.core","document.page":"classroom.core","stroke.add":"classroom.core","stroke.erase":"classroom.core","annotation.undo":"classroom.core","annotation.redo":"classroom.core","annotation.clear":"classroom.core","assistance.request":"meeting.remote-assistance","assistance.respond":"meeting.remote-assistance","assistance.start":"meeting.remote-assistance","assistance.geometry":"meeting.remote-assistance","assistance.stop":undefined};

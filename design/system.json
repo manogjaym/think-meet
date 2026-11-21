@@ -37,7 +37,34 @@
     "remoteAssistTitle": "선생님의 화면 보기 요청",
     "remoteAssistActiveStudent": "다른 앱에서도 선생님의 위치 안내를 받을 수 있어요.",
     "remoteAssistGeometryWaiting": "화면 방향을 맞추고 있어요. 잠시 기다려 주세요.",
-    "remoteAssistUseApproval": "화면 보기 요청의 승인 버튼으로 공유를 시작해 주세요."
+    "remoteAssistUseApproval": "화면 보기 요청의 승인 버튼으로 공유를 시작해 주세요.",
+    "notesTitle": "수업 노트",
+    "notesWorksheet": "학습지",
+    "notesRecords": "수업 기록",
+    "notesSubmit": "학습지 제출",
+    "notesTakePhoto": "사진 찍기",
+    "notesUpload": "이미지 올리기",
+    "notesArchive": "보관함",
+    "notesRecordArchive": "기록함",
+    "notesSubmitted": "제출한 학습지",
+    "notesCorrected": "첨삭 받은 학습지",
+    "notesTeacherList": "제출 학습지",
+    "notesCorrection": "첨삭 이미지 첨부",
+    "notesCapture": "화면 저장",
+    "notesOwnCapture": "내가 저장한 화면",
+    "notesTeacherCapture": "선생님이 저장한 화면",
+    "notesShareNotice": "이 수업에 실제 참여한 학생 모두에게 보여요.",
+    "notesTargetEmpty": "제출할 수업이 없어요.",
+    "notesTargetChanged": "제출할 수업이 바뀌었어요. 대상 수업을 다시 확인해 주세요.",
+    "notesShareChanged": "공유 자료가 바뀌었어요. 화면을 다시 저장해 주세요.",
+    "notesCameraTitle": "학습지 사진 찍기",
+    "notesCameraGuide": "학습지를 네모 안에 맞춰 주세요",
+    "notesCameraShutter": "촬영",
+    "notesCameraRetake": "재촬영",
+    "notesCameraSubmit": "제출하기",
+    "notesCameraSubmitting": "제출 중…",
+    "notesCameraStarting": "카메라를 준비하고 있어요.",
+    "notesCameraPreview": "제출할 학습지 사진"
   },
   "screens": {
     "login": {
@@ -65,6 +92,7 @@
         "greeting-and-heading",
         "session-focus",
         "quick-join",
+        "student-class-notes",
         "schedule-heading",
         "schedule-tabs-and-search",
         "lesson-list"
@@ -82,7 +110,8 @@
         "hierarchical-appbar",
         "lesson-or-form-card",
         "roster-or-invitation",
-        "primary-action"
+        "primary-action",
+        "teacher-worksheet-list"
       ],
       "layout": [
         "layout.pageMaxWidth",
@@ -116,6 +145,7 @@
         "dark-header",
         "gallery-or-shared-stage",
         "white-side-panel",
+        "shared-frame-capture",
         "dark-call-controls"
       ],
       "layout": [
@@ -149,6 +179,31 @@
           "component.remotePointerRingWidth",
           "color.danger"
         ]
+      }
+    },
+    "classNotes": {
+      "web": "web/src/screens/ClassNotes.tsx",
+      "native": "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/ui/ClassNotes.kt",
+      "sections": [
+        "class-notes-tabs",
+        "lesson-title-filter",
+        "worksheet-month",
+        "worksheet-or-capture-groups",
+        "image-preview"
+      ],
+      "layout": [
+        "layout.dashboardCompact",
+        "layout.pageMaxWidth"
+      ],
+      "nativeWorksheetCamera": {
+        "file": "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/ui/WorksheetCameraScreen.kt",
+        "sections": [
+          "close-and-lesson",
+          "camera-viewfinder-or-photo-preview",
+          "center-shutter-or-retake",
+          "submit-on-preview"
+        ],
+        "interaction": "Android/iOS 학생 홈에서 전체 화면으로 엽니다. 점선은 학습지 위치 안내에 사용합니다. 사진 한 장을 촬영하면 같은 위치에 미리보기를 표시하고 가운데 재촬영, 오른쪽 제출하기를 제공합니다."
       }
     }
   },

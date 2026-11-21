@@ -1,5 +1,5 @@
 // Generated from contracts/openapi.json and realtime.json. Do not edit.
-export const CONTRACT_REVISION = 5 as const;
+export const CONTRACT_REVISION = 6 as const;
 export const API_BASE_PATH = "/api/v1" as const;
 export const SOCKET_PATH = "/socket.io" as const;
 export const SOCKET_EVENTS = {
@@ -20,7 +20,7 @@ export type LessonParticipant = { userId: string; joinedAt: string };
 export type Attendance = { userId: string; joinedAt: string; leftAt: (string) | null };
 export type Lesson = { id: string; title: string; description: string; accessMode?: LessonAccessMode; teacher: User; students: Array<User>; startsAt: string; endsAt: (string) | null; status: "SCHEDULED" | "LIVE" | "ENDED" | "CANCELLED"; code: string; startedAt: (string) | null; endedAt: (string) | null; participants?: Array<LessonParticipant>; attendance?: Array<Attendance> };
 export type LessonInput = { title: string; description?: string; startsAt: string; endsAt: (string) | null; accessMode?: LessonAccessMode; studentIds?: Array<string> };
-export type JoinResult = { waiting: boolean; lesson: Lesson; token?: string; livekitUrl?: string };
+export type JoinResult = { waiting: boolean; lesson: Lesson; token?: string; livekitUrl?: string; admissionId?: string };
 export type Material = { id: string; name: string; type: "media" | "document"; size: number; duration?: (number) | null; pages?: (number) | null; createdAt: string };
 export type Share = { id: string; type: "screen" | "media" | "document"; ownerId: string; materialId?: string; material?: Material; page: number; playing: boolean; position: number; updatedAt: string; assistanceId?: string };
 export type Point = { x: number; y: number };
@@ -57,6 +57,11 @@ export type AssistanceRespondPayload = { sessionId: string; approved: boolean };
 export type AssistanceStartPayload = { sessionId: string; geometry: AssistanceGeometry };
 export type AssistanceGeometryPayload = { sessionId: string; geometry: AssistanceGeometry };
 export type AssistanceStopPayload = { sessionId: string };
+export type ClassNoteLesson = { id: string; title: string; startsAt: string; teacherName: string };
+export type ClassNoteTarget = { lesson: (ClassNoteLesson) | null };
+export type ClassNoteImage = { id: string; createdAt: string };
+export type ClassNoteWorksheet = { lesson: ClassNoteLesson; studentName: string; original: ClassNoteImage; correction: (ClassNoteImage) | null };
+export type ClassNoteCapture = { lesson: ClassNoteLesson; image: ClassNoteImage; source: "self" | "teacher" };
 export type ApiLesson = Lesson;
 export type CommandType = "chat.send" | "hand.set" | "share.start" | "share.stop" | "media.update" | "document.page" | "stroke.add" | "stroke.erase" | "annotation.undo" | "annotation.redo" | "annotation.clear" | "assistance.request" | "assistance.respond" | "assistance.start" | "assistance.geometry" | "assistance.stop";
 export type CommandPayloads = { "chat.send": ChatSendPayload; "hand.set": HandSetPayload; "share.start": ShareStartPayload; "share.stop": EmptyPayload; "media.update": MediaUpdatePayload; "document.page": DocumentPagePayload; "stroke.add": StrokeAddPayload; "stroke.erase": StrokeErasePayload; "annotation.undo": EmptyPayload; "annotation.redo": EmptyPayload; "annotation.clear": EmptyPayload; "assistance.request": AssistanceRequestPayload; "assistance.respond": AssistanceRespondPayload; "assistance.start": AssistanceStartPayload; "assistance.geometry": AssistanceGeometryPayload; "assistance.stop": AssistanceStopPayload };

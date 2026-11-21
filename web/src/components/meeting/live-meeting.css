@@ -43,3 +43,6 @@
 .person-row .assistance-request:disabled { opacity:.4; cursor:not-allowed; }
 .remote-pointer-mark { position:absolute; z-index:3; display:flex; align-items:center; justify-content:center; width:var(--tm-component-remote-pointer-size); height:var(--tm-component-remote-pointer-size); border:var(--tm-component-remote-pointer-ring-width) solid var(--tm-color-danger); border-radius:50%; transform:translate(-50%,-50%); pointer-events:none; }
 .remote-pointer-mark i { display:block; width:var(--tm-component-remote-pointer-core-size); height:var(--tm-component-remote-pointer-core-size); background:var(--tm-color-danger); border-radius:50%; }
+.share-status-bar .share-save { margin-inline-start: auto; white-space: nowrap; }
+.share-status-bar .share-save + button { margin-inline-start: 0; }
+.share-status-bar .share-save:disabled { opacity: .5; }

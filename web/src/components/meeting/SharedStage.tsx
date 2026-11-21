@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react"
+import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react"
 import { Track, type Room, type VideoTrack } from "livekit-client"
 import { getDocument, GlobalWorkerOptions, type PDFDocumentProxy } from "pdfjs-dist"
 import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url"
@@ -14,11 +14,15 @@ import { useFeature } from "../../lib/useFeature"
 import { activeAssistance, assistancePoint, geometryMatchesVideo, matchesAssistancePointer, REMOTE_POINTER_TTL_MS, type RemotePointer } from "../../lib/remoteAssistance"
 import { useParticipantTrack, useRoomParticipants } from "../../lib/livekitMedia"
 
+import { captureSharedFrame } from "./captureSharedFrame"
+
+export type SharedFrame = { capture: () => Promise<Blob> }
+
 GlobalWorkerOptions.workerSrc = pdfWorker
 const colors = ["#1f2937", "#ef6461", "#f2b84b", "#4f9d76", "#4386d8", "#8b6bc1"]
 const pathFor = (points: Point[]) => points.map((point, index) => `${index ? "L" : "M"}${point.x * 1000},${point.y * 1000}`).join(" ")
-type Props = { user: User; snapshot: MeetingSnapshot; room: Room | null; command: Command; previews: Record<string, PreviewStroke>; sendPreview: (stroke: PreviewStroke) => void; remotePointer?: RemotePointer | null; sendAssistancePointer?: (x: number, y: number) => void; assistanceConnected?: boolean; onAssistanceReady?: (ready: boolean) => void; serverOffset: number; outputDevice: string; onError: (message: string) => void }
-export function SharedStage({ user, snapshot, room, command, previews, sendPreview, remotePointer, sendAssistancePointer, assistanceConnected = false, onAssistanceReady, serverOffset, outputDevice, onError }: Props) {
+type Props = { user: User; snapshot: MeetingSnapshot; room: Room | null; command: Command; previews: Record<string, PreviewStroke>; sendPreview: (stroke: PreviewStroke) => void; remotePointer?: RemotePointer | null; sendAssistancePointer?: (x: number, y: number) => void; assistanceConnected?: boolean; onAssistanceReady?: (ready: boolean) => void; serverOffset: number; outputDevice: string; onError: (message: string) => void; frameRef?: Ref<SharedFrame>; onFrameReady?: (ready: boolean) => void }
+export function SharedStage({ user, snapshot, room, command, previews, sendPreview, remotePointer, sendAssistancePointer, assistanceConnected = false, onAssistanceReady, serverOffset, outputDevice, onError, frameRef, onFrameReady }: Props) {
   const share = snapshot.share!
   const [tool, setTool] = useState<"pen" | "highlighter" | "eraser">("pen")
   const [annotating, setAnnotating] = useState(false)
@@ -31,6 +35,8 @@ export function SharedStage({ user, snapshot, room, command, previews, sendPrevi
   const assistanceEnabled = useFeature("meeting.remote-assistance")
   const [available, setAvailable] = useState({ w: 800, h: 500 })
   const [loading, setLoading] = useState(false)
+  const [renderedPage, setRenderedPage] = useState<number>()
+  const [videoReady, setVideoReady] = useState(false)
   const [autoplayBlocked, setAutoplayBlocked] = useState(false)
   const [position, setPosition] = useState(share.position || 0)
   const [duration, setDuration] = useState(share.material?.duration || 0)
@@ -78,6 +84,16 @@ export function SharedStage({ user, snapshot, room, command, previews, sendPrevi
   const participants = useRoomParticipants(room)
   const owner = share.type === "screen" ? participants.find(person => person.identity === share.ownerId) : undefined
   const screenTrack = useParticipantTrack(owner, Track.Source.ScreenShare).track as VideoTrack | undefined
+  const frameReady = !share.assistanceId && (share.type === "document" ? renderedPage === share.page : videoReady && (share.type !== "screen" || !!screenTrack))
+  useImperativeHandle(frameRef, () => ({ capture() {
+    const source = share.type === "document" ? canvasRef.current : videoRef.current
+    if (!frameReady || !source || source instanceof HTMLVideoElement && (source.readyState < 2 || source.seeking)) throw new Error("공유 화면을 불러오는 중이에요.")
+    return captureSharedFrame(source, strokes, width)
+  } }), [frameReady, share.type, strokes, width])
+  useEffect(() => {
+    onFrameReady?.(frameReady)
+    return () => onFrameReady?.(false)
+  }, [frameReady, onFrameReady])
   const execute = async (type: string, payload?: Record<string, unknown>) => {
     setControlPending(true)
     try { await command(type, payload) } catch(e) { onError(friendlyError(e)) } finally { setControlPending(false) }
@@ -122,6 +138,7 @@ export function SharedStage({ user, snapshot, room, command, previews, sendPrevi
     if (share.type !== "screen") return
     const video = videoRef.current
     if (!video || !screenTrack) return
+    setVideoReady(false)
     screenTrack.attach(video)
     measureVideo(video)
     return () => { screenTrack.detach(video) }
@@ -140,6 +157,7 @@ export function SharedStage({ user, snapshot, room, command, previews, sendPrevi
     if (!document || !canvas || loading) return
     let cancelled = false
     let cancelRender: (() => void) | undefined
+    setRenderedPage(undefined)
     void document.getPage(Math.max(1, Math.min(document.numPages, share.page))).then(page => {
       if (cancelled) return
       const original = page.getViewport({ scale: 1 })
@@ -150,7 +168,7 @@ export function SharedStage({ user, snapshot, room, command, previews, sendPrevi
       canvas.height = Math.ceil(viewport.height)
       const render = page.render({ canvas, viewport })
       cancelRender = () => render.cancel()
-      return render.promise
+      return render.promise.then(() => { if (!cancelled) setRenderedPage(share.page) })
     }).catch(e => { if (!cancelled && !(e instanceof Error && e.name === "RenderingCancelledException")) onError(friendlyError(e)) })
     return () => { cancelled = true; cancelRender?.() }
   }, [share.page, share.id, loading, available.w, available.h, zoom, onError])
@@ -233,7 +251,7 @@ export function SharedStage({ user, snapshot, room, command, previews, sendPrevi
     if (current.points.length === 1) current.points.push({ x: Math.min(1, current.points[0].x + .0001), y: current.points[0].y })
     void command("stroke.add", { ...current, id: crypto.randomUUID() }).then(() => setDraft(null)).catch(e => { setDraft(null); onError(friendlyError(e)) }).finally(() => sendPreview({ ...current, points: [] }))
   }
-  const draw = (stroke: Pick<Stroke, "tool" | "color" | "points">, key: string) => <path key={key} d={pathFor(stroke.points)} fill="none" stroke={stroke.color} strokeWidth={stroke.tool === "highlighter" ? 18 : 4} strokeOpacity={stroke.tool === "highlighter" ? .38 : 1} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+  const draw = (stroke: Pick<Stroke, "tool" | "color" | "points">, key: string, confirmed = false) => <path key={key} data-stroke-id={confirmed ? key : undefined} d={pathFor(stroke.points)} fill="none" stroke={stroke.color} strokeWidth={stroke.tool === "highlighter" ? 18 : 4} strokeOpacity={stroke.tool === "highlighter" ? .38 : 1} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
   const people = snapshot.participants.filter(entry => entry.online && (canControl ? entry.user.id !== snapshot.lesson.teacher.id : entry.user.id === snapshot.lesson.teacher.id))
   const participantTileHeight = participantHeight ? Math.max(56, Math.min(participantLayout === "narrow" ? 115 : 132, participantHeight - 92)) : 132
   const participantPageSize = participantLayout === "mobile"
@@ -247,9 +265,9 @@ export function SharedStage({ user, snapshot, room, command, previews, sendPrevi
       {loading && <p className="live-stage-message">문서를 불러오는 중이에요.</p>}
       {share.type === "screen" && !screenTrack && <p className="live-stage-message">공유 화면 연결을 기다리고 있어요.</p>}
       <div ref={surfaceRef} className="content-surface" style={{ width, height, maxWidth: "none", display: loading || share.type === "screen" && !screenTrack ? "none" : undefined }}>
-        {share.type === "document" ? <canvas ref={canvasRef} aria-label={`${share.material?.name || "PDF"} ${share.page}페이지`} /> : <video ref={videoRef} data-testid={share.type === "screen" ? "shared-screen" : "shared-media"} src={share.type === "media" && share.materialId ? materialContentUrl(share.materialId, snapshot.lessonId) : undefined} autoPlay={share.type === "screen"} muted={share.type === "screen" || outputDevice === "muted"} playsInline preload="metadata" onLoadedMetadata={event => { const video = event.currentTarget; setNatural({ w: video.videoWidth || 1280, h: video.videoHeight || 720 }); measureVideo(video); if (share.type === "media") { setDuration(video.duration); syncVideo() } }} onResize={event => { const video = event.currentTarget; if (video.videoWidth && video.videoHeight) setNatural({ w: video.videoWidth, h: video.videoHeight }); measureVideo(video) }} onTimeUpdate={event => setPosition(event.currentTarget.currentTime)} onEnded={() => { if (canControl && share.type === "media" && share.playing) void execute("media.update", { playing: false, position: duration }) }} onError={() => onError("공유 영상을 재생하지 못했어요. 파일 형식과 연결 상태를 확인해 주세요.")} />}
+        {share.type === "document" ? <canvas ref={canvasRef} aria-label={`${share.material?.name || "PDF"} ${share.page}페이지`} /> : <video ref={videoRef} data-testid={share.type === "screen" ? "shared-screen" : "shared-media"} src={share.type === "media" && share.materialId ? materialContentUrl(share.materialId, snapshot.lessonId) : undefined} autoPlay={share.type === "screen"} muted={share.type === "screen" || outputDevice === "muted"} playsInline preload={frameRef ? "auto" : "metadata"} onLoadedData={() => setVideoReady(true)} onCanPlay={() => setVideoReady(true)} onSeeked={() => setVideoReady(true)} onSeeking={() => setVideoReady(false)} onEmptied={() => setVideoReady(false)} onLoadedMetadata={event => { const video = event.currentTarget; setNatural({ w: video.videoWidth || 1280, h: video.videoHeight || 720 }); measureVideo(video); if (share.type === "media") { setDuration(video.duration); syncVideo() } }} onResize={event => { const video = event.currentTarget; if (video.videoWidth && video.videoHeight) setNatural({ w: video.videoWidth, h: video.videoHeight }); measureVideo(video) }} onTimeUpdate={event => setPosition(event.currentTarget.currentTime)} onEnded={() => { if (canControl && share.type === "media" && share.playing) void execute("media.update", { playing: false, position: duration }) }} onError={() => onError("공유 영상을 재생하지 못했어요. 파일 형식과 연결 상태를 확인해 주세요.")} />}
         <svg ref={svgRef} className={`annotation-overlay live-annotation ${!remoteActive && annotating || canPoint ? "is-drawing" : ""}`} viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-label={remoteActive && canControl ? designContent.remoteAssistActive : "수업 판서 영역"} onPointerDown={begin} onPointerMove={move} onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end}>
-          {strokes.map(stroke => draw(stroke, stroke.id))}
+          {strokes.map(stroke => draw(stroke, stroke.id, true))}
           {Object.entries(previews).filter(([, stroke]) => stroke.shareId === share.id && stroke.page === share.page).map(([id, stroke]) => draw(stroke, `preview-${id}`))}
           {draft && draft.shareId === share.id && draft.page === share.page && draw(draft, "draft")}
         </svg>

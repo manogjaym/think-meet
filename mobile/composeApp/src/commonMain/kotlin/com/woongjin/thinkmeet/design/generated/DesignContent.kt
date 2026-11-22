@@ -66,6 +66,7 @@ object DesignContent {
     const val MeetingStageClassroomAction = "화면 공유하기"
     const val MeetingStageMirroring = "화면을 볼 학생을 선택해 공유를 요청해 주세요."
     const val MeetingStageMirroringAction = "학생 선택"
+    const val MeetingMirroringWaiting = "학생의 수락을 기다리고 있어요"
     const val MeetingConnected = "연결됨"
     const val MeetingPeopleControl = "참가자"
     const val MeetingChatPanel = "수업 채팅"

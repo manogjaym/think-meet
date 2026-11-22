@@ -68,15 +68,19 @@ private fun MaterialsButton(
     }
 }
 
-/** Main stage guidance for the lesson owner while nothing is shared (web: TeacherStageGuide). */
+/** Main stage guidance for the lesson owner while nothing is shared, including a mirroring request awaiting the student (web: TeacherStageGuide). */
 @Composable
-internal fun TeacherStageGuide(snapshot: MeetingSnapshot?, enabled: Boolean, onShare: () -> Unit, onPickStudent: () -> Unit, modifier: Modifier = Modifier) {
+internal fun TeacherStageGuide(
+    snapshot: MeetingSnapshot?, enabled: Boolean, onShare: () -> Unit, onPickStudent: () -> Unit,
+    onCancelRequest: () -> Unit, cancelEnabled: Boolean, modifier: Modifier = Modifier,
+) {
     val phase = snapshot?.instruction?.phase
     val session = snapshot?.assistance
     val student = session?.let { current -> snapshot.participants.firstOrNull { it.user.id == current.studentId }?.user?.name }
     val waiting = phase == "mirroring" && session != null
     val message = when {
-        waiting -> listOfNotNull(student, if (session?.status == "pending") DesignContent.RemoteAssistWaiting else DesignContent.RemoteAssistPreparing).joinToString(" ")
+        waiting && session?.status == "pending" -> listOfNotNull(student, DesignContent.MeetingMirroringWaiting).joinToString(" ")
+        waiting -> DesignContent.RemoteAssistPreparing
         phase == "classroom" -> DesignContent.MeetingStageClassroom
         phase == "mirroring" -> DesignContent.MeetingStageMirroring
         else -> DesignContent.MeetingStagePreparing
@@ -87,8 +91,16 @@ internal fun TeacherStageGuide(snapshot: MeetingSnapshot?, enabled: Boolean, onS
         Box(Modifier.size(88.dp).background(Palette.MeetingMediaActive, CircleShape), contentAlignment = Alignment.Center) {
             DesignIcon("screen", Modifier.size(34.dp), Palette.PrimaryOnDark)
         }
+        val size = if (waiting) Type.Heading else Type.Body
         Text(message, Modifier.widthIn(max = 420.dp), textAlign = TextAlign.Center, color = Palette.MeetingText,
-            style = MaterialTheme.typography.bodyLarge.copy(fontSize = Type.Body, lineHeight = Type.Body * 1.5f), fontWeight = DesignWeight.SemiBold)
+            style = MaterialTheme.typography.bodyLarge.copy(fontSize = size, lineHeight = size * 1.5f), fontWeight = if (waiting) DesignWeight.Bold else DesignWeight.SemiBold)
+        if (waiting) Surface(onClick = onCancelRequest, enabled = cancelEnabled, shape = RoundedCornerShape(percent = 50), color = Color.Transparent,
+            contentColor = Palette.MeetingMuted, border = BorderStroke(Space.S1, Palette.MeetingBorder)) {
+            Box(Modifier.heightIn(min = Space.S44).widthIn(min = 200.dp).padding(horizontal = Space.S24), contentAlignment = Alignment.Center) {
+                Text(if (session?.status == "pending") DesignContent.MeetingLessonCancelRequest else DesignContent.RemoteAssistStop,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = Type.Support, lineHeight = Type.Support * 1.5f), fontWeight = DesignWeight.SemiBold)
+            }
+        }
         val action = when {
             phase == "classroom" -> DesignContent.MeetingStageClassroomAction to onShare
             phase == "mirroring" && session == null -> DesignContent.MeetingStageMirroringAction to onPickStudent

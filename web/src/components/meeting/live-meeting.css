@@ -295,3 +295,5 @@
   cursor: pointer;
 }
 .teacher-stage-guide button:disabled { opacity: .5; cursor: not-allowed; }
+.teacher-stage-guide.is-waiting p { font-size: var(--type-heading); font-weight: var(--weight-bold); }
+.teacher-stage-guide .teacher-stage-cancel { min-width: 200px; border-radius: 999px; background: transparent; color: var(--tm-color-meeting-muted); }

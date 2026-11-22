@@ -17,7 +17,7 @@ test.beforeEach(async ({ page }) => {
 
 async function activate(page: Page) {
   await page.getByRole("button", { name: "김학생 화면 보기 요청", exact: true }).click()
-  await expect(page.locator(".remote-assistance-status")).toContainText("학생의 승인을 기다리고 있어요")
+  await expect(page.locator(".remote-assistance-status")).toContainText("학생의 수락을 기다리고 있어요")
   await page.getByRole("button", { name: "학생 승인", exact: true }).click()
   await expect(page.locator(".remote-assistance-status")).toContainText("전체 화면 공유를 준비하고 있어요")
   await page.getByRole("button", { name: "학생 공유 시작", exact: true }).click()
@@ -32,7 +32,7 @@ test("teacher requests a student's screen, waits for consent and can cancel", as
   await expect(request).toHaveText("화면 보기 요청")
   await request.click()
   await expect(request).toBeDisabled()
-  await expect(page.locator(".remote-assistance-status")).toContainText("학생의 승인을 기다리고 있어요")
+  await expect(page.locator(".remote-assistance-status")).toContainText("학생의 수락을 기다리고 있어요")
   await expect(page.locator(".content-surface")).toHaveCount(0)
   await page.getByRole("button", { name: "화면 안내 중지", exact: true }).click()
   await expect(page.locator(".remote-assistance-status")).toHaveCount(0)

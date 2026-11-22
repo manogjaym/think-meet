@@ -96,6 +96,10 @@ internal fun SharedStage(
     val assistanceEnabled = capabilities.supports(ContractProtocol.FeatureIds.MeetingRemoteAssistance)
     val scope = rememberCoroutineScope()
     var annotating by remember(share.id) { mutableStateOf(false) }
+    // Classroom and mirroring modes keep annotation on; legacy rooms still start and stop it explicitly.
+    val alwaysAnnotate = snapshot.instruction?.phase == "classroom" || snapshot.instruction?.phase == "mirroring"
+    // Students in lesson modes still need the teacher's annotation permission; the owner always has it.
+    val annotationOn = (annotating || alwaysAnnotate) && canAnnotate
     var tool by remember { mutableStateOf("pen") }
     var color by remember { mutableStateOf(penColors[1]) }
     var aspect by remember(share.id) { mutableFloatStateOf(if (share.type == "document") .7071f else 16f / 9f) }
@@ -199,16 +203,18 @@ internal fun SharedStage(
     }
     val annotationControls: @Composable (Modifier) -> Unit = { controlsModifier ->
         if (!canAnnotate) Unit
-        else if (!annotating) Surface(onClick = { annotating = true }, modifier = controlsModifier, color = Palette.Selection,
+        else if (!annotationOn) Surface(onClick = { annotating = true }, modifier = controlsModifier, color = Palette.Selection,
             contentColor = Palette.PrimaryPressed, shape = RoundedCornerShape(Corner.R8)) {
             Row(Modifier.heightIn(min = Space.S44).padding(horizontal = Space.S12), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.S7)) {
                 DesignIcon("pen", Modifier.size(Space.S20), Palette.PrimaryPressed)
                 Text("판서 시작", style = MaterialTheme.typography.labelMedium.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f))
             }
-        } else Surface(controlsModifier.fillMaxWidth(), shape = RoundedCornerShape(Corner.R9), color = Palette.MeetingTile) {
-            FlowRow(Modifier.padding(if (compact) Space.S5 else Space.S8), horizontalArrangement = Arrangement.spacedBy(if (compact) Space.S4 else Space.S8, if (textbookLayout) Alignment.End else Alignment.Start), verticalArrangement = Arrangement.spacedBy(Space.S4)) {
+        } else Surface(controlsModifier, shape = RoundedCornerShape(Corner.R9), color = Palette.MeetingTile) {
+            // Icon-only tools keep page controls and annotation on one footer row; names stay in content descriptions.
+            // Wider screens keep the bar on one line so the footer moves it whole to the next line (web behaviour).
+            val tools: @Composable () -> Unit = {
                 listOf("pen" to "펜", "highlighter" to "형광펜", "eraser" to "지우개").forEach { (value, label) ->
-                    StageButton(if (compact) null else label, icon = value, description = label, selected = tool == value, minHeight = if (compact) Space.S36 else Space.S44) { tool = value }
+                    StageButton(null, icon = value, description = label, selected = tool == value, minHeight = if (compact) Space.S36 else Space.S44) { tool = value }
                 }
                 Row(Modifier.heightIn(min = if (compact) Space.S36 else Space.S44), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(if (compact) Space.S2 else Space.S4)) {
                     penColors.forEach { penColor ->
@@ -219,18 +225,19 @@ internal fun SharedStage(
                         }
                     }
                 }
-                StageButton(if (compact) null else "실행 취소", icon = "undo", description = "실행 취소", enabled = !pending, minHeight = if (compact) Space.S36 else Space.S44) { command(ContractProtocol.Commands.AnnotationUndo, EmptyPayload()) }
-                StageButton(if (compact) null else "다시 실행", icon = "redo", description = "다시 실행", enabled = !pending, minHeight = if (compact) Space.S36 else Space.S44) { command(ContractProtocol.Commands.AnnotationRedo, EmptyPayload()) }
-                StageButton(if (owner) "전체 지우기" else "내 판서 지우기", icon = "trash", description = if (owner) "전체 지우기" else "내 판서 지우기", enabled = strokes.any { owner || it.authorId == user.id }, minHeight = if (compact) Space.S36 else Space.S44) { clearConfirm = true }
-                StageButton("판서 종료", icon = "close", minHeight = if (compact) Space.S36 else Space.S44) { annotating = false; draft = null }
+                StageButton(null, icon = "undo", description = "실행 취소", enabled = !pending, minHeight = if (compact) Space.S36 else Space.S44) { command(ContractProtocol.Commands.AnnotationUndo, EmptyPayload()) }
+                StageButton(null, icon = "redo", description = "다시 실행", enabled = !pending, minHeight = if (compact) Space.S36 else Space.S44) { command(ContractProtocol.Commands.AnnotationRedo, EmptyPayload()) }
+                StageButton(null, icon = "trash", description = if (owner) "전체 지우기" else "내 판서 지우기", enabled = strokes.any { owner || it.authorId == user.id }, minHeight = if (compact) Space.S36 else Space.S44) { clearConfirm = true }
+                if (!alwaysAnnotate) StageButton("판서 종료", icon = "close", minHeight = if (compact) Space.S36 else Space.S44) { annotating = false; draft = null }
             }
+            if (compact) FlowRow(Modifier.padding(Space.S4), horizontalArrangement = Arrangement.spacedBy(Space.S4, Alignment.End), verticalArrangement = Arrangement.spacedBy(Space.S4)) { tools() }
+            else Row(Modifier.padding(Space.S4), horizontalArrangement = Arrangement.spacedBy(Space.S4), verticalAlignment = Alignment.CenterVertically) { tools() }
         }
     }
     val renderContent: @Composable (Modifier) -> Unit = { contentModifier ->
         BoxWithConstraints(contentModifier.clip(RoundedCornerShape(Corner.R10)).background(Palette.MeetingSharedBackground)) {
             BoxWithConstraints(Modifier.fillMaxSize().padding(start = if (compact) Space.S8 else Space.S12, end = if (compact) Space.S8 else Space.S12,
-                top = if (textbookLayout) Space.S8 else if (compact) 84.dp else Space.S64,
-                bottom = if (textbookLayout) Space.S8 else if (compact) 92.dp else 80.dp), contentAlignment = Alignment.Center) {
+                top = Space.S8, bottom = Space.S8), contentAlignment = Alignment.Center) {
                 val fitWidth = min(maxWidth.value, maxHeight.value * aspect).coerceAtLeast(1f).dp
                 val fitHeight = (fitWidth.value / aspect).dp
                 // The PDF/video and annotation overlay retain the exact same fitted coordinate bounds.
@@ -258,7 +265,7 @@ internal fun SharedStage(
                         scope.launch { realtime.assistancePointer(point) }
                     }
                 }
-                val drawModifier = if (!annotating || !canAnnotate || assistance != null) Modifier else Modifier.pointerInput(share.id, share.page, tool, color) {
+                val drawModifier = if (!annotationOn || assistance != null) Modifier else Modifier.pointerInput(share.id, share.page, tool, color) {
                     fun pointAt(offset: Offset): Point = Point((offset.x / size.width).toDouble().coerceIn(0.0, 1.0), (offset.y / size.height).toDouble().coerceIn(0.0, 1.0))
                     fun erase(point: Point) {
                         val ids = currentStrokes.filter { stroke ->
@@ -316,17 +323,9 @@ internal fun SharedStage(
                 }
                 }
             }
-            if (!textbookLayout && share.type == "document") {
-                documentControls(Modifier.align(Alignment.BottomCenter).padding(Space.S12).fillMaxWidth())
-            }
-            if (share.type == "media") Surface(Modifier.align(Alignment.BottomCenter).padding(Space.S12).fillMaxWidth(), shape = RoundedCornerShape(Corner.R8), color = Palette.MeetingTile) {
-                MediaTransport(share, snapshot.serverTime, owner, pending) { command(ContractProtocol.Commands.MediaUpdate, it) }
-            }
             if (assistance != null) Surface(Modifier.align(Alignment.TopStart).padding(Space.S12), color = Palette.MeetingTile, shape = RoundedCornerShape(Corner.R8)) {
                 Text(if (guideReady) DesignContent.RemoteAssistActive else if (owner) DesignContent.RemoteAssistGeometryWaiting else DesignContent.RemoteAssistActiveStudent,
                     Modifier.padding(Space.S10), style = MaterialTheme.typography.bodySmall, color = Palette.MeetingText)
-            } else if (!textbookLayout) {
-                annotationControls(Modifier.align(Alignment.TopStart).padding(Space.S12))
             }
         }
     }
@@ -344,11 +343,20 @@ internal fun SharedStage(
             }
         }
         val renderStage: @Composable (Modifier) -> Unit = { stageModifier ->
-            if (textbookLayout) Column(stageModifier, verticalArrangement = Arrangement.spacedBy(Space.S4)) {
+            // Page or playback controls on the left and annotation tools on the right, always under the shared content (web: .stage-footer).
+            Column(stageModifier, verticalArrangement = Arrangement.spacedBy(Space.S8)) {
                 renderContent(Modifier.weight(1f).fillMaxWidth())
-                documentControls(Modifier.fillMaxWidth())
-                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) { annotationControls(Modifier) }
-            } else renderContent(stageModifier)
+                FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Space.S4), verticalArrangement = Arrangement.spacedBy(Space.S4)) {
+                    if (share.type == "document") documentControls(Modifier.align(Alignment.CenterVertically))
+                    if (share.type == "media") Surface(Modifier.align(Alignment.CenterVertically), shape = RoundedCornerShape(Corner.R8), color = Palette.MeetingTile) {
+                        MediaTransport(share, snapshot.serverTime, owner, pending) { command(ContractProtocol.Commands.MediaUpdate, it) }
+                    }
+                    // Fills the rest of its line so the tools stay right-aligned even after wrapping (web: margin-inline-start:auto).
+                    if (assistance == null) Box(Modifier.weight(1f).align(Alignment.CenterVertically), contentAlignment = Alignment.CenterEnd) {
+                        annotationControls(Modifier)
+                    }
+                }
+            }
         }
         if (compact) Column(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Space.S8)) {
             renderStage(Modifier.weight(1f).fillMaxWidth())
@@ -385,10 +393,11 @@ private fun StageButton(label: String?, icon: String? = null, description: Strin
 }
 
 @Composable
-internal fun SharedParticipants(snapshot: MeetingSnapshot, user: User, media: MediaController, state: MediaState, modifier: Modifier, horizontal: Boolean, docked: Boolean = false) {
+internal fun SharedParticipants(snapshot: MeetingSnapshot, user: User, media: MediaController, state: MediaState, modifier: Modifier, horizontal: Boolean, docked: Boolean = false, rail: Boolean = false) {
     val owner = snapshot.lesson.teacher.id == user.id
     val participants = snapshot.participants.filter { it.online && if (owner) docked || it.user.id != snapshot.lesson.teacher.id else it.user.id == snapshot.lesson.teacher.id }
-    val people = if (docked) participants.sortedByDescending { it.user.id == user.id } else participants
+    // The textbook dock lists the owner first; the owner rail lists students first, as in the lesson design.
+    val people = if (docked && rail) participants.sortedBy { it.user.id == user.id } else if (docked) participants.sortedByDescending { it.user.id == user.id } else participants
     BoxWithConstraints(modifier) {
         val tileHeight = (maxHeight - 92.dp).coerceIn(Space.S56, if (LocalMeetingViewportWidth.current <= com.woongjin.thinkmeet.design.generated.DesignTokens.Layout.MeetingMediumBreakpoint) 115.dp else 132.dp)
         val stripHeight = if (horizontal && LocalMeetingCompact.current && maxHeight <= Space.S96) Space.S64 else 90.dp
@@ -403,11 +412,15 @@ internal fun SharedParticipants(snapshot: MeetingSnapshot, user: User, media: Me
         val compact = LocalMeetingCompact.current
         fun extra(id: String) = if (controls?.visibleFor(id, id == user.id) == true) participantControlsHeight(compact) + (if (compact) Space.S4 else Space.S8) else 0.dp
         val stripExtra = visible.maxOfOrNull { extra(it.user.id) } ?: 0.dp
-        Column(if (docked) Modifier.fillMaxWidth() else Modifier.fillMaxSize()) {
-            if (!horizontal) Row(Modifier.padding(bottom = Space.S12), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.S6)) { DesignIcon("users", Modifier.size(Space.S14), Palette.MeetingDim); Text(if (owner) "참여자 ${people.size}명" else "선생님", style = MaterialTheme.typography.bodySmall.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f), color = Palette.MeetingDim) }
+        // Rail tiles split the given height (two per page) up to a 200dp tile, like the web rail; controls rows add their own height.
+        val railTile = ((maxHeight - (if (pages > 1) Space.S52 else 0.dp) - Space.S8 - stripExtra * 2) / 2).coerceIn(88.dp, 200.dp)
+        Column(if (docked && !rail) Modifier.fillMaxWidth() else Modifier.fillMaxSize()) {
+            if (!horizontal && !docked) Row(Modifier.padding(bottom = Space.S12), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.S6)) { DesignIcon("users", Modifier.size(Space.S14), Palette.MeetingDim); Text(if (owner) "참여자 ${people.size}명" else "선생님", style = MaterialTheme.typography.bodySmall.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f), color = Palette.MeetingDim) }
             if (people.isEmpty()) Box(Modifier.fillMaxWidth().height(Space.S96), contentAlignment = Alignment.Center) { Text("입장 대기 중", color = Palette.MeetingDim, style = MaterialTheme.typography.bodySmall.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f)) }
             else if (horizontal) Row(Modifier.fillMaxWidth().height(stripHeight + stripExtra), horizontalArrangement = Arrangement.spacedBy(Space.S8)) {
                 visible.forEach { entry -> ParticipantTile(entry.user, entry.user.id == snapshot.lesson.teacher.id, entry.raised, media, state, Modifier.weight(1f).fillMaxHeight(), small = true) }
+            } else if (rail) Column(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Space.S8)) {
+                visible.forEach { entry -> ParticipantTile(entry.user, entry.user.id == snapshot.lesson.teacher.id, entry.raised, media, state, Modifier.fillMaxWidth().height(railTile + extra(entry.user.id)), small = true, cameraStatus = true) }
             } else Column(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Space.S12)) {
                 visible.forEach { entry -> ParticipantTile(entry.user, entry.user.id == snapshot.lesson.teacher.id, entry.raised, media, state, Modifier.fillMaxWidth().height(tileHeight + extra(entry.user.id)), small = true) }
             }

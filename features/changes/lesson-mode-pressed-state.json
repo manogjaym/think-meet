@@ -1,0 +1,32 @@
+{
+  "id": "lesson-mode-pressed-state",
+  "summary": "수업방·미러링 모드 버튼의 선택 표시를 실제 진입한 경우에만 켭니다. 수업방 모드는 공유가 있을 때, 미러링 모드는 학생 화면 요청이나 공유가 있을 때 선택으로 표시하고, 공유 선택창이나 학생 선택 모달을 취소하면 선택 표시를 끕니다.",
+  "scope": "shared",
+  "featureIds": [
+    "classroom.lesson-modes"
+  ],
+  "platforms": {
+    "server": {
+      "status": "unchanged",
+      "reason": "서버 모드 저장·수업 시작·공유와 요청 권한 검사는 그대로 사용합니다. 수업방 모드의 수업 자료처럼 서버 모드에 의존하는 동선을 유지하려고 클라이언트 표시만 바꿉니다."
+    },
+    "web": {
+      "status": "implemented"
+    },
+    "android": {
+      "status": "implemented"
+    },
+    "ios": {
+      "status": "implemented",
+      "reason": "Android와 같은 공통 Compose 코드(MeetingChrome.kt·MeetingScreen.kt)를 사용합니다."
+    }
+  },
+  "verification": [
+    "2026-11-22 UTC, /workspace/think-meet 실행 checkout: node design/scripts/generate.mjs 후 npm run shared:check와 npm run shared:check -- --changed-files <변경 파일 목록> 통과. 이 checkout의 Pretendard woff2는 Git LFS 포인터라 생성 전에는 shared:check가 폰트 생성물 불일치로 실패합니다. 기존 환경 문제이며 빌드 후 포인터로 되돌렸습니다.",
+    "npm run verify 통과: 공통 정책 테스트 13개, 서버 66개, 웹 19개, 서버·웹 타입 검사와 웹 빌드.",
+    "mobile/에서 JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64, ANDROID_HOME=/opt/android-sdk, THINK_MEET_SERVER_ORIGIN=https://115.68.2.13으로 ./gradlew :composeApp:testDebugUnitTest --tests 'com.woongjin.thinkmeet.meeting.MeetingControllersTest' :composeApp:assembleDebug 통과. MeetingControllersTest 4개 중 새 activeLessonMode 검사 1개가 수업 미시작, 팝업만 연 상태, 공유·요청 상태의 선택 표시를 확인합니다.",
+    "infra/local에서 docker compose build web 후 docker compose up -d --no-deps --wait web으로 웹만 재배포했습니다. 재배포 전 LIVE 수업은 0개였습니다. https://115.68.2.13의 index와 /api/v1/health 200, 로컬 CA 지문 변경 없음, 폰트 실파일 제공을 확인했습니다.",
+    "web/에서 BASE_URL=https://115.68.2.13, Chromium 1255 실행 파일로 npx playwright test e2e/devices.spec.ts --grep 'lesson mode buttons' 1개 통과. 미러링 학생 선택 모달이 열려 있거나 취소한 뒤, 수업방 공유 선택창을 취소한 뒤, 전환 후 모달만 열린 상태, 재접속 후에는 선택 표시가 꺼짐을 확인했습니다. 실제 화면 공유 중에는 수업방 모드 선택 표시가 켜짐을 확인했습니다. 휴대폰(390×844)·태블릿(1024×820) 화면 캡처를 확인했습니다. 테스트가 만든 수업 1개는 DB에서 삭제했고, 업로드 자료는 테스트가 직접 삭제했습니다.",
+    "미실행: Android 에뮬레이터 실행 확인(설치된 앱은 교체하지 않음), iOS 빌드·실행(Linux 환경), Android 학생 승인 후 미러링 선택 표시의 실제 단말 확인, 원격 CI."
+  ]
+}

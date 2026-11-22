@@ -87,7 +87,8 @@ function installStudentMicrophone() {
 
 test("participant and speaker updates keep the camera preview and microphone meter running", async ({ browser, baseURL }) => {
   const contextOptions = { baseURL, ignoreHTTPSErrors: true, permissions: ["camera", "microphone"] }
-  const teacherContext = await browser.newContext(contextOptions)
+  // The teacher's gallery speaker view exists below the owner rail breakpoint (wide owner screens show the rail instead).
+  const teacherContext = await browser.newContext({ ...contextOptions, viewport: { width: 860, height: 1000 } })
   const studentContext = await browser.newContext(contextOptions)
   let lessonId: string | undefined
   try {

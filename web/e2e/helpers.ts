@@ -15,6 +15,23 @@ export async function apiLogin(request: APIRequestContext, username: string) {
   const response=await request.post('/api/v1/auth/login',{data:{username,password}})
   expect(response.ok(), await response.text()).toBeTruthy()
 }
+/** Opens the textbook panel: the owner rail card on wide lesson-mode screens, otherwise the bottom control. */
+export async function openMaterials(page: Page) {
+  const card = page.locator(".materials-card").getByRole("button", { name: "교재 불러오기", exact: true })
+  const control = page.locator(".call-controls").getByRole("button", { name: "수업 자료", exact: true })
+  // Right after a resize the layout can still switch between the two, so pick and click again until one lands.
+  await expect(async () => {
+    await (await card.isVisible() ? card : control).click({ timeout: 2_000 })
+  }).toPass()
+}
+/** Lesson-mode rooms keep annotation on; legacy rooms still need the footer's start button. */
+export async function startAnnotation(page: Page) {
+  const bar = page.locator(".stage-footer .annotation-bar")
+  const entry = page.locator(".stage-footer").getByRole("button", { name: "판서 시작", exact: true })
+  await expect(bar.or(entry)).toBeVisible()
+  if (await entry.isVisible()) await entry.click()
+  await expect(bar).toBeVisible()
+}
 export async function shareTextbook(page: Page, materialId: string) {
   await page.getByLabel("PDF 교재 선택", { exact: true }).selectOption(materialId)
   await page.getByRole("button", { name: "1쪽", exact: true }).click()

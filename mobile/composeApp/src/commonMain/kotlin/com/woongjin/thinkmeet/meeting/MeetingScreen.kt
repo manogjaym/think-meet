@@ -158,9 +158,12 @@ fun MeetingScreen(
         else if (ownScreen == null || phase != "classroom") screenShare.startCapture()
     }
     val latestOpenMode by rememberUpdatedState(::openMode)
-    val modes = remember(realtime) { LessonModeController(RealtimeLessonModeTransport(realtime), scope, { latestReport(it) }) { latestOpenMode(it) } }
+    val modes = remember(realtime) {
+        LessonModeController(RealtimeLessonModeTransport(realtime), scope, { latestReport(it) }, openMaterials = { panel = Panel.Materials }) { latestOpenMode(it) }
+    }
     val modeBusy = modes.busy
-    fun selectMode(mode: String) = modes.select(mode, phase, modeReady, snapshot?.share?.id, assistance?.id)
+    /** `materials` opens the textbook panel instead of the mode's own popup once the mode is entered. */
+    fun selectMode(mode: String, materials: Boolean = false) = modes.select(mode, phase, modeReady, snapshot?.share?.id, assistance?.id, materials)
 
     LaunchedEffect(showMaterials, panel) {
         if (!showMaterials && panel == Panel.Materials) panel = null
@@ -249,6 +252,8 @@ fun MeetingScreen(
             val compact = windowWidth <= LayoutToken.MeetingCompactBreakpoint
             val overlayPanel = maxWidth <= LayoutToken.MeetingOverlayBreakpoint
             val dockedTextbook = !overlayPanel && textbookLayout && panel == Panel.Materials
+            // Wide owner screens keep participant videos and the materials card in a right rail; a panel replaces the card.
+            val teacherRail = owner && lessonModes && phase != null && !overlayPanel && !compactSystemPip
             val sideWidth = if (overlayPanel) LayoutToken.MeetingPanelWidth else if (maxWidth <= LayoutToken.MeetingMediumBreakpoint) LayoutToken.MeetingPanelNarrowWidth else LayoutToken.MeetingPanelWidth
             val bodyPadding = if (compact) Space.S10 else if (maxWidth <= LayoutToken.MeetingMediumBreakpoint) Space.S16 else Space.S20
             CompositionLocalProvider(LocalMeetingCompact provides compact, LocalMeetingViewportWidth provides maxWidth, LocalMeetingShort provides (maxHeight <= LayoutToken.MeetingShortHeight && !compact),
@@ -257,9 +262,9 @@ fun MeetingScreen(
                 MeetingHeader(currentLesson, mediaState, socketConnected, snapshot?.serverTime, grid, compact, windowWidth,
                     instructionPhase = phase, instructionStartedAt = snapshot?.instruction?.startedAt,
                     subjectName = currentLesson.subject?.name.takeIf { capabilities.supports(ContractProtocol.FeatureIds.ClassroomSubjects) },
-                    onLayout = { grid = !grid })
+                    showLayout = !teacherRail, onLayout = { grid = !grid })
                 if (owner && lessonModes && phase != null && !compactSystemPip) {
-                    MeetingLessonModes(phase, modeReady && !modeBusy && !busy, assistanceEnabled, onMode = ::selectMode)
+                    MeetingLessonModes(activeLessonMode(phase, snapshot?.share, assistance), modeReady && !modeBusy && !busy, assistanceEnabled, onMode = ::selectMode)
                 }
                 if (assistanceEnabled && assistance != null && (owner || assistance.studentId == user.id)) {
                     RemoteAssistanceControls(assistance, user, remoteState.supported && pipState.supported, assistanceBusy,
@@ -282,21 +287,31 @@ fun MeetingScreen(
                             if (current?.share != null) SharedStage(api, current, user, media, realtime, Modifier.fillMaxSize(), report, screenShare::stop,
                                 captureEnabled = notesEnabled && admission.admissionId != null && !compactSystemPip,
                                 onCapture = capture::capture,
-                                textbookLayout = textbookLayout, dockedParticipants = dockedTextbook)
+                                textbookLayout = textbookLayout, dockedParticipants = dockedTextbook || teacherRail)
+                            else if (teacherRail) TeacherStageGuide(current, enabled = modeReady && !modeBusy && !busy,
+                                onShare = { selectMode("classroom") }, onPickStudent = { selectMode("mirroring") }, modifier = Modifier.fillMaxSize())
                             else ParticipantGallery(current, currentLesson, user, media, mediaState, grid, Modifier.fillMaxSize())
                             if (miniVisible && miniTarget != null && !pipState.active && !pipState.transitioning && fatalError == null && !exited && !busy) {
                                 FloatingMiniVideo(media, mediaState, miniTarget, videoName(miniTarget), !compact, miniPosition,
                                     onClose = { miniPreference = false }, modifier = Modifier.fillMaxSize())
                             }
                         }
-                        if (!overlayPanel && panel != null) {
-                            Column(Modifier.width(sideWidth).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(Space.S8)) {
-                                if (dockedTextbook) {
-                                    SharedParticipants(snapshot, user, media, mediaState, Modifier.fillMaxWidth(), horizontal = true, docked = true)
+                        if (teacherRail || (!overlayPanel && panel != null)) {
+                            BoxWithConstraints(Modifier.width(sideWidth).fillMaxHeight()) {
+                            // Spare height goes to the rail videos first (two tiles up to 200dp), then to the materials card.
+                            val railVideos = (maxHeight - 300.dp).coerceIn(184.dp, 408.dp)
+                            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(if (teacherRail) Space.S12 else Space.S8)) {
+                                val current = snapshot
+                                if (current != null && teacherRail && panel == null) {
+                                    SharedParticipants(current, user, media, mediaState, Modifier.fillMaxWidth().height(railVideos), horizontal = false, docked = true, rail = true)
+                                } else if (current != null && (dockedTextbook || teacherRail)) {
+                                    SharedParticipants(current, user, media, mediaState, Modifier.fillMaxWidth(), horizontal = true, docked = true)
                                 }
-                                MeetingLightPanel(Modifier.weight(1f).fillMaxWidth()) {
+                                if (panel != null) MeetingLightPanel(Modifier.weight(1f).fillMaxWidth()) {
                                     panelContent(false)
-                                }
+                                } else MaterialsCard(textbookEnabled = modeReady && !modeBusy && !busy, onTextbook = { selectMode("classroom", materials = true) },
+                                    modifier = Modifier.weight(1f).fillMaxWidth())
+                            }
                             }
                         }
                     }
@@ -314,7 +329,7 @@ fun MeetingScreen(
                     raised = snapshot?.participants?.find { it.user.id == user.id }?.raised == true,
                     count = mediaState.participants.size.coerceAtLeast(1), panel = panel, unread = unread, busy = busy,
                     showShare = phase == null && (canShare || ownScreen != null || mediaState.screenCaptureId != 0L ||
-                        (assistance?.studentId == user.id && mediaState.screenSharing)), showMaterials = showMaterials,
+                        (assistance?.studentId == user.id && mediaState.screenSharing)), showMaterials = showMaterials && !teacherRail,
                     onMicrophone = { execute { media.setMicrophone(!mediaState.microphone) } },
                     onCamera = { execute { media.setCamera(!mediaState.camera) } },
                     onHand = { execute { realtime.send(ContractProtocol.Commands.HandSet, HandSetPayload(snapshot?.participants?.find { it.user.id == user.id }?.raised != true)) } },

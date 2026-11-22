@@ -106,6 +106,14 @@ object DesignVectors {
             addPath(pathData = PathParser().parsePathString("M3 6a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.8f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
         }.build()
     }
+    private val grid by lazy {
+        ImageVector.Builder(name = "grid", defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f).apply {
+            addPath(pathData = PathParser().parsePathString("M4.5 3H8.5a1.5 1.5 0 0 1 1.5 1.5V8.5a1.5 1.5 0 0 1 -1.5 1.5H4.5a1.5 1.5 0 0 1 -1.5 -1.5V4.5a1.5 1.5 0 0 1 1.5 -1.5Z").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.8f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+            addPath(pathData = PathParser().parsePathString("M15.5 3H19.5a1.5 1.5 0 0 1 1.5 1.5V8.5a1.5 1.5 0 0 1 -1.5 1.5H15.5a1.5 1.5 0 0 1 -1.5 -1.5V4.5a1.5 1.5 0 0 1 1.5 -1.5Z").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.8f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+            addPath(pathData = PathParser().parsePathString("M4.5 14H8.5a1.5 1.5 0 0 1 1.5 1.5V19.5a1.5 1.5 0 0 1 -1.5 1.5H4.5a1.5 1.5 0 0 1 -1.5 -1.5V15.5a1.5 1.5 0 0 1 1.5 -1.5Z").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.8f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+            addPath(pathData = PathParser().parsePathString("M15.5 14H19.5a1.5 1.5 0 0 1 1.5 1.5V19.5a1.5 1.5 0 0 1 -1.5 1.5H15.5a1.5 1.5 0 0 1 -1.5 -1.5V15.5a1.5 1.5 0 0 1 1.5 -1.5Z").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.8f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+        }.build()
+    }
     private val hand by lazy {
         ImageVector.Builder(name = "hand", defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f).apply {
             addPath(pathData = PathParser().parsePathString("M7 11V5a2 2 0 0 1 4 0v5-7a2 2 0 0 1 4 0v7-5a2 2 0 0 1 4 0v8c0 5-3 8-8 8-4 0-6-2-8-5l-2-3a2 2 0 0 1 3-2l3 2").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.8f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
@@ -269,6 +277,7 @@ object DesignVectors {
         "pip" -> pip
         "browser" -> browser
         "folder" -> folder
+        "grid" -> grid
         "hand" -> hand
         "more" -> more
         "phone" -> phone

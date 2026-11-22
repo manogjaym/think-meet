@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs"
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test"
 import { PDFDocument, rgb } from "pdf-lib"
 import { io } from "socket.io-client"
-import { apiLogin, login, shareTextbook } from "./helpers"
+import { apiLogin, login, openMaterials, shareTextbook, startAnnotation } from "./helpers"
 import { currentNoteMonth } from "../src/lib/classNotes"
 
 const headers = { "X-ThinkMeet-Platform": "web", "X-ThinkMeet-Contract-Revision": "6" }
@@ -47,7 +47,7 @@ async function enter(page: Page, id: string, teacher = false) {
 }
 
 async function drawRedStroke(page: Page) {
-  await page.getByRole("button", { name: "판서 시작", exact: true }).click()
+  await startAnnotation(page)
   const area = await page.getByLabel("수업 판서 영역", { exact: true }).boundingBox()
   expect(area).toBeTruthy()
   await page.mouse.move(area!.x + area!.width * .2, area!.y + area!.height * .5)
@@ -185,8 +185,7 @@ test("class notes round trip preserves the submission target and capture privacy
       { name: `notes-${fixtureId}.pdf`, mimeType: "application/pdf", buffer: Buffer.from(await pdf.save()), tab: "교재", selector: 'canvas[aria-label$="1페이지"]', background: "green" },
       { name: `notes-${fixtureId}.mp4`, mimeType: "video/mp4", buffer: readFileSync(mp4Path), tab: "미디어", selector: '[data-testid="shared-media"]', background: "blue" },
     ] as const) {
-      const trigger = teacherPage.locator(".call-controls").getByRole("button", { name: "수업 자료", exact: true })
-      await trigger.click()
+      await openMaterials(teacherPage)
       await teacherPage.getByRole("button", { name: material.tab, exact: true }).click()
       await teacherPage.locator('input[type="file"]').setInputFiles({ name: material.name, mimeType: material.mimeType, buffer: material.buffer })
       const uploaded = material.tab === "교재"
@@ -199,7 +198,7 @@ test("class notes round trip preserves the submission target and capture privacy
       if (material.tab === "교재") {
         await shareTextbook(teacherPage, materialId)
         const panel = teacherPage.getByRole("heading", { name: "교재 불러오기" })
-        if (await panel.isVisible()) await trigger.click()
+        if (await panel.isVisible()) await teacherPage.locator("#meeting-side-panel").getByRole("button", { name: "패널 닫기", exact: true }).click()
       } else await uploaded.click()
       await expect(studentPage.locator(material.selector)).toBeVisible()
       await drawRedStroke(studentPage)

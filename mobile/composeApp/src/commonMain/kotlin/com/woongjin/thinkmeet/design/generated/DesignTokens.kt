@@ -33,6 +33,7 @@ object DesignTokens {
         val HeroGradientEnd = Color(0xFFFFEEE0)
         val HeroGradientMiddle = Color(0xFFF5E9F4)
         val HeroGradientStart = Color(0xFFE8E4FF)
+        val HomeworkAction = Color(0xFFF07A1F)
         val HostIndicator = Color(0xFFCEC5FF)
         val Ink = Color(0xFF0D253D)
         val Line = Color(0xFFE3E8EE)

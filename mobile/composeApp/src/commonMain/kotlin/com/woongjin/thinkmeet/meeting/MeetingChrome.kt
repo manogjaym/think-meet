@@ -69,7 +69,7 @@ internal fun MeetingLightPanel(modifier: Modifier, overlay: Boolean = false, con
 @Composable
 internal fun MeetingHeader(
     lesson: Lesson, state: MediaState, socketConnected: Boolean, serverTime: String?, grid: Boolean,
-    compact: Boolean, width: Dp, instructionPhase: String? = null, instructionStartedAt: String? = null, subjectName: String? = null, onLayout: () -> Unit,
+    compact: Boolean, width: Dp, instructionPhase: String? = null, instructionStartedAt: String? = null, subjectName: String? = null, showLayout: Boolean = true, onLayout: () -> Unit,
 ) {
     val short = LocalMeetingShort.current
     val height = if (short) 62.dp else if (compact) LayoutToken.MeetingHeaderCompact else if (width <= LayoutToken.MeetingOverlayBreakpoint) LayoutToken.MeetingHeaderMedium else LayoutToken.MeetingHeader
@@ -94,7 +94,7 @@ internal fun MeetingHeader(
         if (width > LayoutToken.MeetingOverlayBreakpoint) Spacer(Modifier.width(if (width <= LayoutToken.MeetingMediumBreakpoint) Space.S2 else Space.S12))
         if (instructionPhase != "preparing") MeetingElapsed(instructionStartedAt ?: lesson.startedAt, serverTime)
         if (!compact) Spacer(Modifier.width(if (width <= LayoutToken.MeetingMediumBreakpoint) Space.S2 else Space.S12))
-        Surface(onClick = onLayout, modifier = if (compact) Modifier.widthIn(min = 42.dp) else Modifier, shape = RoundedCornerShape(Corner.R8), color = Color.Transparent,
+        if (showLayout) Surface(onClick = onLayout, modifier = if (compact) Modifier.widthIn(min = 42.dp) else Modifier, shape = RoundedCornerShape(Corner.R8), color = Color.Transparent,
             border = BorderStroke(Space.S1, Palette.MeetingBorder)) {
             Row(Modifier.heightIn(min = Space.S44).padding(horizontal = if (compact) Space.S8 else Space.S14),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.S8)) {
@@ -107,12 +107,12 @@ internal fun MeetingHeader(
 
 @Composable
 internal fun MeetingLessonModes(
-    phase: String, enabled: Boolean, assistanceSupported: Boolean, onMode: (String) -> Unit,
+    activeMode: String?, enabled: Boolean, assistanceSupported: Boolean, onMode: (String) -> Unit,
 ) {
     Row(Modifier.fillMaxWidth().padding(start = Space.S14, end = Space.S14, bottom = Space.S8),
         horizontalArrangement = Arrangement.spacedBy(Space.S8, Alignment.CenterHorizontally)) {
-        LessonModeButton(DesignContent.MeetingLessonClassroom, phase == "classroom", enabled) { onMode("classroom") }
-        LessonModeButton(DesignContent.MeetingLessonMirroring, phase == "mirroring", enabled && assistanceSupported) { onMode("mirroring") }
+        LessonModeButton(DesignContent.MeetingLessonClassroom, activeMode == "classroom", enabled) { onMode("classroom") }
+        LessonModeButton(DesignContent.MeetingLessonMirroring, activeMode == "mirroring", enabled && assistanceSupported) { onMode("mirroring") }
     }
 }
 

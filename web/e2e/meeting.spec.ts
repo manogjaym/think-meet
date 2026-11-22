@@ -99,11 +99,13 @@ test('two participants exchange media, chat, hands, PDF annotations, video, reco
     await teacher.getByRole('button',{name:'3쪽 화면에 불러오기',exact:true}).click()
     await expect(student.getByLabel(`${textbookName} 3페이지`,{exact:true})).toBeVisible()
     await expect(teacher.locator('.textbook-dock .textbook-participants')).toBeVisible()
-    // Classroom mode keeps annotation on, so both sides get the tools in the footer without a start button.
+    // Classroom mode keeps annotation on without start/stop buttons; students also need the teacher's permission.
     await expect(teacher.locator('.stage-footer .annotation-bar')).toBeVisible()
     await expect(teacher.getByRole('button',{name:'판서 시작',exact:true})).toHaveCount(0)
     await expect(teacher.getByRole('button',{name:'판서 종료',exact:true})).toHaveCount(0)
     await expect.poll(async()=>student.locator('canvas').evaluate((canvas:HTMLCanvasElement)=>canvas.width)).toBeGreaterThan(300)
+    await expect(student.locator('.stage-footer .annotation-bar')).toHaveCount(0)
+    await teacher.getByRole('group',{name:`${firstStudent.name} 참여자 제어`}).getByRole('button',{name:`${firstStudent.name} 판서 허용`,exact:true}).click()
     await expect(student.locator('.stage-footer .annotation-bar')).toBeVisible()
     await expect(student.getByRole('button',{name:'판서 시작',exact:true})).toHaveCount(0)
     const svg=student.getByLabel('수업 판서 영역',{exact:true})

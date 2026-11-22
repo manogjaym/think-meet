@@ -119,6 +119,9 @@ test('lesson mode buttons open screen sharing and student selection, and switchi
     await expect(classroom).toHaveAttribute('aria-pressed', 'false')
     await startScreenShare()
     // Classroom mode keeps annotation on: the tools sit in the footer under the shared screen on both sides.
+    // Students get them once the teacher allows annotation.
+    await expect(student.locator('.stage-footer .annotation-bar')).toHaveCount(0)
+    await teacher.getByRole('group', { name: `${lesson.students[0].name} 참여자 제어` }).getByRole('button', { name: `${lesson.students[0].name} 판서 허용`, exact: true }).click()
     for (const page of [teacher, student]) {
       await expect(page.locator('.stage-footer .annotation-bar')).toBeVisible()
       await expect(page.getByRole('button', { name: '판서 시작', exact: true })).toHaveCount(0)

@@ -412,15 +412,14 @@ internal fun SharedParticipants(snapshot: MeetingSnapshot, user: User, media: Me
         val compact = LocalMeetingCompact.current
         fun extra(id: String) = if (controls?.visibleFor(id, id == user.id) == true) participantControlsHeight(compact) + (if (compact) Space.S4 else Space.S8) else 0.dp
         val stripExtra = visible.maxOfOrNull { extra(it.user.id) } ?: 0.dp
-        // Rail tiles split the given height (two per page) up to a 200dp tile, like the web rail; controls rows add their own height.
-        val railTile = ((maxHeight - (if (pages > 1) Space.S52 else 0.dp) - Space.S8 - stripExtra * 2) / 2).coerceIn(88.dp, 200.dp)
         Column(if (docked && !rail) Modifier.fillMaxWidth() else Modifier.fillMaxSize()) {
             if (!horizontal && !docked) Row(Modifier.padding(bottom = Space.S12), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.S6)) { DesignIcon("users", Modifier.size(Space.S14), Palette.MeetingDim); Text(if (owner) "참여자 ${people.size}명" else "선생님", style = MaterialTheme.typography.bodySmall.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f), color = Palette.MeetingDim) }
             if (people.isEmpty()) Box(Modifier.fillMaxWidth().height(Space.S96), contentAlignment = Alignment.Center) { Text("입장 대기 중", color = Palette.MeetingDim, style = MaterialTheme.typography.bodySmall.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f)) }
             else if (horizontal) Row(Modifier.fillMaxWidth().height(stripHeight + stripExtra), horizontalArrangement = Arrangement.spacedBy(Space.S8)) {
                 visible.forEach { entry -> ParticipantTile(entry.user, entry.user.id == snapshot.lesson.teacher.id, entry.raised, media, state, Modifier.weight(1f).fillMaxHeight(), small = true) }
+            // Rail cells (tile + any controls row) split the given height equally; the tile shrinks first, like the web rail.
             } else if (rail) Column(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Space.S8)) {
-                visible.forEach { entry -> ParticipantTile(entry.user, entry.user.id == snapshot.lesson.teacher.id, entry.raised, media, state, Modifier.fillMaxWidth().height(railTile + extra(entry.user.id)), small = true, cameraStatus = true) }
+                visible.forEach { entry -> ParticipantTile(entry.user, entry.user.id == snapshot.lesson.teacher.id, entry.raised, media, state, Modifier.fillMaxWidth().weight(1f), small = true, cameraStatus = true) }
             } else Column(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Space.S12)) {
                 visible.forEach { entry -> ParticipantTile(entry.user, entry.user.id == snapshot.lesson.teacher.id, entry.raised, media, state, Modifier.fillMaxWidth().height(tileHeight + extra(entry.user.id)), small = true) }
             }

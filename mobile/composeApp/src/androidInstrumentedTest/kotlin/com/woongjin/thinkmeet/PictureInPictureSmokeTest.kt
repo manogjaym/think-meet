@@ -100,7 +100,8 @@ class PictureInPictureSmokeTest {
 
             showPipControls()
             screenshot("03-restore-action")
-            clickPipControl(By.desc(DesignContent.PipRestoreFullscreen))
+            // The app adds no expand action of its own; the OS menu's expand button restores the call.
+            clickPipControl(By.res("com.android.systemui", "expand_button"))
             eventually("return from PiP") { !inPip() }
             eventually("restored meeting controls") { visible(meetingTitle) != null && visible(By.desc("수업 종료")) != null }
             scenario.onActivity { assertSame(pip, it.pictureInPictureController) }

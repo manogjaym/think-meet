@@ -23,6 +23,8 @@ interface RemoteAssistanceController {
     fun showPointer(pointer: AssistancePointer)
     fun clearPointer()
     suspend fun stopScreenShare()
+    /** One JPEG frame of this device's own approved screen capture, or null when none is available. */
+    suspend fun captureScreenFrame(): ByteArray? = null
     fun close()
 }
 

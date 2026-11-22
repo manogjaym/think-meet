@@ -2,6 +2,12 @@ package com.woongjin.thinkmeet.platform
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.ImageFormat
+import android.graphics.Matrix
+import android.graphics.Rect
+import android.graphics.YuvImage
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.PixelFormat
@@ -48,6 +54,8 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
+import java.io.ByteArrayOutputStream
 import kotlinx.coroutines.withContext
 import livekit.org.webrtc.ScreenCapturerAndroid
 import livekit.org.webrtc.VideoFrame
@@ -295,6 +303,35 @@ internal class AndroidRemoteAssistanceController(
         if (track != null) media?.stopRemoteAssistanceCaptureNow(track)
     }
 
+    /** Copies one frame from the student's own approved capture; the encoder runs off the capture thread. */
+    override suspend fun captureScreenFrame(): ByteArray? {
+        val track = screenTrack?.takeIf { ownsCapture } ?: return null
+        val lock = Any()
+        var accepting = true
+        var received: VideoFrame? = null
+        val arrived = CompletableDeferred<Unit>()
+        val sink = VideoSink { frame ->
+            synchronized(lock) {
+                if (!accepting || received != null) return@VideoSink
+                frame.retain()
+                received = frame
+            }
+            arrived.complete(Unit)
+        }
+        track.addRenderer(sink)
+        var frame: VideoFrame? = null
+        try {
+            withTimeoutOrNull(2_000) { arrived.await() }
+            frame = synchronized(lock) { accepting = false; received }
+        } finally {
+            runCatching { track.removeRenderer(sink) }
+            // Cancelled while waiting: release a frame that arrived but will not be used.
+            synchronized(lock) { accepting = false; if (frame == null) received?.release() }
+        }
+        val captured = frame ?: return null
+        return try { withContext(Dispatchers.Default) { frameJpeg(captured) } } finally { captured.release() }
+    }
+
     override suspend fun stopScreenShare() {
         attemptGeneration++
         val track = ownedTrack
@@ -350,4 +387,30 @@ actual fun rememberRemoteAssistanceController(media: MediaController): RemoteAss
     }
     DisposableEffect(controller) { onDispose { permissionPip?.endTransientInteraction(); pending?.cancel(); controller.close() } }
     return controller
+}
+
+/** I420 -> NV21 -> JPEG, then applies the frame rotation so the saved image matches the screen. */
+internal fun frameJpeg(frame: VideoFrame): ByteArray? {
+    val i420 = frame.buffer.toI420() ?: return null
+    val jpeg = try {
+        val width = i420.width and 1.inv()
+        val height = i420.height and 1.inv()
+        if (width <= 0 || height <= 0) return null
+        val nv21 = ByteArray(width * height * 3 / 2)
+        val y = i420.dataY.duplicate()
+        for (row in 0 until height) { y.position(row * i420.strideY); y.get(nv21, row * width, width) }
+        val u = i420.dataU; val v = i420.dataV
+        var offset = width * height
+        for (row in 0 until height / 2) for (column in 0 until width / 2) {
+            nv21[offset++] = v.get(row * i420.strideV + column)
+            nv21[offset++] = u.get(row * i420.strideU + column)
+        }
+        val output = ByteArrayOutputStream()
+        if (!YuvImage(nv21, ImageFormat.NV21, width, height, null).compressToJpeg(Rect(0, 0, width, height), 90, output)) return null
+        output.toByteArray()
+    } finally { i420.release() }
+    if (frame.rotation % 360 == 0) return jpeg
+    val decoded = BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size) ?: return null
+    val rotated = Bitmap.createBitmap(decoded, 0, 0, decoded.width, decoded.height, Matrix().apply { postRotate(frame.rotation.toFloat()) }, true)
+    return ByteArrayOutputStream().use { output -> if (rotated.compress(Bitmap.CompressFormat.JPEG, 90, output)) output.toByteArray() else null }
 }

@@ -122,9 +122,9 @@ class ParticipantControlsTest {
     }
 
     @Test
-    fun studentSeesOnlyOwnControls() {
+    fun studentSeesNoTileControls() {
         render(student, stage = false)
-        compose.onNodeWithContentDescription("${student.name} ${DesignContent.ParticipantControlsLabel}").assertIsDisplayed()
+        assertEquals(0, compose.onAllNodesWithContentDescription("${student.name} ${DesignContent.ParticipantControlsLabel}").fetchSemanticsNodes().size)
         assertEquals(0, compose.onAllNodesWithContentDescription("윤지아 ${DesignContent.ParticipantControlsLabel}").fetchSemanticsNodes().size)
         assertEquals(0, compose.onAllNodesWithContentDescription("${student.name} ${DesignContent.ParticipantAnnotation}").fetchSemanticsNodes().size)
         screenshot("student-gallery")

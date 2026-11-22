@@ -281,7 +281,7 @@
         "sections": ["video-tile", "controls-row-below-tile"],
         "viewer": {
           "teacher": "자기 영상 아래에 마이크·카메라, 학생 영상 아래에 마이크·카메라와 수업 모드에서 판서 허용을 표시합니다.",
-          "student": "자기 영상 아래에 마이크·카메라만 표시합니다. 다른 사람의 영상에는 제어 버튼을 표시하지 않습니다."
+          "student": "영상 아래에 제어 버튼을 표시하지 않습니다. 자기 마이크·카메라는 하단 메뉴바에서 켜고 끕니다."
         },
         "interaction": "선생님이 학생의 마이크·카메라를 누르면 학생 기기에 요청을 보내고 학생 화면에 안내를 표시합니다. 버튼은 실제 송출 상태를 따르며 요청 중에는 비활성화합니다. 판서 허용은 눌림 상태로 표시하고 해제하면 학생의 판서 도구를 닫습니다.",
         "tokens": ["spacing.s36", "spacing.s28", "radius.r8", "color.meetingControl", "color.meetingBorder", "color.micMuted", "color.selection"]

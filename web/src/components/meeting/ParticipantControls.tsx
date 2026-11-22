@@ -21,10 +21,10 @@ export type ParticipantControlState = {
 
 export const ParticipantControlsContext = createContext<ParticipantControlState | null>(null)
 
-/** Viewers control their own devices; only the teacher controls other people, and only students. */
+/** Only the teacher sees tile controls: their own and each student's. Students use the call bar for their own devices. */
 export function participantControlsVisible(state: ParticipantControlState | null, userId: string | undefined, self: boolean) {
-  if (!state || !userId) return false
-  return self || (state.viewerId === state.teacherId && userId !== state.teacherId)
+  if (!state || !userId || state.viewerId !== state.teacherId) return false
+  return self || userId !== state.teacherId
 }
 
 export function useParticipantControlState() {

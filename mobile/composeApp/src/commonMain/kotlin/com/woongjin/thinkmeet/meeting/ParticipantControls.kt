@@ -61,8 +61,8 @@ internal class ParticipantControlState(
 ) {
     fun annotationAllowed(userId: String) = participants.firstOrNull { it.user.id == userId }?.annotationAllowed ?: true
     fun online(userId: String) = participants.any { it.user.id == userId && it.online }
-    /** Viewers control their own devices; only the teacher controls other people, and only students. */
-    fun visibleFor(userId: String, self: Boolean) = self || (viewerId == teacherId && userId != teacherId)
+    /** Only the teacher sees tile controls: their own and each student's. Students use the call bar for their own devices. */
+    fun visibleFor(userId: String, self: Boolean) = viewerId == teacherId && (self || userId != teacherId)
 }
 
 internal val LocalParticipantControls = compositionLocalOf<ParticipantControlState?> { null }

@@ -1,0 +1,33 @@
+{
+  "id": "student-tile-controls-hidden",
+  "summary": "학생 화면에서는 영상 아래 마이크·카메라 버튼을 표시하지 않고 하단 메뉴바의 버튼만 사용합니다. 선생님 화면의 자기·학생 영상 아래 제어 버튼은 그대로 둡니다.",
+  "scope": "shared",
+  "featureIds": [
+    "meeting.participant-controls"
+  ],
+  "platforms": {
+    "server": {
+      "status": "unchanged",
+      "reason": "버튼 표시 위치만 바꾸는 화면 변경입니다. participant.control 권한 검사와 participant.media 전달은 그대로입니다."
+    },
+    "web": {
+      "status": "implemented"
+    },
+    "android": {
+      "status": "implemented"
+    },
+    "ios": {
+      "status": "implemented",
+      "reason": "Android와 같은 공통 Compose 코드(ParticipantControls.kt)를 사용합니다. Linux 환경이라 iOS 빌드·실행은 하지 않았습니다."
+    }
+  },
+  "verification": [
+    "2026-11-22 UTC, 저장소 루트: node design/scripts/generate.mjs 후 npm run shared:check, npm run shared:check -- --changed-files <변경 파일 목록> 통과(Pretendard woff2 LFS 포인터는 검사 후 복원).",
+    "npm run verify 통과: 공통 정책 13개, 서버 68개, 웹 19개 테스트, 타입 검사와 웹 빌드.",
+    "mobile/에서 JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64, ANDROID_HOME=/opt/android-sdk, THINK_MEET_SERVER_ORIGIN=https://115.68.2.13, THINK_MEET_SERVER_CA_FILE=<서버 공개 루트 CA>로 ./gradlew :composeApp:assembleDebug :composeApp:assembleDebugAndroidTest 통과.",
+    "Android 실행: 기존 emulator-5554(1080×2400, 420dpi, 설정 변경 없음)에 adb install -r 후 ParticipantControlsTest 2개 통과. 학생 화면 캡처에서 영상 아래 버튼이 없고, 선생님 테스트는 기존처럼 자기·학생 제어를 확인합니다. 태블릿 크기 Android 실행은 하지 않았습니다.",
+    "infra/local에서 웹만 재배포(LIVE 수업 0개 확인) 후 web/에서 BASE_URL=https://115.68.2.13, Chromium 1255로 e2e/participant-controls.spec.ts 2회 통과. 학생 화면에 자기·선생님 참여자 제어 그룹이 없고, 하단 메뉴바 마이크 버튼이 선생님 화면의 실제 상태로 반영되는지 확인합니다. 1024×820·390×844 학생 캡처와 1280×800 선생님 캡처를 확인했습니다.",
+    "검증 데이터 정리: 테스트 수업 2개를 삭제해 수업 수를 원래 상태(종료 2, 예정 1)로 돌렸습니다.",
+    "미실행: iOS 빌드·실행(Linux 환경), Android 실기기·태블릿, 원격 CI."
+  ]
+}

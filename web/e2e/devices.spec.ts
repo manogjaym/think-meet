@@ -1,6 +1,6 @@
 import { test, expect, type WebSocketRoute } from '@playwright/test'
 import { PDFDocument } from 'pdf-lib'
-import { login, createLesson, shareTextbook } from './helpers'
+import { login, createLesson, openMaterials, shareTextbook } from './helpers'
 
 test('lesson mode buttons open screen sharing and student selection, and switching stops only a confirmed capture', async ({ browser, baseURL }, info) => {
   test.setTimeout(210000)
@@ -77,12 +77,15 @@ test('lesson mode buttons open screen sharing and student selection, and switchi
     await expect(mirroring).toHaveAttribute('aria-pressed', 'false')
     await expect(teacher.locator('.call-controls').getByRole('button', { name: '화면 공유', exact: true })).toHaveCount(0)
     await expect(teacher.locator('.call-controls').getByRole('button', { name: '수업 자료', exact: true })).toHaveCount(0)
+    await expect(teacher.locator('.materials-card')).toBeVisible()
+    await expect(student.locator('.materials-card')).toHaveCount(0)
     await expect(teacher.locator('.meeting-timer')).toHaveCount(0)
     await expect(student.getByRole('button', { name: /^(수업 시작|수업방 모드|미러링 모드)$/ })).toHaveCount(0)
     await mirroring.click()
     await expect(picker).toBeVisible()
-    await expect(mirroring).toHaveAttribute('aria-pressed', 'true')
-    await expect(teacher.locator('#meeting-side-panel')).toHaveAttribute('aria-hidden', 'true')
+    // The mode is only shown as entered once a share or request exists, not while its popup is open.
+    await expect(mirroring).toHaveAttribute('aria-pressed', 'false')
+    await expect(teacher.locator('#meeting-side-panel .side-panel')).toBeHidden()
     const request = picker.getByRole('button', { name: '공유 요청', exact: true })
     await expect(request).toBeDisabled()
     await picker.getByRole('button', { name: lesson.students[0].name, exact: true }).click()
@@ -100,7 +103,29 @@ test('lesson mode buttons open screen sharing and student selection, and switchi
     await expect(picker.getByRole('alert')).toContainText('Android')
     await picker.getByRole('button', { name: '취소', exact: true }).click()
     await expect(picker).toHaveCount(0)
+    await expect(mirroring).toHaveAttribute('aria-pressed', 'false')
+    // The owner rail's materials card switches to classroom mode and opens the textbook panel in place of the card.
+    const card = teacher.locator('.materials-card')
+    await card.getByRole('button', { name: '숙제계획', exact: true }).click()
+    await expect(card.getByRole('status')).toHaveText('준비 중인 기능이에요.')
+    await card.getByRole('button', { name: '교재 불러오기', exact: true }).click()
+    await expect(teacher.getByRole('heading', { name: '교재 불러오기', exact: true })).toBeVisible()
+    await expect(card).toHaveCount(0)
+    await expect.poll(async () => (await (await teacherContext.request.get(`/api/v1/lessons/${lesson.id}/snapshot`)).json()).instruction?.phase).toBe('classroom')
+    await teacher.locator('#meeting-side-panel').getByRole('button', { name: '패널 닫기', exact: true }).click()
+    await expect(card).toBeVisible()
+    await classroom.click()
+    await sourceDialog.getByRole('button', { name: '취소', exact: true }).click()
+    await expect(classroom).toHaveAttribute('aria-pressed', 'false')
     await startScreenShare()
+    // Classroom mode keeps annotation on: the tools sit in the footer under the shared screen on both sides.
+    for (const page of [teacher, student]) {
+      await expect(page.locator('.stage-footer .annotation-bar')).toBeVisible()
+      await expect(page.getByRole('button', { name: '판서 시작', exact: true })).toHaveCount(0)
+      const content = (await page.locator('.live-shared-content').boundingBox())!
+      const bar = (await page.locator('.stage-footer .annotation-bar').boundingBox())!
+      expect(bar.y).toBeGreaterThanOrEqual(content.y + content.height - 1)
+    }
     const mute = teacher.getByRole('button', { name: '마이크 끄기', exact: true })
     if (!(await mute.isVisible())) await teacher.getByRole('button', { name: '마이크 켜기', exact: true }).click()
     const remoteMic = student.locator(`.shared-participants [data-participant="${lesson.teacher.id}"] .mic-state`)
@@ -134,7 +159,7 @@ test('lesson mode buttons open screen sharing and student selection, and switchi
     const pdf = await PDFDocument.create(); pdf.addPage([500, 350])
     const uploaded = await teacherContext.request.post('/api/v1/materials', { multipart: { file: { name: 'screen-replacement.pdf', mimeType: 'application/pdf', buffer: Buffer.from(await pdf.save()) } } })
     expect(uploaded.ok()).toBe(true); materialId = (await uploaded.json()).id
-    await teacher.locator('.call-controls').getByRole('button', { name: '수업 자료', exact: true }).click()
+    await openMaterials(teacher)
     await shareTextbook(teacher, materialId!)
     await expect(student.getByLabel('screen-replacement.pdf 1페이지', { exact: true })).toBeVisible()
     await expect(teacher.locator('.call-controls').getByRole('button', { name: '화면 공유', exact: true })).toHaveCount(0)
@@ -162,14 +187,16 @@ test('lesson mode buttons open screen sharing and student selection, and switchi
     await expect(student.getByTestId('shared-screen')).toBeVisible()
     await mirroring.click()
     await switchDialog.getByRole('button', { name: '종료하고 전환' }).click()
-    await expect(mirroring).toHaveAttribute('aria-pressed', 'true')
+    await expect(picker).toBeVisible()
+    await expect(mirroring).toHaveAttribute('aria-pressed', 'false')
+    await expect(classroom).toHaveAttribute('aria-pressed', 'false')
     await expect(picker.getByRole('button', { name: lesson.students[0].name, exact: true })).toBeVisible()
-    await expect(teacher.locator('#meeting-side-panel')).toHaveAttribute('aria-hidden', 'true')
+    await expect(teacher.locator('#meeting-side-panel .side-panel')).toBeHidden()
     await expect(student.getByTestId('shared-screen')).toHaveCount(0)
     await expect.poll(() => teacher.evaluate(() =>
       (window as unknown as { screenCaptures: MediaStreamTrack[] }).screenCaptures.every(track => track.readyState === 'ended'))).toBe(true)
     await teacher.reload()
-    await expect(mirroring).toHaveAttribute('aria-pressed', 'true')
+    await expect(mirroring).toHaveAttribute('aria-pressed', 'false')
     await expect(picker).toHaveCount(0)
     await startScreenShare()
     await expect(classroom).toHaveAttribute('aria-pressed', 'true')

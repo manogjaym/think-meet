@@ -130,11 +130,12 @@
 .textbook-open { margin-top: auto; min-height: var(--tm-spacing-s44); border-radius: var(--tm-radius-r8); }
 .textbook-retry { min-height: var(--tm-spacing-s36); text-decoration: underline; }
 
-.shared-stage.textbook-stage { grid-template-rows: minmax(0, 1fr) auto; gap: var(--space-2); }
-.shared-stage.textbook-stage-docked { grid-template-columns: minmax(0, 1fr); }
-.textbook-stage .live-shared-content { grid-column: 1; grid-row: 1; padding: var(--space-2); }
-.textbook-stage > .shared-participant-gallery { grid-column: 2; grid-row: 1 / span 2; }
-.textbook-stage-footer {
+/* Every shared stage keeps page/playback controls and annotation tools in one footer under the content. */
+.meeting .shared-stage { grid-template-rows: minmax(0, 1fr) auto; gap: var(--space-2) var(--space-3); }
+.meeting .shared-stage.textbook-stage-docked { grid-template-columns: minmax(0, 1fr); }
+.meeting .shared-stage > .live-shared-content { grid-column: 1; grid-row: 1; padding: var(--space-2); }
+.meeting .shared-stage > .shared-participant-gallery { grid-column: 2; grid-row: 1 / span 2; }
+.stage-footer {
   grid-column: 1;
   grid-row: 2;
   display: flex;
@@ -143,20 +144,26 @@
   justify-content: space-between;
   gap: var(--space-1);
 }
-.textbook-stage .textbook-stage-footer > :is(.document-controls, .annotate-entry, .annotation-bar) {
+.stage-footer > :is(.document-controls, .media-controls, .annotate-entry, .annotation-bar) {
   position: static;
   min-width: 0;
   max-width: 100%;
   z-index: auto;
 }
-.textbook-stage .annotation-bar { justify-content: flex-end; }
-.textbook-stage .annotate-entry, .textbook-stage .annotation-bar { margin-inline-start: auto; }
+.stage-footer .annotation-bar { justify-content: flex-end; gap: var(--space-1); padding: var(--space-1); }
+/* Icon-only tools keep page controls and annotation on one footer row; names stay in aria-label/title. */
+.stage-footer .annotation-bar button { min-width: var(--tm-spacing-s44); padding: 0 var(--space-2); }
+.stage-footer .annotation-bar button span { display: none; }
+.stage-footer .annotation-bar .color-grid button { min-width: 0; padding: 0; }
+.stage-footer .annotate-entry, .stage-footer .annotation-bar { margin-inline-start: auto; }
 .textbook-stage .share-save { white-space: nowrap; }
 @media (max-width: design(layout.meetingCompactBreakpoint)) {
-  .shared-stage.textbook-stage { grid-template-rows: minmax(0, 1fr) auto auto; }
-  .textbook-stage > .shared-participant-gallery { grid-column: 1; grid-row: 3; max-height: var(--tm-spacing-s96); }
+  .meeting .shared-stage { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto 142px; }
+  .meeting .shared-stage.textbook-stage { grid-template-rows: minmax(0, 1fr) auto auto; }
+  .meeting .shared-stage > .shared-participant-gallery { grid-column: 1; grid-row: 3; }
+  .textbook-stage > .shared-participant-gallery { max-height: var(--tm-spacing-s96); }
   .textbook-stage .shared-participants .video-tile { height: var(--tm-spacing-s64); min-height: var(--tm-spacing-s64); }
-  .textbook-stage .document-controls button { min-height: var(--tm-spacing-s36); }
+  .stage-footer .document-controls button { min-height: var(--tm-spacing-s36); }
 }
 
 .meeting-lesson-modes {
@@ -182,3 +189,80 @@
   color: var(--tm-color-meeting-canvas);
 }
 .meeting-lesson-modes button:disabled { opacity: .55; }
+
+/* Lesson owner rail: participant videos above the materials card; an opened panel replaces the card. */
+.meeting .meeting-panel-container.teacher-rail { gap: var(--space-3); }
+.teacher-rail.shows-materials .side-panel { display: none; }
+/* Spare height goes to the videos first (up to a 16:9-like tile), then to the card. */
+.teacher-rail .textbook-participants.rail-participants { flex: 100 1 0; min-height: 0; max-height: calc(2 * 200px + var(--space-2)); }
+.rail-participants .shared-participants { flex-direction: column; gap: var(--space-2); }
+.rail-participants .shared-participants .video-tile {
+  flex: 1 1 0;
+  width: 100%;
+  height: auto;
+  min-height: 88px;
+  max-height: 200px;
+}
+.materials-card {
+  flex: 1 0 auto;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border-radius: var(--tm-radius-r12);
+  background: var(--tm-color-white);
+  color: var(--tm-color-ink);
+  color-scheme: light;
+}
+.materials-card h2 { margin: 0 0 var(--space-1); font-size: var(--type-body); font-weight: var(--weight-bold); line-height: 1.5; }
+.materials-card button {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--tm-spacing-s44);
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--tm-radius-r8);
+  font: inherit;
+  font-size: var(--type-support);
+  font-weight: var(--weight-semibold);
+  text-align: left;
+  cursor: pointer;
+}
+.materials-card button:disabled { opacity: .5; cursor: not-allowed; }
+.materials-card .materials-item { background: var(--tm-color-control-inactive); color: var(--tm-color-ink); }
+.materials-card .materials-item svg { color: var(--tm-color-primary); flex: none; }
+.materials-card .materials-subject { justify-content: center; border: 2px solid var(--tm-color-primary); background: var(--tm-color-white); color: var(--tm-color-primary); }
+.materials-card .materials-homework { justify-content: center; margin-top: var(--space-1); background: var(--tm-color-homework-action); color: var(--tm-color-white); }
+.materials-card .materials-notice { min-height: 1.5em; margin: 0; color: var(--tm-color-muted); font-size: var(--type-caption); line-height: 1.5; }
+.teacher-stage-guide {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  padding: var(--space-6);
+  border: 1px solid var(--tm-color-meeting-border);
+  border-radius: var(--tm-radius-r12);
+  background: var(--tm-color-meeting-tile);
+  color: var(--tm-color-meeting-text);
+  text-align: center;
+}
+.teacher-stage-guide p { max-width: 420px; margin: 0; font-size: var(--type-body); font-weight: var(--weight-semibold); line-height: 1.5; }
+.teacher-stage-icon { display: grid; width: 88px; height: 88px; place-items: center; border-radius: 50%; background: var(--tm-color-meeting-media-active); color: var(--tm-color-primary-on-dark); }
+.teacher-stage-guide button {
+  min-height: var(--tm-spacing-s44);
+  padding: 0 var(--space-6);
+  border: 1px solid var(--tm-color-meeting-border);
+  border-radius: var(--tm-radius-r8);
+  background: var(--tm-color-meeting-control);
+  color: var(--tm-color-meeting-text);
+  font: inherit;
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+}
+.teacher-stage-guide button:disabled { opacity: .5; cursor: not-allowed; }

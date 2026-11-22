@@ -41,6 +41,17 @@ export const designContent = {
   "meetingLessonSwitchAction": "종료하고 전환",
   "meetingLessonModesLabel": "수업 모드",
   "meetingLessonCancelRequest": "요청 취소",
+  "meetingMaterialsTitle": "수업 자료",
+  "meetingMaterialsTextbook": "교재 불러오기",
+  "meetingMaterialsWorksheet": "학생 학습지 불러오기",
+  "meetingMaterialsSubject": "과목 선택",
+  "meetingMaterialsHomework": "숙제계획",
+  "meetingMaterialsComingSoon": "준비 중인 기능이에요.",
+  "meetingStagePreparing": "수업방 모드나 미러링 모드를 선택하면 수업이 시작돼요.",
+  "meetingStageClassroom": "화면을 공유하거나 교재를 불러와 수업을 진행해 주세요.",
+  "meetingStageClassroomAction": "화면 공유하기",
+  "meetingStageMirroring": "화면을 볼 학생을 선택해 공유를 요청해 주세요.",
+  "meetingStageMirroringAction": "학생 선택",
   "meetingConnected": "연결됨",
   "meetingPeopleControl": "참가자",
   "meetingChatPanel": "수업 채팅",
@@ -231,6 +242,7 @@ export const screenContract = {
     "sections": [
       "dark-header-with-optional-lesson-subject",
       "owner-lesson-mode-actions",
+      "owner-materials-rail",
       "mirroring-student-dialog",
       "gallery-or-shared-stage",
       "shared-frame-capture",
@@ -247,6 +259,18 @@ export const screenContract = {
       "grid": "표시 인원 × 폭 / 사용 가능 높이의 제곱근을 반올림하되 기존 열·행 수용 범위를 지킵니다.",
       "speaker": "폭이 사용 가능 높이 이하면 상하, 더 넓으면 좌우로 배치합니다.",
       "resize": "웹·Android·iOS에서 회전·창 크기·옆 패널 변경 시 다시 계산합니다."
+    },
+    "lessonModes": {
+      "teacherRail": "수업 소유자는 패널을 겹쳐 띄우지 않는 넓은 화면에서 왼쪽 수업 화면과 오른쪽 열을 사용합니다. 오른쪽 열은 참여자 영상과 수업 자료 카드를 표시하고, 패널을 열면 카드 자리에 패널을 표시합니다. 공유가 없으면 수업 화면에 모드별 안내를 표시합니다. 좁은 화면은 하단 수업 자료 버튼을 유지합니다.",
+      "materialsCard": "교재 불러오기는 수업방 모드로 전환한 뒤 교재 패널을 엽니다. 공유나 요청이 있으면 전환을 확인합니다. 학생 학습지 불러오기·과목 선택·숙제계획은 준비 중 안내만 표시합니다.",
+      "interaction": "수업 소유자가 누른 모드는 서버에 바로 저장되지만, 버튼 선택 표시는 수업방 모드의 공유나 미러링 모드의 학생 화면 요청·공유가 있을 때만 켭니다. 공유 선택창이나 학생 선택 모달을 취소하면 선택 표시 없이 같은 모드를 다시 열 수 있습니다."
+    },
+    "stageFooter": {
+      "order": [
+        "page-or-playback-controls-start",
+        "annotation-tools-end"
+      ],
+      "interaction": "모든 공유 화면은 쪽 이동 또는 영상 재생과 판서 도구를 공유 화면 아래에 둡니다. 판서 도구는 아이콘으로 표시하고 공간이 부족하면 다음 줄 오른쪽으로 내려갑니다. 수업방·미러링 모드는 판서를 항상 켜고 판서 시작·종료 버튼을 숨깁니다."
     },
     "systemPip": {
       "interaction": "작은 영상 창을 탭해 메뉴를 엽니다. Android는 전체 화면으로 돌아가기, iOS는 시스템 전체 화면 복귀 버튼으로 기존 수업에 돌아갑니다."

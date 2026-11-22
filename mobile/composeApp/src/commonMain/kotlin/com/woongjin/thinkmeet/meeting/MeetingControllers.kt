@@ -5,12 +5,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.woongjin.thinkmeet.data.AssistanceSession
 import com.woongjin.thinkmeet.data.ChatMessage
 import com.woongjin.thinkmeet.data.ContractProtocol
 import com.woongjin.thinkmeet.data.EmptyPayload
 import com.woongjin.thinkmeet.data.LessonModeSetPayload
 import com.woongjin.thinkmeet.data.MeetingRealtime
 import com.woongjin.thinkmeet.data.MeetingSnapshot
+import com.woongjin.thinkmeet.data.Share
 import com.woongjin.thinkmeet.data.ThinkMeetApi
 import com.woongjin.thinkmeet.platform.NoteDraft
 import kotlinx.coroutines.CancellationException
@@ -34,26 +36,36 @@ internal class RealtimeLessonModeTransport(private val realtime: MeetingRealtime
  * [open] runs after the server reports the requested mode (opens capture or the student picker).
  */
 @Stable
+/** The server enters a mode before its popup opens; only highlight a mode once its share or request actually exists. */
+internal fun activeLessonMode(phase: String?, share: Share?, assistance: AssistanceSession?): String? = when {
+    phase == "classroom" && share != null && share.assistanceId == null -> phase
+    phase == "mirroring" && (assistance != null || share?.assistanceId != null) -> phase
+    else -> null
+}
+
 internal class LessonModeController(
     private val transport: LessonModeTransport,
     private val scope: CoroutineScope,
     private val report: (Throwable) -> Unit,
+    /** Opens the textbook panel instead of the mode's own popup (the owner rail's materials card). */
+    private val openMaterials: () -> Unit = {},
     private val open: (mode: String) -> Unit,
 ) {
     var confirm by mutableStateOf<LessonModeSetPayload?>(null)
         private set
     var busy by mutableStateOf(false)
         private set
+    private var confirmMaterials = false
 
-    fun select(mode: String, phase: String?, ready: Boolean, shareId: String?, assistanceId: String?) {
+    fun select(mode: String, phase: String?, ready: Boolean, shareId: String?, assistanceId: String?, materials: Boolean = false) {
         if (!ready || busy) return
         when {
-            phase == mode -> open(mode)
-            phase == "preparing" -> update(mode, null, ready)
+            phase == mode -> opened(mode, materials)
+            phase == "preparing" -> update(mode, null, ready, materials)
             phase == "classroom" || phase == "mirroring" -> {
                 val change = LessonModeSetPayload(mode, phase, shareId, assistanceId)
-                if (change.expectedShareId != null || change.expectedAssistanceId != null) confirm = change
-                else update(mode, change, ready)
+                if (change.expectedShareId != null || change.expectedAssistanceId != null) { confirm = change; confirmMaterials = materials }
+                else update(mode, change, ready, materials)
             }
         }
     }
@@ -61,12 +73,14 @@ internal class LessonModeController(
     fun confirmChange(ready: Boolean) {
         val change = confirm ?: return
         confirm = null
-        update(change.mode, change, ready)
+        update(change.mode, change, ready, confirmMaterials)
     }
 
     fun dismiss() { confirm = null }
 
-    private fun update(mode: String, change: LessonModeSetPayload?, ready: Boolean) {
+    private fun opened(mode: String, materials: Boolean) = if (materials) openMaterials() else open(mode)
+
+    private fun update(mode: String, change: LessonModeSetPayload?, ready: Boolean, materials: Boolean) {
         if (!ready || busy) return
         busy = true
         scope.launch {
@@ -76,7 +90,7 @@ internal class LessonModeController(
                 if (change == null && mode == "mirroring" && updated.instruction?.phase == "classroom") {
                     updated = transport.setMode(LessonModeSetPayload(mode, "classroom", null, null))
                 }
-                if (updated.instruction?.phase == mode) open(mode)
+                if (updated.instruction?.phase == mode) opened(mode, materials)
             } catch (error: Throwable) {
                 if (error is CancellationException) throw error
                 report(error)

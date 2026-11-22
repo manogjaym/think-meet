@@ -1,0 +1,36 @@
+{
+  "id": "teacher-materials-rail",
+  "summary": "넓은 화면의 수업 소유자 화면을 왼쪽 수업 화면과 오른쪽 열(참여자 영상 + 수업 자료 카드)로 재구성합니다. 하단 수업 자료 버튼 대신 카드의 교재 불러오기가 수업방 모드 전환 후 교재 패널을 열고, 학생 학습지 불러오기·과목 선택·숙제계획은 준비 중 안내만 표시합니다. 공유가 없을 때는 모드별 안내를 표시합니다.",
+  "scope": "shared",
+  "featureIds": [
+    "classroom.lesson-modes",
+    "classroom.textbook-picker"
+  ],
+  "platforms": {
+    "server": {
+      "status": "unchanged",
+      "reason": "기존 수업 시작·모드 변경·document.open·share 명령과 권한 검사를 그대로 사용합니다. 계약·endpoint 변경이 없습니다."
+    },
+    "web": {
+      "status": "implemented"
+    },
+    "android": {
+      "status": "implemented"
+    },
+    "ios": {
+      "status": "implemented",
+      "reason": "Android와 같은 공통 Compose 코드(MeetingScreen.kt·TeacherRail.kt·SharedStage.kt)를 사용합니다. 이번 환경(Linux)에서는 iOS 빌드·실행을 하지 않았습니다."
+    }
+  },
+  "verification": [
+    "2026-11-22 UTC, /workspace/think-meet 실행 checkout: node design/scripts/generate.mjs 후 npm run shared:check와 npm run shared:check -- --changed-files <변경 파일 목록> 통과. Pretendard woff2가 Git LFS 포인터라 생성 후 검사하고 포인터로 되돌렸습니다.",
+    "npm run verify 통과: 공통 정책 13개, 서버 66개, 웹 19개 테스트, 서버·웹 타입 검사와 웹 빌드.",
+    "mobile/에서 JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64, ANDROID_HOME=/opt/android-sdk, THINK_MEET_SERVER_ORIGIN=https://115.68.2.13, THINK_MEET_SERVER_CA_FILE=<서버 공개 루트 CA>로 ./gradlew :composeApp:testDebugUnitTest --tests 'com.woongjin.thinkmeet.meeting.MeetingControllersTest' :composeApp:assembleDebug 통과. 5개 중 새 검사 1개는 카드의 교재 불러오기가 미러링에서 수업방으로 전환하고(전환 확인 포함) 화면 공유 대신 교재 패널을 여는지 확인합니다.",
+    "infra/local에서 docker compose build web 후 docker compose up -d --no-deps --wait web으로 웹만 재배포(LIVE 수업 0개 확인). BASE_URL=https://115.68.2.13, Chromium 1255로 e2e/devices.spec.ts(lesson mode), e2e/meeting.spec.ts, e2e/meeting-device-subscriptions.spec.ts 3개 통과. devices.spec은 카드 표시·학생 화면에 카드 없음·준비 중 안내·미러링에서 교재 불러오기 시 수업방 전환과 교재 패널·패널 닫기 후 카드 복귀를 확인합니다.",
+    "기존 e2e 조정: 하단 수업 자료 버튼 대신 helpers.ts의 openMaterials(넓은 화면은 카드, 좁은 화면은 하단 버튼)를 사용합니다. meeting-device-subscriptions는 선생님 영상 바둑판의 발표자 보기를 검사하므로 오른쪽 열이 생기지 않는 860px 너비에서 실행합니다. restart.spec(TEST_RESTART=1 필요)·class-notes.spec(격리 환경·ffmpeg 필요)은 실행하지 않았습니다.",
+    "웹 화면 캡처: 1440×1000, 1280×800, 1024×768에서 오른쪽 열(학생→선생님 영상, 수업 자료 카드)과 모드별 수업 화면 안내, 교재 패널 열림 상태를 확인했고 820×1180은 기존 바둑판·하단 버튼 배치를 유지합니다.",
+    "Android 실행: 기존 emulator-5554(API 35)에 adb install -r로 설치하고 wm size 2560x1600·density 320(1280×800dp 태블릿)으로 임시 변경해 같은 선생님 계정·학생 1명 수업에서 카드·안내·준비 중 안내·미러링→교재 불러오기(서버 phase classroom)·교재 패널을 캡처로 확인했습니다. 휴대폰 크기(1080×2400, 420dpi 원래 설정 복원)에서는 기존 하단 수업 자료 버튼·겹침 패널을 확인했습니다. 에뮬레이터 시계가 약 3시간 26분 늦어 서버 인증서(notBefore 08:39 UTC)를 거부했으므로 시계를 호스트 UTC에 맞추고 adb root를 해제했습니다.",
+    "검증 데이터 정리: 테스트가 만든 '검증 수업' 16개와 시간 초과 실행이 남긴 자료 2개를 삭제해 수업 수를 원래 상태(종료 1, 예정 1)로 돌렸습니다.",
+    "미실행: iOS 빌드·시뮬레이터·실기기(Linux 환경), Android 실기기, 원격 CI. 학생 학습지 불러오기·과목 선택·숙제계획은 사용자 요청에 따라 동작 없이 준비 중 안내만 표시합니다."
+  ]
+}

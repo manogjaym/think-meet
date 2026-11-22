@@ -1,10 +1,12 @@
 package com.woongjin.thinkmeet.meeting
 
+import com.woongjin.thinkmeet.data.AssistanceSession
 import com.woongjin.thinkmeet.data.ChatMessage
 import com.woongjin.thinkmeet.data.Lesson
 import com.woongjin.thinkmeet.data.LessonInstruction
 import com.woongjin.thinkmeet.data.LessonModeSetPayload
 import com.woongjin.thinkmeet.data.MeetingSnapshot
+import com.woongjin.thinkmeet.data.Share
 import com.woongjin.thinkmeet.data.User
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -77,6 +79,39 @@ class MeetingControllersTest {
         chat.update(listOf(message("1", "other"), message("3", "other")), chatOpen = true)
         assertEquals(0, chat.unread)
         assertNull(chat.notification)
+    }
+
+    @Test
+    fun theMaterialsCardEntersClassroomAndOpensTheTextbookInsteadOfScreenSharing() = runTest {
+        val transport = FakeModes().apply { phase = "mirroring" }; val opened = mutableListOf<String>(); var materials = 0
+        val modes = LessonModeController(transport, backgroundScope, { throw it }, openMaterials = { materials++ }) { opened += it }
+        modes.select("classroom", phase = "mirroring", ready = true, shareId = null, assistanceId = null, materials = true)
+        runCurrent()
+        assertEquals(listOf("set:mirroring->classroom"), transport.calls)
+        assertEquals(1, materials)
+        assertTrue(opened.isEmpty())
+
+        modes.select("classroom", phase = "mirroring", ready = true, shareId = null, assistanceId = "assist", materials = true)
+        assertEquals(LessonModeSetPayload("classroom", "mirroring", null, "assist"), modes.confirm)
+        modes.confirmChange(ready = true)
+        runCurrent()
+        assertEquals(2, materials)
+        modes.select("classroom", phase = "classroom", ready = true, shareId = "share", assistanceId = null, materials = true)
+        assertEquals(3, materials)
+        assertTrue(opened.isEmpty())
+    }
+
+    @Test
+    fun aModeIsHighlightedOnlyAfterItsShareOrRequestExists() {
+        val screen = Share("share", "screen", "teacher", updatedAt = "2026-11-19T07:00:00Z")
+        val studentScreen = screen.copy(id = "assist-share", ownerId = "student", assistanceId = "assist")
+        val request = AssistanceSession("assist", "teacher", "student", "pending", null)
+        assertNull(activeLessonMode("classroom", null, null))
+        assertNull(activeLessonMode("mirroring", null, null))
+        assertNull(activeLessonMode("preparing", screen, request))
+        assertEquals("classroom", activeLessonMode("classroom", screen, null))
+        assertEquals("mirroring", activeLessonMode("mirroring", null, request))
+        assertEquals("mirroring", activeLessonMode("mirroring", studentScreen, null))
     }
 
     private companion object {

@@ -3,7 +3,7 @@ import { PDFDocument, rgb } from "pdf-lib"
 import { createHash } from "node:crypto"
 import { execFileSync } from "node:child_process"
 import { resolve } from "node:path"
-import { createLesson, login, shareTextbook } from "./helpers"
+import { createLesson, login, openMaterials, shareTextbook, startAnnotation } from "./helpers"
 import type { MeetingSnapshot } from "../src/lib/meeting"
 
 // Explicit opt-in: this test intentionally restarts the deployed application.
@@ -39,12 +39,12 @@ test.describe("Docker restart acceptance", () => {
       const upload = await page.request.post("/api/v1/materials", { multipart: { file: { name, mimeType: "application/pdf", buffer: originalBytes } } })
       expect(upload.ok()).toBeTruthy()
       materialId = (await upload.json()).id
-      await page.locator(".call-controls").getByRole("button", { name: "수업 자료", exact: true }).click()
+      await openMaterials(page)
       await shareTextbook(page, materialId!)
       await expect(page.getByLabel(`${name} 1페이지`, { exact: true })).toBeVisible()
       await page.getByRole("button", { name: "PDF 다음 페이지", exact: true }).click()
       await expect(page.getByLabel(`${name} 2페이지`, { exact: true })).toBeVisible()
-      await page.getByRole("button", { name: "판서 시작", exact: true }).click()
+      await startAnnotation(page)
       const rect = await page.getByLabel("수업 판서 영역", { exact: true }).boundingBox()
       expect(rect).not.toBeNull()
       await page.mouse.move(rect!.x + rect!.width * .2, rect!.y + rect!.height * .3)

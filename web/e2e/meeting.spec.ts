@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { createRequire } from 'node:module'
-import { createLesson, login } from './helpers'
+import { createLesson, login, openMaterials } from './helpers'
 const require = createRequire(import.meta.url)
 const { PDFDocument, rgb } = require('pdf-lib')
 
@@ -71,8 +71,7 @@ test('two participants exchange media, chat, hands, PDF annotations, video, reco
     await teacher.getByRole('button',{name:'수업방 모드',exact:true}).click()
     await teacher.getByRole('dialog',{name:'화면 공유',exact:true}).getByRole('button',{name:'취소',exact:true}).click()
     await teacher.route('**/api/v1/materials', route=>route.fulfill({ status: 503, json: { message: 'fixture' } }), { times: 1 })
-    const materialsButton=teacher.locator('.call-controls').getByRole('button',{name:'수업 자료',exact:true})
-    await materialsButton.click()
+    await openMaterials(teacher)
     await expect(teacher.getByRole('heading',{name:'교재 불러오기',exact:true})).toBeVisible()
     await expect(teacher.getByText('교재 목록을 불러오지 못했어요.')).toBeVisible()
     await teacher.getByRole('button',{name:'다시 시도',exact:true}).click()
@@ -86,9 +85,9 @@ test('two participants exchange media, chat, hands, PDF annotations, video, reco
     const list=await (await teacherContext.request.get('/api/v1/materials')).json()
     const textbookId=list.find((m:any)=>m.name===textbookName).id
     uploaded.push(textbookId)
-    await materialsButton.click()
+    await teacher.locator('#meeting-side-panel').getByRole('button',{name:'패널 닫기',exact:true}).click()
     await teacher.route(`**/api/v1/materials/${textbookId}/content`, route=>route.abort(), { times: 1 })
-    await materialsButton.click()
+    await openMaterials(teacher)
     await expect(teacher.getByText('교재 미리보기를 불러오지 못했어요.')).toBeVisible()
     await teacher.getByRole('button',{name:'다시 시도',exact:true}).click()
     const third=teacher.getByRole('button',{name:'3쪽',exact:true})
@@ -100,9 +99,13 @@ test('two participants exchange media, chat, hands, PDF annotations, video, reco
     await teacher.getByRole('button',{name:'3쪽 화면에 불러오기',exact:true}).click()
     await expect(student.getByLabel(`${textbookName} 3페이지`,{exact:true})).toBeVisible()
     await expect(teacher.locator('.textbook-dock .textbook-participants')).toBeVisible()
-    await expect(teacher.locator('.textbook-stage-footer').getByText('판서 시작')).toBeVisible()
+    // Classroom mode keeps annotation on, so both sides get the tools in the footer without a start button.
+    await expect(teacher.locator('.stage-footer .annotation-bar')).toBeVisible()
+    await expect(teacher.getByRole('button',{name:'판서 시작',exact:true})).toHaveCount(0)
+    await expect(teacher.getByRole('button',{name:'판서 종료',exact:true})).toHaveCount(0)
     await expect.poll(async()=>student.locator('canvas').evaluate((canvas:HTMLCanvasElement)=>canvas.width)).toBeGreaterThan(300)
-    await student.getByRole('button',{name:'판서 시작',exact:true}).click()
+    await expect(student.locator('.stage-footer .annotation-bar')).toBeVisible()
+    await expect(student.getByRole('button',{name:'판서 시작',exact:true})).toHaveCount(0)
     const svg=student.getByLabel('수업 판서 영역',{exact:true})
     const rect=(await svg.boundingBox())!
     await student.mouse.move(rect.x+rect.width*.2,rect.y+rect.height*.3)
@@ -120,8 +123,7 @@ test('two participants exchange media, chat, hands, PDF annotations, video, reco
     await teacher.getByRole('button',{name:'3쪽',exact:true}).click()
     await teacher.getByRole('button',{name:'3쪽 화면에 불러오기',exact:true}).click()
     await expect(teacher.locator('.live-annotation path[data-stroke-id]')).toHaveCount(1)
-    const toolbar=teacher.locator('.textbook-stage-footer')
-    await toolbar.getByRole('button',{name:'판서 시작',exact:true}).click()
+    const toolbar=teacher.locator('.stage-footer')
     await toolbar.getByRole('button',{name:'지우개',exact:true}).click()
     const teacherSurface=await teacher.getByLabel('수업 판서 영역',{exact:true}).boundingBox()
     expect(teacherSurface).not.toBeNull()
@@ -140,6 +142,8 @@ test('two participants exchange media, chat, hands, PDF annotations, video, reco
     expect(other.ok()).toBeTruthy()
     uploaded.push((await other.json()).id)
     await teacher.setViewportSize({width:390,height:844})
+    // Narrow screens keep the bottom materials control instead of the owner rail.
+    const materialsButton=teacher.locator('.call-controls').getByRole('button',{name:'수업 자료',exact:true})
     await materialsButton.click()
     await materialsButton.click()
     await expect(teacher.getByRole('button',{name:'3쪽',exact:true})).toHaveAttribute('aria-pressed','true')
@@ -150,7 +154,7 @@ test('two participants exchange media, chat, hands, PDF annotations, video, reco
     await expect(teacher.getByRole('heading',{name:'교재 불러오기',exact:true})).toBeHidden()
     await expect(teacher.locator('.live-annotation path')).toHaveCount(0)
     await teacher.setViewportSize({width:1440,height:1000})
-    await materialsButton.click()
+    await openMaterials(teacher)
     await teacher.getByRole('button',{name:'미디어',exact:true}).click()
     await teacher.locator('input[type=file]').setInputFiles({name:videoName,mimeType:'video/mp4',buffer:readFileSync(fixtureVideo)})
     await expect(teacher.locator('.content-share').filter({hasText:videoName})).toBeVisible()

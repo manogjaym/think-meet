@@ -131,7 +131,7 @@ internal fun MeetingPagination(page: Int, pages: Int, start: Int, end: Int, tota
 }
 
 @Composable
-internal fun ParticipantTile(person: User, teacher: Boolean, raised: Boolean, media: MediaController, state: MediaState, modifier: Modifier = Modifier, small: Boolean = false, speakerThumbnail: Boolean = false) {
+internal fun ParticipantTile(person: User, teacher: Boolean, raised: Boolean, media: MediaController, state: MediaState, modifier: Modifier = Modifier, small: Boolean = false, speakerThumbnail: Boolean = false, cameraStatus: Boolean = !small) {
     val participant = state.participants.firstOrNull { it.identity == person.id }
     val compact = LocalMeetingCompact.current
     val short = LocalMeetingShort.current
@@ -155,7 +155,7 @@ internal fun ParticipantTile(person: User, teacher: Boolean, raised: Boolean, me
                 Box(contentAlignment = Alignment.Center) { Text(if (name.length > 1) name.takeLast(2) else name, color = avatarInk,
                     style = MaterialTheme.typography.headlineMedium.copy(fontSize = avatarSize, lineHeight = avatarSize * 1.5f), fontWeight = DesignWeight.SemiBold) }
             }
-            if (!small && !short) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.S6)) {
+            if (cameraStatus && !short) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.S6)) {
                 DesignIcon(if (participant?.camera == true) "video" else "videoOff", Modifier.size(Space.S14), Palette.MeetingCameraStatus)
                 Text(if (participant?.camera == true) "영상 연결 중" else "카메라 꺼짐", style = MaterialTheme.typography.bodySmall.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f), color = Palette.MeetingCameraStatus)
             }

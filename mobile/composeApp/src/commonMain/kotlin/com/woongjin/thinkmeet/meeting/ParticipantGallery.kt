@@ -138,14 +138,14 @@ internal fun ParticipantTile(person: User, teacher: Boolean, raised: Boolean, me
     if (controls != null && controls.visibleFor(person.id, self)) {
         // Controls sit below the tile, which keeps the remaining height of the given slot.
         Column(modifier, verticalArrangement = Arrangement.spacedBy(if (LocalMeetingCompact.current) Space.S4 else Space.S8)) {
-            VideoTileContent(person, teacher, raised, media, participant, Modifier.weight(1f).fillMaxWidth(), small, speakerThumbnail)
+            VideoTileContent(person, teacher, raised, media, participant, Modifier.weight(1f).fillMaxWidth(), small, speakerThumbnail, cameraStatus)
             ParticipantControlsRow(person.id, person.name.removeSuffix(" 선생님"), participant, self, controls, iconOnly = small)
         }
-    } else VideoTileContent(person, teacher, raised, media, participant, modifier, small, speakerThumbnail)
+    } else VideoTileContent(person, teacher, raised, media, participant, modifier, small, speakerThumbnail, cameraStatus)
 }
 
 @Composable
-private fun VideoTileContent(person: User, teacher: Boolean, raised: Boolean, media: MediaController, participant: MediaParticipant?, modifier: Modifier, small: Boolean, speakerThumbnail: Boolean) {
+private fun VideoTileContent(person: User, teacher: Boolean, raised: Boolean, media: MediaController, participant: MediaParticipant?, modifier: Modifier, small: Boolean, speakerThumbnail: Boolean, cameraStatus: Boolean) {
     val compact = LocalMeetingCompact.current
     val short = LocalMeetingShort.current
     val name = person.name.removeSuffix(" 선생님")

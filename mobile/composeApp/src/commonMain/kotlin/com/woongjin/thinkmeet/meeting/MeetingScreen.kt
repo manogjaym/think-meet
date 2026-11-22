@@ -188,6 +188,34 @@ fun MeetingScreen(
     LaunchedEffect(realtime) {
         realtime.errors.collectLatest { snackbar.showSnackbar(it) }
     }
+    // Teacher requests reach only this student's socket; the server has already checked the teacher.
+    LaunchedEffect(realtime, user.id) {
+        realtime.mediaRequests.collect { request ->
+            if (request.userId != user.id) return@collect
+            val notices = mutableListOf<String>()
+            request.microphone?.let { notices += if (it) DesignContent.ParticipantNoticeMicOn else DesignContent.ParticipantNoticeMicOff }
+            request.camera?.let { notices += if (it) DesignContent.ParticipantNoticeCameraOn else DesignContent.ParticipantNoticeCameraOff }
+            showMessage(notices.joinToString(" "))
+            execute {
+                request.microphone?.let { media.setMicrophone(it) }
+                request.camera?.let { media.setCamera(it) }
+            }
+        }
+    }
+    val ownAnnotation = snapshot?.participants?.firstOrNull { it.user.id == user.id }?.annotationAllowed
+    var previousAnnotation by remember(lesson.id) { mutableStateOf(ownAnnotation) }
+    LaunchedEffect(ownAnnotation) {
+        val previous = previousAnnotation
+        previousAnnotation = ownAnnotation
+        if (!owner && phase != null && previous != null && ownAnnotation != null && previous != ownAnnotation) {
+            showMessage(if (ownAnnotation) DesignContent.ParticipantAnnotationAllowed else DesignContent.ParticipantAnnotationRevoked)
+        }
+    }
+    val participantControls = if (capabilities.supports(ContractProtocol.FeatureIds.MeetingParticipantControls) && snapshot != null) {
+        ParticipantControlState(user.id, currentLesson.teacher.id, phase != null, snapshot.participants,
+            control = { payload -> realtime.send(ContractProtocol.Commands.ParticipantControl, payload) },
+            setMicrophone = { media.setMicrophone(it) }, setCamera = { media.setCamera(it) }, report = report)
+    } else null
     LaunchedEffect(snapshot?.messages?.lastOrNull()?.id, panel) { chat.update(snapshot?.messages, panel == Panel.Chat) }
     LaunchedEffect(notification?.id) {
         val id = notification?.id ?: return@LaunchedEffect
@@ -223,7 +251,8 @@ fun MeetingScreen(
             val dockedTextbook = !overlayPanel && textbookLayout && panel == Panel.Materials
             val sideWidth = if (overlayPanel) LayoutToken.MeetingPanelWidth else if (maxWidth <= LayoutToken.MeetingMediumBreakpoint) LayoutToken.MeetingPanelNarrowWidth else LayoutToken.MeetingPanelWidth
             val bodyPadding = if (compact) Space.S10 else if (maxWidth <= LayoutToken.MeetingMediumBreakpoint) Space.S16 else Space.S20
-            CompositionLocalProvider(LocalMeetingCompact provides compact, LocalMeetingViewportWidth provides maxWidth, LocalMeetingShort provides (maxHeight <= LayoutToken.MeetingShortHeight && !compact)) {
+            CompositionLocalProvider(LocalMeetingCompact provides compact, LocalMeetingViewportWidth provides maxWidth, LocalMeetingShort provides (maxHeight <= LayoutToken.MeetingShortHeight && !compact),
+                LocalParticipantControls provides participantControls) {
             Column(Modifier.fillMaxSize()) {
                 MeetingHeader(currentLesson, mediaState, socketConnected, snapshot?.serverTime, grid, compact, windowWidth,
                     instructionPhase = phase, instructionStartedAt = snapshot?.instruction?.startedAt,

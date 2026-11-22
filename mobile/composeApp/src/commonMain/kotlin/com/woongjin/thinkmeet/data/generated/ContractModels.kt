@@ -162,6 +162,8 @@ data class MeetingParticipant(
     val user: User,
     val online: Boolean = false,
     val raised: Boolean = false,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val annotationAllowed: Boolean? = null,
 )
 
 @Serializable
@@ -320,6 +322,28 @@ data class StrokeAddPayload(
 @Serializable
 data class StrokeErasePayload(
     val ids: List<String>,
+)
+
+@Serializable
+data class ParticipantControlPayload(
+    val userId: String,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val microphone: Boolean? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val camera: Boolean? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val annotation: Boolean? = null,
+)
+
+@Serializable
+data class ParticipantMediaRequest(
+    val lessonId: String,
+    val userId: String,
+    val requestedBy: String,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val microphone: Boolean? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val camera: Boolean? = null,
 )
 
 @Serializable

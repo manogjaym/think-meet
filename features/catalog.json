@@ -686,6 +686,28 @@
           }
         }
       }
+    },
+    {
+      "id": "meeting.participant-controls",
+      "title": "선생님의 학생 마이크·카메라·판서 제어",
+      "stage": "in-progress",
+      "requiresRevision": 13,
+      "defaultEnabled": true,
+      "platforms": ["web", "android", "ios"],
+      "spec": "meeting-participant-controls.md",
+      "contracts": {"operations": [], "events": ["participant.media"], "commands": ["participant.control"]},
+      "implementation": {
+        "server": {"status": "done", "files": ["server/src/lesson/commands.ts", "server/src/lesson/annotations.ts", "server/src/gateway.ts"]},
+        "web": {"status": "done", "files": ["web/src/components/meeting/ParticipantControls.tsx", "web/src/components/meeting/VideoTile.tsx", "web/src/lib/useMeeting.ts", "web/src/screens/Meeting.tsx"]},
+        "android": {"status": "done", "files": ["mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/meeting/ParticipantControls.kt", "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/meeting/MeetingScreen.kt", "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/data/MeetingRealtime.kt"]},
+        "ios": {"status": "done", "files": ["mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/meeting/ParticipantControls.kt", "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/meeting/MeetingScreen.kt", "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/data/MeetingRealtime.kt"]}
+      },
+      "verification": {
+        "server": {"status": "passed", "checks": ["server/test/remote-assistance.test.ts"], "evidence": ["features/evidence/meeting-participant-controls.md"]},
+        "web": {"status": "pending", "checks": ["web/e2e/participant-controls.spec.ts"], "evidence": ["features/evidence/meeting-participant-controls.md"]},
+        "android": {"status": "pending", "checks": ["mobile/composeApp/src/androidInstrumentedTest/kotlin/com/woongjin/thinkmeet/ParticipantControlsTest.kt"], "evidence": ["features/evidence/meeting-participant-controls.md"]},
+        "ios": {"status": "pending", "checks": [], "evidence": []}
+      }
     }
   ]
 }

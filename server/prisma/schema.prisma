@@ -124,6 +124,7 @@ model LessonMember {
   user User @relation(fields: [userId], references: [id], onDelete: Restrict)
   banned Boolean @default(false)
   raised Boolean @default(false)
+  annotationAllowed Boolean @default(false)
   admissionId String?
   online Boolean @default(false)
   disconnectedAt DateTime?

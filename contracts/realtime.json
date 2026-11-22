@@ -38,6 +38,11 @@
       "direction": "bidirectional",
       "schema": "AssistancePointer",
       "feature": "meeting.remote-assistance"
+    },
+    "participant.media": {
+      "direction": "server",
+      "schema": "ParticipantMediaRequest",
+      "feature": "meeting.participant-controls"
     }
   },
   "commands": {
@@ -118,6 +123,10 @@
       "payload": "AssistanceStopPayload",
       "feature": "meeting.remote-assistance",
       "cleanup": true
+    },
+    "participant.control": {
+      "payload": "ParticipantControlPayload",
+      "feature": "meeting.participant-controls"
     }
   },
   "handshake": {

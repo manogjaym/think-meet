@@ -384,3 +384,43 @@ test('leave, kick, end and ordinary sharing clean up assistance; restarted state
     else assert.equal(f.lesson.share, null, action)
   }
 })
+
+test('only the connected teacher controls student media and lesson-mode annotation permission', async () => {
+  const f = await fixture()
+  const control = (payload: any, socket = f.teacherSocket) => f.command(socket, 'participant.control', payload)
+  const mediaEvents = (socket: { events: Array<{ event: string; payload: any }> }) => socket.events.filter(entry => entry.event === 'participant.media').map(entry => entry.payload)
+  assert.equal(code(await control({ userId: f.student.id, microphone: false })), 'CLIENT_UPDATE_REQUIRED')
+  for (const socket of f.sockets.values()) socket.handshake.auth.contractRevision = 13
+  assert.equal(code(await control({ userId: f.other.id, microphone: false }, f.studentSocket)), 'FORBIDDEN')
+  assert.equal(code(await control({ userId: f.teacher.id, camera: false })), 'PARTICIPANT_UNAVAILABLE')
+  assert.equal(code(await control({ userId: f.student.id })), 'VALIDATION')
+  assert.equal((await control({ userId: f.student.id, microphone: false, camera: true })).ok, true)
+  assert.deepEqual(mediaEvents(f.studentSocket), [{ lessonId: f.id, userId: f.student.id, requestedBy: f.teacher.id, microphone: false, camera: true }])
+  assert.deepEqual(mediaEvents(f.otherSocket), [])
+  f.otherSocket.handshake.auth.contractRevision = 12
+  assert.equal(code(await control({ userId: f.other.id, microphone: false })), 'PARTICIPANT_UNAVAILABLE')
+  f.lesson.members[2].online = false
+  f.otherSocket.handshake.auth.contractRevision = 13
+  assert.equal(code(await control({ userId: f.other.id, microphone: false })), 'PARTICIPANT_UNAVAILABLE')
+  assert.deepEqual(mediaEvents(f.otherSocket), [])
+
+  // Lessons without modes keep free annotation; lesson-mode students need permission.
+  assert.equal(code(await control({ userId: f.student.id, annotation: true })), 'LESSON_MODE_REQUIRED')
+  assert.equal((await f.lessons.snapshot(f.id)).participants.every(entry => entry.annotationAllowed), true)
+  f.lesson.instructionPhase = 'classroom'
+  f.lesson.share = { id: randomUUID(), type: 'screen', ownerId: f.teacher.id, page: 1, playing: false, position: 0, updatedAt: new Date().toISOString() }
+  Object.assign(f.lessons.db.stroke, { findUnique: async () => null, create: async () => ({}) })
+  ;(f.lessons.db as any).annotationOperation = { deleteMany: async () => ({}), create: async () => ({}) }
+  const stroke = () => f.command(f.studentSocket, 'stroke.add', { id: randomUUID(), shareId: f.lesson.share.id, page: 1, tool: 'pen', color: '#123456', points: [{ x: .1, y: .2 }] })
+  const allowed = async () => Object.fromEntries((await f.lessons.snapshot(f.id)).participants.map(entry => [entry.user.id, entry.annotationAllowed]))
+  assert.deepEqual(await allowed(), { [f.teacher.id]: true, [f.student.id]: false, [f.other.id]: false })
+  assert.equal(code(await stroke()), 'ANNOTATION_NOT_ALLOWED')
+  assert.equal(code(await f.command(f.studentSocket, 'annotation.undo', {})), 'ANNOTATION_NOT_ALLOWED')
+  assert.equal(code(await control({ userId: f.student.id, annotation: true }, f.studentSocket)), 'FORBIDDEN')
+  assert.equal((await control({ userId: f.student.id, annotation: true })).ok, true)
+  assert.deepEqual(await allowed(), { [f.teacher.id]: true, [f.student.id]: true, [f.other.id]: false })
+  assert.equal((await stroke()).ok, true)
+  assert.equal((await control({ userId: f.student.id, annotation: false })).ok, true)
+  assert.equal(code(await stroke()), 'ANNOTATION_NOT_ALLOWED')
+  assert.deepEqual(mediaEvents(f.studentSocket).length, 1)
+})

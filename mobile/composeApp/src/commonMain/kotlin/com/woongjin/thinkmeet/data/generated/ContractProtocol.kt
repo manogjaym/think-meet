@@ -6,7 +6,7 @@ class ContractCommand<P>(val type: String, val serializer: kotlinx.serialization
 data class ContractFeature(val id: String, val stage: String, val requiresRevision: Int, val defaultEnabled: Boolean, val platforms: Set<String>)
 
 object ContractProtocol {
-    const val Revision = 12
+    const val Revision = 13
     const val ApiBasePath = "/api/v1"
     const val SocketPath = "/socket.io"
     const val PlatformHeader = "X-ThinkMeet-Platform"
@@ -20,6 +20,7 @@ object ContractProtocol {
         const val RoomError = "room:error"
         const val SessionReplaced = "session:replaced"
         const val AssistancePointer = "assistance.pointer"
+        const val ParticipantMedia = "participant.media"
     }
     object FeatureIds {
         const val ClassroomCore = "classroom.core"
@@ -31,10 +32,12 @@ object ContractProtocol {
         const val ClassroomPrejoin = "classroom.prejoin"
         const val ClassroomLessonModes = "classroom.lesson-modes"
         const val ClassroomTextbookPicker = "classroom.textbook-picker"
+        const val MeetingParticipantControls = "meeting.participant-controls"
     }
     /** Server error codes from contracts/openapi.json ErrorCode; compare exact values, never substrings. */
     object ErrorCodes {
         const val Account = "ACCOUNT"
+        const val AnnotationNotAllowed = "ANNOTATION_NOT_ALLOWED"
         const val AssistanceBusy = "ASSISTANCE_BUSY"
         const val AssistanceUnavailable = "ASSISTANCE_UNAVAILABLE"
         const val Cancelled = "CANCELLED"
@@ -64,6 +67,7 @@ object ContractProtocol {
         const val NotFound = "NOT_FOUND"
         const val NotReady = "NOT_READY"
         const val NoShare = "NO_SHARE"
+        const val ParticipantUnavailable = "PARTICIPANT_UNAVAILABLE"
         const val RateLimit = "RATE_LIMIT"
         const val RequestFailed = "REQUEST_FAILED"
         const val ScreenNotPublished = "SCREEN_NOT_PUBLISHED"
@@ -100,6 +104,7 @@ object ContractProtocol {
         val AssistanceStart = ContractCommand("assistance.start", AssistanceStartPayload.serializer())
         val AssistanceGeometry = ContractCommand("assistance.geometry", AssistanceGeometryPayload.serializer())
         val AssistanceStop = ContractCommand("assistance.stop", AssistanceStopPayload.serializer())
+        val ParticipantControl = ContractCommand("participant.control", ParticipantControlPayload.serializer())
     }
     val HttpOperations = listOf(
         ContractHttpOperation("health", "GET", "/api/v1/health", null),
@@ -150,6 +155,7 @@ object ContractProtocol {
         ContractFeature("classroom.prejoin", "in-progress", 9, true, setOf("web", "android", "ios")),
         ContractFeature("classroom.lesson-modes", "in-progress", 10, true, setOf("web", "android", "ios")),
         ContractFeature("classroom.textbook-picker", "ready", 11, true, setOf("web", "android", "ios")),
+        ContractFeature("meeting.participant-controls", "in-progress", 13, true, setOf("web", "android", "ios")),
     )
     private val commandFeatures: Map<String, String?> = mapOf(
         "lesson.start" to "classroom.lesson-modes",
@@ -171,6 +177,7 @@ object ContractProtocol {
         "assistance.start" to "meeting.remote-assistance",
         "assistance.geometry" to "meeting.remote-assistance",
         "assistance.stop" to null,
+        "participant.control" to "meeting.participant-controls",
     )
     private val eventFeatures: Map<String, String?> = mapOf(
         "subscribe" to "classroom.core",
@@ -181,6 +188,7 @@ object ContractProtocol {
         "room:error" to null,
         "session:replaced" to null,
         "assistance.pointer" to "meeting.remote-assistance",
+        "participant.media" to "meeting.participant-controls",
     )
     private fun operation(method: String, input: String): ContractHttpOperation? {
         val route = input.substringBefore('?').trimEnd('/')

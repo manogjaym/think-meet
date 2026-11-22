@@ -166,8 +166,8 @@ internal fun MeetingControls(
             bottom = if (short) Space.S4 else if (compact) Space.S7 else Space.S12),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(outerGap, Alignment.CenterHorizontally)) {
         Row(horizontalArrangement = Arrangement.spacedBy(innerGap)) {
-            MeetingControl(if (microphone) "mic" else "micOff", if (microphone) "마이크" else "음소거 해제", if (microphone) "마이크 끄기" else "마이크 켜기", compact, itemWidth, muted = !microphone, onClick = onMicrophone)
-            MeetingControl(if (camera) "video" else "videoOff", if (camera) "카메라" else "카메라 켜기", if (camera) "카메라 끄기" else "카메라 켜기", compact, itemWidth, muted = !camera, onClick = onCamera)
+            MeetingControl(if (microphone) "mic" else "micOff", if (microphone || compact) "마이크" else "음소거 해제", if (microphone) "마이크 끄기" else "마이크 켜기", compact, itemWidth, muted = !microphone, onClick = onMicrophone)
+            MeetingControl(if (camera) "video" else "videoOff", if (camera || compact) "카메라" else "카메라 켜기", if (camera) "카메라 끄기" else "카메라 켜기", compact, itemWidth, muted = !camera, onClick = onCamera)
         }
         Box(Modifier.padding(horizontal = Space.S2).width(Space.S1).height(if (compact) Space.S28 else 35.dp).background(Palette.MeetingBorder))
         Row(horizontalArrangement = Arrangement.spacedBy(innerGap)) {
@@ -175,7 +175,7 @@ internal fun MeetingControls(
             MeetingControl("users", DesignContent.MeetingPeopleControl, "${DesignContent.MeetingPeopleControl} ${count}명", compact, itemWidth, selected = panel == Panel.People, badge = count, onClick = { onPanel(Panel.People) })
             MeetingControl("chat", "채팅", if (unread > 0 && panel != Panel.Chat) "채팅, 읽지 않은 메시지 ${unread}개" else "채팅", compact, itemWidth,
                 selected = panel == Panel.Chat, badge = unread.takeIf { panel != Panel.Chat } ?: 0, onClick = { onPanel(Panel.Chat) })
-            if (showMaterials) MeetingControl("folder", "수업 자료", "수업 자료", compact, itemWidth, selected = panel == Panel.Materials, onClick = { onPanel(Panel.Materials) })
+            if (showMaterials) MeetingControl("folder", if (compact) "자료" else "수업 자료", "수업 자료", compact, itemWidth, selected = panel == Panel.Materials, onClick = { onPanel(Panel.Materials) })
             if (!owner) MeetingControl("hand", if (raised) "손 내리기" else "손들기", if (raised) "손 내리기" else "손들기", compact, itemWidth, selected = raised, onClick = onHand)
             MeetingControl("more", "더보기", "더보기", compact, itemWidth, selected = panel == Panel.More, onClick = { onPanel(Panel.More) })
         }

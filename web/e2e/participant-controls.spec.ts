@@ -68,14 +68,14 @@ test('teacher controls a student microphone, camera and annotation permission; s
     const remoteControls = teacher.getByRole('group', { name: `${studentName} 참여자 제어` })
     await expect(remoteControls).toBeVisible()
     await expect(teacher.getByRole('group', { name: `${teacherName} 참여자 제어` })).toBeVisible()
-    await expect(student.getByRole('group', { name: `${studentName} 참여자 제어` })).toBeVisible()
+    await expect(student.getByRole('group', { name: `${studentName} 참여자 제어` })).toHaveCount(0)
     await expect(student.getByRole('group', { name: `${teacherName} 참여자 제어` })).toHaveCount(0)
     await expect(student.getByRole('button', { name: /판서 허용/ })).toHaveCount(0)
 
     // Microphone and camera off/on reach the student's device and show a notice there.
     await remoteControls.getByRole('button', { name: `${studentName} 마이크 끄기`, exact: true }).click()
     await expect(student.getByRole('status').filter({ hasText: '선생님이 마이크를 껐어요.' })).toBeVisible()
-    await expect(student.getByRole('button', { name: `${studentName} 마이크 켜기`, exact: true })).toBeVisible()
+    await expect(student.locator('.call-controls').getByRole('button', { name: '마이크 켜기', exact: true })).toBeVisible()
     await expect(remoteControls.getByRole('button', { name: `${studentName} 마이크 켜기`, exact: true })).toBeVisible()
     await remoteControls.getByRole('button', { name: `${studentName} 카메라 끄기`, exact: true }).click()
     await expect(student.getByRole('status').filter({ hasText: '선생님이 카메라를 껐어요.' })).toBeVisible()
@@ -87,8 +87,8 @@ test('teacher controls a student microphone, camera and annotation permission; s
     await remoteControls.getByRole('button', { name: `${studentName} 카메라 켜기`, exact: true }).click()
     await expect(remoteControls.getByRole('button', { name: `${studentName} 카메라 끄기`, exact: true })).toBeVisible()
 
-    // The student's own buttons still work and the teacher sees the real state.
-    await student.getByRole('button', { name: `${studentName} 마이크 끄기`, exact: true }).click()
+    // The student's own call bar button still works and the teacher sees the real state.
+    await student.locator('.call-controls').getByRole('button', { name: '마이크 끄기', exact: true }).click()
     await expect(remoteControls.getByRole('button', { name: `${studentName} 마이크 켜기`, exact: true })).toBeVisible()
 
     // Annotation permission is stored and announced to the student.

@@ -51,7 +51,7 @@ export function CallControls({
           <span className="control-icon">
             <Icon name={mic ? "mic" : "micOff"} size={22} />
           </span>
-          <small>{mic ? "마이크" : "음소거 해제"}</small>
+          <small>{mic ? "마이크" : <><span className="label-wide">음소거 해제</span><span className="label-compact">마이크</span></>}</small>
         </button>
         <button
           className={!cam ? "off" : ""}
@@ -62,7 +62,7 @@ export function CallControls({
           <span className="control-icon">
             <Icon name={cam ? "video" : "videoOff"} size={22} />
           </span>
-          <small>{cam ? "카메라" : "카메라 켜기"}</small>
+          <small>{cam ? "카메라" : <><span className="label-wide">카메라 켜기</span><span className="label-compact">카메라</span></>}</small>
         </button>
       </div>
       <span className="control-divider" />

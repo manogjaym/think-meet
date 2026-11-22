@@ -269,6 +269,7 @@ export const screenContract = {
       "layout.meetingCompactBreakpoint",
       "layout.meetingPanelWidth"
     ],
+    "callControlLabels": "꺼진 마이크·카메라는 '음소거 해제'·'카메라 켜기'로 표시합니다. layout.meetingCompactBreakpoint 이하에서는 칸이 좁아 상태와 관계없이 '마이크'·'카메라'로 표시하고, 꺼진 상태는 아이콘·배경색으로 구분합니다. 앱 선생님의 '수업 자료' 버튼도 '자료'로 줄입니다. 접근성 이름(켜기·끄기)은 유지합니다.",
     "participantLayout": {
       "basis": "실제 영상 영역의 폭·높이에서 페이지 탐색 공간 52px/dp를 제외합니다.",
       "grid": "표시 인원 × 폭 / 사용 가능 높이의 제곱근을 반올림하되 기존 열·행 수용 범위를 지킵니다.",

@@ -1,0 +1,31 @@
+{
+  "id": "meeting-call-bar-compact-labels",
+  "summary": "휴대폰 폭(layout.meetingCompactBreakpoint 이하)의 하단 메뉴바에서 '음소거 해제'·'카메라 켜기'가 옆 버튼 글자와 겹치던 문제를 고칩니다. 이 폭에서는 꺼진 상태도 '마이크'·'카메라'로 표시하고 상태는 아이콘·배경색으로 구분합니다. 앱 선생님의 '수업 자료' 버튼도 '자료'로 줄입니다. 접근성 이름은 유지합니다.",
+  "scope": "shared",
+  "featureIds": [
+    "classroom.core"
+  ],
+  "platforms": {
+    "server": {
+      "status": "unchanged",
+      "reason": "화면 문구·배치만 바꾸는 변경입니다."
+    },
+    "web": {
+      "status": "implemented"
+    },
+    "android": {
+      "status": "implemented"
+    },
+    "ios": {
+      "status": "implemented",
+      "reason": "Android와 같은 공통 Compose 코드(MeetingChrome.kt)를 사용합니다. Linux 환경이라 iOS 빌드·실행은 하지 않았습니다."
+    }
+  },
+  "verification": [
+    "2026-11-22 UTC, 저장소 루트: node design/scripts/generate.mjs 후 npm run shared:check, npm run shared:check -- --changed-files <변경 파일 목록> 통과(Pretendard woff2 LFS 포인터는 검사 후 복원). npm run verify 통과.",
+    "infra/local에서 웹만 재배포(LIVE 수업 0개 확인) 후 BASE_URL=https://115.68.2.13, Chromium 1255로 임시 Playwright 검사(커밋하지 않음)를 실행했습니다. 선생님·학생이 마이크·카메라를 끈 상태에서 폭 320·360·390·430·650·651·700·900·901·1024·1280px마다 하단 메뉴바 글자가 버튼 밖으로 나가거나 서로 겹치지 않음을 측정했습니다. 390·651·1024px 캡처도 확인했습니다.",
+    "Android 실행: mobile/에서 ./gradlew :composeApp:assembleDebug :composeApp:assembleDebugAndroidTest 후 기존 emulator-5554(1080×2400, 420dpi, 설정 변경 없음)에서 임시 계측 테스트(커밋하지 않음)로 하단 메뉴바를 그렸습니다. 학생·선생님, 기기 폭(411dp)·320dp에서 마이크·카메라를 끈 상태의 글자가 겹치지 않음을 캡처로 확인했고, ParticipantControlsTest 2개도 통과했습니다.",
+    "검증 데이터 정리: 테스트 수업 2개를 삭제해 수업 수를 원래 상태(종료 2, 예정 1)로 돌렸습니다.",
+    "미실행: iOS 빌드·실행(Linux 환경), Android 태블릿·실기기, 원격 CI."
+  ]
+}

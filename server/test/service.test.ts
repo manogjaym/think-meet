@@ -217,3 +217,33 @@ test('ordinary screen share survives unpublish and republish, and expires if the
   await svc.reconcile()
   assert.equal(share, null)
 })
+test('status transitions never overwrite a concurrent change made outside this process lock', async () => {
+  // The lesson is read in one state, but another instance or webhook changed it before the write.
+  const raced = (read: string, actual: string) => {
+    const writes: string[] = []
+    const lesson = { ...base, status: read, members: [{ userId: teacher.id, banned: false }], accessMode: 'INVITE_ONLY' }
+    const db: any = {
+      lesson: {
+        findUnique: async () => writes.length ? { ...lesson, status: actual } : lesson,
+        updateMany: async ({ where }: any) => { writes.push('lesson'); return { count: where.status === actual ? 1 : 0 } },
+      },
+      lessonMember: { updateMany: async () => { writes.push('members') }, deleteMany: async () => { writes.push('members') }, upsert: async () => { writes.push('members') } },
+      attendance: { updateMany: async () => { writes.push('attendance') } },
+      teacherStudent: { count: async () => 1 },
+      $transaction: async (operation: (tx: any) => Promise<unknown>) => operation(db),
+    }
+    const svc = new Lessons(db); svc.dto = async (row: any) => row; svc.broadcast = async () => ({}) as any
+    svc.livekit.deleteRoom = async () => { writes.push('livekit') }
+    return { svc, writes }
+  }
+  const ended = raced('LIVE', 'ENDED')
+  assert.equal(((await ended.svc.end(id, teacher)) as any).status, 'ENDED')
+  assert.deepEqual(ended.writes, ['lesson'], 'members and attendance close only with the winning transition')
+  const cancelled = raced('SCHEDULED', 'LIVE')
+  await assert.rejects(cancelled.svc.cancel(id, teacher), code('CONFLICT'))
+  assert.deepEqual(cancelled.writes, ['lesson'], 'a started lesson keeps its LiveKit room')
+  const edited = raced('SCHEDULED', 'LIVE')
+  const startsAt = new Date(Date.now() + 3600000).toISOString()
+  await assert.rejects(edited.svc.edit(id, teacher, { title: 'Edited', startsAt, endsAt: null, studentIds: [student.id] }), code('CONFLICT'))
+  assert.deepEqual(edited.writes, ['lesson'], 'the roster is not changed after a lost race')
+})

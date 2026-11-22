@@ -131,7 +131,6 @@ function Application() {
   const { lessons, students, loading, error, refresh } = useLessonDirectory(
     user,
     screen !== "meeting" && screen !== "waiting",
-    auth.retry,
   )
   const [selected, setSelected] = useState<ApiLesson | null>(null)
   const [detailLoading, setDetailLoading] = useState(false),
@@ -470,8 +469,8 @@ function Application() {
     content = user.role === "student" && notesEnabled ? <ClassNotes tab={notesTab} onTab={tab => navigate(`/class-notes?tab=${tab}`, { replace: true })} /> : <Status error="수업 노트를 이용할 수 없어요." />
   else if (screen === "students" || screen === "attendance")
     content = !attendanceEnabled ? <Status error={designContent.attendanceUnavailable} />
-      : screen === "students" ? <AttendanceStudents key={user.id} unauthorized={auth.retry} />
-      : <StudentAttendance key={user.id} studentId={parts[1]} unauthorized={auth.retry} />
+      : screen === "students" ? <AttendanceStudents key={user.id} />
+      : <StudentAttendance key={user.id} studentId={parts[1]} />
   else if (screen === "form" && !lessonId)
     content = loading ? (
       <Status />
@@ -563,8 +562,8 @@ function Application() {
           onJoin={(value) => startJoin(lesson, value)}
           enhanced={prejoinEnabled}
           onUnavailable={(error) => {
-            if (error.status === 401) auth.retry()
-            else navigate(`/error/${exceptionType(error)}?lesson=${lesson.id}`, {
+            // An expired session is handled once by the app-wide 401 handler.
+            if (error.status !== 401) navigate(`/error/${exceptionType(error)}?lesson=${lesson.id}`, {
               replace: true,
               state: { message: error.message },
             })

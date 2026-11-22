@@ -22,15 +22,21 @@ async function fixture(features = new FeaturePolicy()) {
     startsAt: new Date(), startedAt: new Date(), seq: 0, code: 'code', share: null,
     members: [teacher, student, other].map(user => ({ userId: user.id, banned: false, online: true, raised: false, admissionId: randomUUID() })) }
   const materials = new Map<string, { id: string; ownerId: string; kind: string; pages?: number; size: number; name: string; createdAt: Date }>()
+  const writeLesson = (data: any) => {
+    if (data.seq) lesson.seq += data.seq.increment
+    if ('share' in data) lesson.share = data.share === Prisma.DbNull ? null : structuredClone(data.share)
+    for (const key of ['status', 'endedAt', 'instructionPhase', 'instructionStartedAt']) if (key in data) lesson[key] = data[key]
+    return lesson
+  }
+  // Conditional writes: scalar equality, an empty share, or a share JSON path value.
+  const lessonMatches = (where: any) => Object.entries(where).every(([key, value]: [string, any]) =>
+    key !== 'share' ? (lesson[key] ?? null) === value
+      : value.equals === Prisma.DbNull ? lesson.share == null : lesson.share?.[value.path[0]] === value.equals)
   const db: any = {
     lesson: {
       findUnique: async () => lesson, findMany: async () => [lesson],
-      update: async ({ data }: any) => {
-        if (data.seq) lesson.seq += data.seq.increment
-        if ('share' in data) lesson.share = data.share === Prisma.DbNull ? null : structuredClone(data.share)
-        for (const key of ['status', 'endedAt', 'instructionPhase', 'instructionStartedAt']) if (key in data) lesson[key] = data[key]
-        return lesson
-      },
+      update: async ({ data }: any) => writeLesson(data),
+      updateMany: async ({ where, data }: any) => lessonMatches(where) ? (writeLesson(data), { count: 1 }) : { count: 0 },
     },
     lessonMember: {
       findUnique: async ({ where }: any) => lesson.members.find((m: any) => m.userId === where.lessonId_userId.userId),
@@ -41,7 +47,7 @@ async function fixture(features = new FeaturePolicy()) {
     material: { findUnique: async ({ where }: { where: { id: string } }) => materials.get(where.id) },
     attendance: { findMany: async () => [], findFirst: async () => null, updateMany: async () => ({ count: 1 }) },
     loginSession: { deleteMany: async () => {} }, webhookEvent: { deleteMany: async () => {} },
-    $transaction: async (operations: Promise<any>[]) => Promise.all(operations),
+    $transaction: async (operations: any) => typeof operations === 'function' ? operations(db) : Promise.all(operations),
   }
   const lessons = new Lessons(db)
   ;(lessons as any).assistance = new AssistanceSessions(() => clock.now)
@@ -346,9 +352,9 @@ test('disconnect during capture creation cannot persist an orphan share or resto
   await f.command(f.studentSocket, 'assistance.respond', { sessionId: session.id, approved: true })
   let unblock!: () => void, entered!: () => void
   const blocked = new Promise<void>(resolve => { unblock = resolve }), waiting = new Promise<void>(resolve => { entered = resolve })
-  const update = f.lessons.db.lesson.update.bind(f.lessons.db.lesson)
-  ;(f.lessons.db.lesson as any).update = async (input: any) => {
-    const result = await update(input)
+  const updateMany = f.lessons.db.lesson.updateMany.bind(f.lessons.db.lesson)
+  ;(f.lessons.db.lesson as any).updateMany = async (input: any) => {
+    const result = await updateMany(input)
     if (input.data.share?.assistanceId === session.id) { entered(); await blocked }
     return result
   }

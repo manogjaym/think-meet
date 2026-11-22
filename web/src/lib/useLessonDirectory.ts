@@ -7,7 +7,7 @@ import {
   useState,
 } from "react"
 import { SOCKET_EVENTS } from "../generated/contracts"
-import { api, ApiError, type ApiLesson, type User } from "./api"
+import { api, type ApiLesson, type User } from "./api"
 import { createAppSocket } from "./socket"
 
 type Account = Pick<User, "id" | "role">
@@ -20,8 +20,8 @@ const emptyDirectory: Directory = { lessons: [], students: [], error: "" }
 
 export function useLessonDirectory(
   user: User | null,
+  /** Off during meeting/waiting, which own their realtime state; no list traffic runs then. */
   watchChanges: boolean,
-  onUnauthorized: () => void,
 ) {
   const id = user?.id
   const role = user?.role
@@ -74,14 +74,13 @@ export function useLessonDirectory(
               : "수업을 불러오지 못했어요.",
         },
       }))
-      if (error instanceof ApiError && error.status === 401) onUnauthorized()
     } finally {
       if (request.current === controller) request.current = null
     }
-  }, [account, onUnauthorized])
+  }, [account])
 
   useEffect(() => {
-    if (!account) return
+    if (!account || !watchChanges) return
     const update = () => void refresh()
     update()
     const timer = window.setInterval(update, 15_000)
@@ -90,7 +89,7 @@ export function useLessonDirectory(
       window.clearInterval(timer)
       window.removeEventListener("focus", update)
     }
-  }, [account, refresh])
+  }, [account, refresh, watchChanges])
 
   useEffect(() => {
     if (!account || !watchChanges) return

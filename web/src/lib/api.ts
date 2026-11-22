@@ -13,6 +13,13 @@ export class ApiError extends Error {
     this.code = code
   }
 }
+/** Startup `/auth/me` and wrong passwords are expected unauthenticated states, as in the KMP client. */
+const authProbePaths = new Set(["/auth/me", "/auth/login"])
+let unauthorizedHandler: (() => void) | null = null
+/** Registers the single app-wide reaction to an expired session (any other 401). */
+export function setUnauthorizedHandler(handler: (() => void) | null) {
+  unauthorizedHandler = handler
+}
 export async function apiResponse(
   path: string,
   options: RequestInit = {},
@@ -37,6 +44,7 @@ export async function apiResponse(
     )
   }
   if (!response.ok) {
+    if (response.status === 401 && !authProbePaths.has(path)) unauthorizedHandler?.()
     const data = (await response.json().catch(() => ({}))) as {
       code?: string
       message?: string | string[]

@@ -3,10 +3,11 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react"
-import { api, ApiError, type User } from "./api"
+import { api, ApiError, setUnauthorizedHandler, type User } from "./api"
 
 type AuthState = {
   user: User | null
@@ -15,6 +16,8 @@ type AuthState = {
   login: (username: string, password: string) => Promise<void>
   logout: () => Promise<void>
   retry: () => void
+  /** Re-checks the session in the background without replacing the current screen. */
+  revalidate: () => void
 }
 const AuthContext = createContext<AuthState | null>(null)
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -35,9 +38,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
   const retry = useCallback(() => void refresh(), [refresh])
+  const revalidating = useRef<Promise<void> | null>(null)
+  const signedIn = useRef(false)
+  signedIn.current = user !== null
+  const revalidate = useCallback(() => {
+    // A late 401 after logout has nothing to sign out and must not re-check authentication.
+    if (!signedIn.current) return
+    // A 401 from one request must not unmount a live meeting while the session is still valid.
+    revalidating.current ??= api<User>("/auth/me")
+      .then((next) => setUser((current) =>
+        // Never sign back in after logout; keep the same object so user-keyed effects do not restart.
+        !current || JSON.stringify(current) === JSON.stringify(next) ? current : next,
+      ), (e) => {
+        // Only a confirmed expiry signs out; network errors keep the current screen.
+        if (e instanceof ApiError && e.status === 401) setUser(null)
+      })
+      .finally(() => {
+        revalidating.current = null
+      })
+  }, [])
   useEffect(() => {
     void refresh()
   }, [refresh])
+  useEffect(() => {
+    setUnauthorizedHandler(revalidate)
+    return () => setUnauthorizedHandler(null)
+  }, [revalidate])
   const login = async (username: string, password: string) => {
     setUser(
       await api<User>("/auth/login", {
@@ -60,6 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         login,
         logout,
         retry,
+        revalidate,
       }}
     >
       {children}

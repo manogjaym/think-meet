@@ -30,6 +30,26 @@ NestJS·Prisma로 인증·권한·수업 상태·자료를 처리합니다. API 
 - 개인 퇴장은 전체 수업을 종료하지 않습니다. 출결은 입퇴장 구간으로 저장하며 채팅·페이지·영상 위치·판서는 재접속 시 복원합니다.
 - 화면 송출 장치는 실제 브라우저 선택기에서 고릅니다.
 
+## 운영 전제: API 서버 1대
+
+현재 API 서버는 **반드시 1대(프로세스 1개)로 운영**합니다. 아래 상태를 프로세스 메모리에 두기 때문입니다.
+
+| 메모리 상태 | 위치 |
+|---|---|
+| 수업별 명령 순서 잠금 | `src/lessons.ts`의 `locked()` |
+| 원격 지원 동의·세션, 화면 공유 끊김 추적 | `src/assistance.ts`, `src/lessons.ts` |
+| Socket 구독과 Snapshot 전송 대상 | `src/gateway.ts` (Socket.IO adapter 없음) |
+| 로그인 시도 제한 | `src/auth.ts` |
+
+배포 조건은 다음과 같습니다.
+
+1. Kubernetes Deployment는 `replicas: 1`, `strategy.type: Recreate`를 사용합니다. 롤링 배포로 이전·새 Pod가 겹치면 2대로 동작하는 것과 같습니다.
+2. API에는 HPA(Pod 자동 확장)를 연결하지 않습니다. 대상 그룹에도 Pod 하나만 등록합니다.
+
+2대 이상이 동시에 실행되면 다른 서버에 붙은 참여자는 수업 상태 갱신(Snapshot)을 받지 못합니다. 또 다른 서버가 진행 중인 원격 지원 공유를 지울 수 있습니다. 수업 상태 전이(취소·종료·수정·수업 모드·원격 지원 공유 시작)는 DB 조건부 쓰기로 덮어쓰기를 막지만, 위 메모리 상태까지 공유하지는 않습니다.
+
+여러 대로 늘리려면 다음이 먼저 필요합니다: Socket.IO Redis adapter, DB 기반 수업 잠금, `reconcile` 단일 실행(leader 선출), 원격 지원 세션 공유. 인프라의 `application` Redis 그룹은 이 확장을 위해 준비한 것이며 현재 서버는 사용하지 않습니다.
+
 ## 개발·검증
 
 Node.js 22.22 이상이 필요합니다. 실행은 Docker를 권장합니다. API·Socket.IO·데이터 형식은 [CONTRACT.md](CONTRACT.md)에 있습니다.

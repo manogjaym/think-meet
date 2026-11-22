@@ -1,5 +1,5 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common'
-import { Prisma } from '@prisma/client'
+import { Prisma, type LessonInstructionPhase } from '@prisma/client'
 import { AccessToken, RoomServiceClient, TrackSource, WebhookReceiver } from 'livekit-server-sdk'
 import { jwtVerify } from 'jose'
 import { randomUUID, randomBytes } from 'node:crypto'
@@ -169,11 +169,13 @@ export class Lessons implements OnModuleInit, OnModuleDestroy {
       const data = lessonInput.parse(input)
       await this.validateSubject(user.id, data.subjectId)
       if (data.studentIds.length) await this.validateRoster(user.id, data.studentIds)
-      await this.db.$transaction([
-        this.db.lesson.update({ where: { id }, data: { title: data.title, description: data.description, accessMode: data.accessMode, startsAt: new Date(data.startsAt), endsAt: data.endsAt === null ? null : new Date(data.endsAt), subjectId: data.subjectId } }),
-        ...(data.accessMode === 'INVITE_ONLY' ? [this.db.lessonMember.deleteMany({ where: { lessonId: id, userId: { notIn: [user.id, ...data.studentIds] } } })] : []),
-        ...data.studentIds.map(userId => this.db.lessonMember.upsert({ where: { lessonId_userId: { lessonId: id, userId } }, create: { lessonId: id, userId }, update: {} })),
-      ])
+      await this.db.$transaction(async tx => {
+        // The status condition keeps a concurrent start/cancel from being overwritten.
+        const updated = await tx.lesson.updateMany({ where: { id, status: 'SCHEDULED' }, data: { title: data.title, description: data.description, accessMode: data.accessMode, startsAt: new Date(data.startsAt), endsAt: data.endsAt === null ? null : new Date(data.endsAt), subjectId: data.subjectId } })
+        if (!updated.count) throw new ApiError('CONFLICT', '예정된 수업만 수정할 수 있습니다.', 409)
+        if (data.accessMode === 'INVITE_ONLY') await tx.lessonMember.deleteMany({ where: { lessonId: id, userId: { notIn: [user.id, ...data.studentIds] } } })
+        for (const userId of data.studentIds) await tx.lessonMember.upsert({ where: { lessonId_userId: { lessonId: id, userId } }, create: { lessonId: id, userId }, update: {} })
+      })
       await this.broadcast(id)
       if (lesson.accessMode === 'OPEN' || data.accessMode === 'OPEN') this.notifyAllUsers()
       return this.dto(await this.get(id))
@@ -183,8 +185,9 @@ export class Lessons implements OnModuleInit, OnModuleDestroy {
     return this.locked(id, async () => {
       const lesson = await this.access(id, user, false, true)
       if (lesson.status !== 'SCHEDULED') throw new ApiError('CONFLICT', '예정된 수업만 취소할 수 있습니다.', 409)
+      const cancelled = await this.db.lesson.updateMany({ where: { id, status: 'SCHEDULED' }, data: { status: 'CANCELLED', endedAt: new Date(), share: Prisma.DbNull } })
+      if (!cancelled.count) throw new ApiError('CONFLICT', '예정된 수업만 취소할 수 있습니다.', 409)
       this.assistance.remove(id)
-      await this.db.lesson.update({ where: { id }, data: { status: 'CANCELLED', endedAt: new Date(), share: Prisma.DbNull } })
       await this.livekit.deleteRoom(lesson.roomName).catch(() => {})
       await this.broadcast(id)
       if (lesson.accessMode === 'OPEN') this.notifyAllUsers()
@@ -248,7 +251,7 @@ export class Lessons implements OnModuleInit, OnModuleDestroy {
       const admissionId = randomUUID()
       const admit = this.db.lessonMember.update({ where: { lessonId_userId: { lessonId: id, userId: user.id } }, data: { admissionId } })
       if (supportsLessonModes && user.id === lesson.teacherId && lesson.status === 'SCHEDULED' && lesson.instructionPhase == null) {
-        await this.db.$transaction([admit, this.db.lesson.update({ where: { id }, data: { instructionPhase: 'preparing' } })])
+        await this.db.$transaction([admit, this.db.lesson.updateMany({ where: { id, status: 'SCHEDULED', instructionPhase: null }, data: { instructionPhase: 'preparing' } })])
       } else await admit
       const token = new AccessToken(process.env.LIVEKIT_API_KEY, process.env.LIVEKIT_API_SECRET, { identity: user.id, name: user.name, ttl: '2m', metadata: JSON.stringify({ admissionId, userId: user.id, role: user.id === lesson.teacherId ? 'teacher' : 'student' }) })
       token.addGrant({ roomJoin: true, room: lesson.roomName, canPublish: true, canSubscribe: true, canPublishData: false })
@@ -275,26 +278,31 @@ export class Lessons implements OnModuleInit, OnModuleDestroy {
       return
     }
     const previous = await this.db.attendance.findFirst({ where: { lessonId: lesson.id, userId: member.userId, leftAt: null } })
-    if (previous && previous.livekitSid !== participant.sid) {
-      await this.stopAssistanceForUser(lesson.id, member.userId)
-      await this.db.attendance.update({ where: { id: previous.id }, data: { leftAt: new Date() } })
-    }
-    if (!previous || previous.livekitSid !== participant.sid) await this.db.attendance.upsert({ where: { livekitSid: participant.sid }, create: { lessonId: lesson.id, userId: member.userId, admissionId: member.admissionId!, livekitSid: participant.sid }, update: {} })
-    await this.db.lessonMember.update({ where: { lessonId_userId: { lessonId: lesson.id, userId: member.userId } }, data: { online: true, disconnectedAt: null } })
-    if (member.userId === lesson.teacherId && lesson.status === 'SCHEDULED') {
-      await this.db.lesson.updateMany({ where: { id: lesson.id, status: 'SCHEDULED' }, data: { status: 'LIVE', startedAt: new Date() } })
-      if (lesson.accessMode === 'OPEN') this.notifyAllUsers()
-    }
+    const replaced = !!previous && previous.livekitSid !== participant.sid
+    if (replaced) await this.stopAssistanceForUser(lesson.id, member.userId)
+    const starts = member.userId === lesson.teacherId && lesson.status === 'SCHEDULED'
+    const now = new Date()
+    // Attendance, presence and the teacher's SCHEDULED -> LIVE start commit together.
+    const results = await this.db.$transaction([
+      ...(replaced ? [this.db.attendance.update({ where: { id: previous.id }, data: { leftAt: now } })] : []),
+      ...(!previous || replaced ? [this.db.attendance.upsert({ where: { livekitSid: participant.sid }, create: { lessonId: lesson.id, userId: member.userId, admissionId: member.admissionId!, livekitSid: participant.sid }, update: {} })] : []),
+      this.db.lessonMember.update({ where: { lessonId_userId: { lessonId: lesson.id, userId: member.userId } }, data: { online: true, disconnectedAt: null } }),
+      ...(starts ? [this.db.lesson.updateMany({ where: { id: lesson.id, status: 'SCHEDULED' }, data: { status: 'LIVE', startedAt: now } })] : []),
+    ])
+    if (starts && (results.at(-1) as Prisma.BatchPayload).count && lesson.accessMode === 'OPEN') this.notifyAllUsers()
   }
   async leave(id: string, user: PublicUser) {
     return this.locked(id, async () => {
       const lesson = await this.access(id, user)
       await this.stopAssistanceForUser(id, user.id)
       if (!lesson.members.some(member => member.userId === user.id)) return { ok: true }
-      await this.db.lessonMember.update({ where: { lessonId_userId: { lessonId: id, userId: user.id } }, data: { admissionId: null } })
+      // Admission, attendance, presence and an owned share change together; LiveKit is called after commit.
+      await this.db.$transaction([
+        this.db.lessonMember.update({ where: { lessonId_userId: { lessonId: id, userId: user.id } }, data: { admissionId: null } }),
+        ...this.offlineWrites(id, user.id),
+        this.clearShareOwnedBy(id, user.id),
+      ])
       await this.livekit.removeParticipant(lesson.roomName, user.id).catch(() => {})
-      await this.offline(id, user.id)
-      if ((lesson.share as Share | null)?.ownerId === user.id) await this.db.lesson.update({ where: { id }, data: { share: Prisma.DbNull } })
       await this.broadcast(id)
       return { ok: true }
     })
@@ -306,22 +314,38 @@ export class Lessons implements OnModuleInit, OnModuleDestroy {
       if (latest?.livekitSid !== sid) return
     }
     await this.stopAssistanceForUser(id, userId)
-    await this.db.$transaction([
-      this.db.attendance.updateMany({ where: { lessonId: id, userId, leftAt: null }, data: { leftAt: new Date() } }),
-      this.db.lessonMember.updateMany({ where: { lessonId: id, userId, online: true }, data: { online: false, disconnectedAt: new Date(), raised: false } }),
-    ])
+    await this.db.$transaction(this.offlineWrites(id, userId))
+  }
+  private offlineWrites(id: string, userId: string, at = new Date()) {
+    return [
+      this.db.attendance.updateMany({ where: { lessonId: id, userId, leftAt: null }, data: { leftAt: at } }),
+      this.db.lessonMember.updateMany({ where: { lessonId: id, userId, online: true }, data: { online: false, disconnectedAt: at, raised: false } }),
+    ]
+  }
+  /** Clears the share only if this user still owns it, so a newer share is never removed. */
+  private clearShareOwnedBy(id: string, userId: string) {
+    return this.db.lesson.updateMany({ where: { id, share: { path: ['ownerId'], equals: userId } }, data: { share: Prisma.DbNull } })
   }
   async end(id: string, user: PublicUser) {
     return this.locked(id, async () => {
       const lesson = await this.access(id, user, false, true)
       if (lesson.status === 'ENDED') return this.dto(lesson)
       if (lesson.status !== 'LIVE') throw new ApiError('CONFLICT', '진행 중인 수업만 종료할 수 있습니다.', 409)
+      const now = new Date()
+      const ended = await this.db.$transaction(async tx => {
+        // Members and attendance close only when this request performs the LIVE -> ENDED transition.
+        const { count } = await tx.lesson.updateMany({ where: { id, status: 'LIVE' }, data: { status: 'ENDED', endedAt: now, share: Prisma.DbNull } })
+        if (!count) return false
+        await tx.lessonMember.updateMany({ where: { lessonId: id }, data: { online: false, raised: false, admissionId: null } })
+        await tx.attendance.updateMany({ where: { lessonId: id, leftAt: null }, data: { leftAt: now } })
+        return true
+      })
+      if (!ended) {
+        const current = await this.get(id)
+        if (current.status === 'ENDED') return this.dto(current)
+        throw new ApiError('CONFLICT', '진행 중인 수업만 종료할 수 있습니다.', 409)
+      }
       this.assistance.remove(id)
-      await this.db.$transaction([
-        this.db.lesson.update({ where: { id }, data: { status: 'ENDED', endedAt: new Date(), share: Prisma.DbNull } }),
-        this.db.lessonMember.updateMany({ where: { lessonId: id }, data: { online: false, raised: false, admissionId: null } }),
-        this.db.attendance.updateMany({ where: { lessonId: id, leftAt: null }, data: { leftAt: new Date() } }),
-      ])
       await this.broadcast(id)
       await this.livekit.deleteRoom(lesson.roomName).catch(() => {})
       if (lesson.accessMode === 'OPEN') this.notifyAllUsers()
@@ -334,12 +358,13 @@ export class Lessons implements OnModuleInit, OnModuleDestroy {
       const lesson = await this.access(id, user, true, true)
       if (userId === lesson.teacherId || !lesson.members.some(member => member.userId === userId)) throw new ApiError('VALIDATION', '퇴장시킬 학생을 선택해 주세요.')
       await this.stopAssistanceForUser(id, userId)
-      await this.db.lessonMember.update({ where: { lessonId_userId: { lessonId: id, userId } }, data: { banned: true, admissionId: null, raised: false } })
+      await this.db.$transaction([
+        this.db.lessonMember.update({ where: { lessonId_userId: { lessonId: id, userId } }, data: { banned: true, admissionId: null, raised: false } }),
+        ...this.offlineWrites(id, userId),
+        this.clearShareOwnedBy(id, userId),
+      ])
       this.disconnectUser(id, userId, 'KICKED')
       await this.livekit.removeParticipant(lesson.roomName, userId).catch(() => {})
-      await this.offline(id, userId)
-      const share = lesson.share as Share | null
-      if (share?.ownerId === userId) await this.db.lesson.update({ where: { id }, data: { share: Prisma.DbNull } })
       await this.broadcast(id)
       return { ok: true }
     })
@@ -379,6 +404,11 @@ export class Lessons implements OnModuleInit, OnModuleDestroy {
     this.notifyUsers(snapshot.participants.map(member => member.user.id))
     return snapshot
   }
+  /** Writes a lesson-mode change only if the phase is still the one the command validated. */
+  private async writePhase(id: string, expected: LessonInstructionPhase, data: Prisma.LessonUpdateManyMutationInput) {
+    const { count } = await this.db.lesson.updateMany({ where: { id, instructionPhase: expected }, data })
+    if (!count) throw new ApiError('LESSON_MODE_CHANGED', '공유 또는 요청 상태가 달라졌어요. 최신 상태를 확인한 뒤 다시 시도해 주세요.', 409)
+  }
   materialDto(material: any) { return { id: material.id, name: material.name, type: material.kind, size: material.size, duration: material.duration ?? undefined, pages: material.pages ?? undefined, createdAt: material.createdAt.toISOString() } }
   async command(user: PublicUser, command: Command, context?: AssistanceCommandContext) {
     return this.locked(command.lessonId, async () => {
@@ -397,7 +427,7 @@ export class Lessons implements OnModuleInit, OnModuleDestroy {
         if (!phase) throw new ApiError('FEATURE_UNAVAILABLE', '이 화상미팅에서는 수업 모드를 사용할 수 없어요.', 409)
         if (type === 'lesson.start') {
           if (phase !== 'preparing') return this.snapshotUnlocked(id)
-          await this.db.lesson.update({ where: { id }, data: { instructionPhase: 'classroom', instructionStartedAt: new Date() } })
+          await this.writePhase(id, phase, { instructionPhase: 'classroom', instructionStartedAt: new Date() })
         } else {
           if (phase === 'preparing') throw new ApiError('LESSON_NOT_STARTED', '먼저 수업을 시작해 주세요.', 409)
           const next = lessonModeChange.parse(p)
@@ -406,7 +436,7 @@ export class Lessons implements OnModuleInit, OnModuleDestroy {
           if (phase !== next.expectedMode || (share?.id ?? null) !== next.expectedShareId || (assistance?.id ?? null) !== next.expectedAssistanceId) {
             throw new ApiError('LESSON_MODE_CHANGED', '공유 또는 요청 상태가 달라졌어요. 최신 상태를 확인한 뒤 다시 시도해 주세요.', 409)
           }
-          await this.db.lesson.update({ where: { id }, data: { instructionPhase: next.mode, share: Prisma.DbNull } })
+          await this.writePhase(id, phase, { instructionPhase: next.mode, share: Prisma.DbNull })
           this.assistance.remove(id)
         }
       } else if (type.startsWith('assistance.')) {
@@ -573,9 +603,10 @@ export class Lessons implements OnModuleInit, OnModuleDestroy {
           if (!track || metadata.admissionId !== member?.admissionId) throw new ApiError('SCREEN_NOT_PUBLISHED', '기기의 화면 공유를 시작한 후 다시 시도해 주세요.', 409)
           if (this.assistance.current(id) !== current || !this.assistanceConnected(current)) throw new ApiError('STALE_ASSISTANCE', '화면 보기 요청이 종료되었어요. 새로 요청해 주세요.', 409)
           const share: Share = { id: randomUUID(), type: 'screen', ownerId: user.id, page: 1, playing: false, position: 0, updatedAt: new Date().toISOString(), assistanceId: current.id }
-          await this.db.lesson.update({ where: { id }, data: { share: share as any } })
+          const claimed = await this.db.lesson.updateMany({ where: { id, share: { equals: Prisma.DbNull } }, data: { share: share as any } })
+          if (!claimed.count) throw new ApiError('SHARE_BUSY', '다른 화면이 공유되고 있어요. 새로 요청해 주세요.', 409)
           if (this.assistance.current(id) !== current || !this.assistanceConnected(current)) {
-            await this.db.lesson.update({ where: { id }, data: { share: Prisma.DbNull } })
+            await this.db.lesson.updateMany({ where: { id, share: { path: ['id'], equals: share.id } }, data: { share: Prisma.DbNull } })
             throw new ApiError('STALE_ASSISTANCE', '연결이 변경되어 화면 공유를 중지했어요.', 409)
           }
           this.assistance.activate(current, share.id, geometry, track.sid)

@@ -87,7 +87,10 @@ async function mockDashboard(page: Page, user: User = teacher) {
       await route.fulfill({ status: 405, json: { message: "Fixture is read only" } })
       return
     }
-    if (path === "/api/v1/auth/me") {
+    if (path === "/api/v1/capabilities") {
+      // An explicit legacy 404 keeps the dashboard on baseline features, independent of server rollout.
+      await route.fulfill({ status: 404, json: { message: "Not found" } })
+    } else if (path === "/api/v1/auth/me") {
       await route.fulfill({ json: user })
     } else if (path === "/api/v1/students") {
       await route.fulfill({ json: students })

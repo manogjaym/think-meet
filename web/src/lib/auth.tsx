@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react"
-import { api, ApiError, setUnauthorizedHandler, type User } from "./api"
+import { call, ApiError, setUnauthorizedHandler, type User } from "./api"
 
 type AuthState = {
   user: User | null
@@ -28,7 +28,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(true)
     setError("")
     try {
-      setUser(await api<User>("/auth/me"))
+      setUser(await call("authMe"))
     } catch (e) {
       setUser(null)
       if (!(e instanceof ApiError && e.status === 401))
@@ -45,7 +45,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // A late 401 after logout has nothing to sign out and must not re-check authentication.
     if (!signedIn.current) return
     // A 401 from one request must not unmount a live meeting while the session is still valid.
-    revalidating.current ??= api<User>("/auth/me")
+    revalidating.current ??= call("authMe")
       .then((next) => setUser((current) =>
         // Never sign back in after logout; keep the same object so user-keyed effects do not restart.
         !current || JSON.stringify(current) === JSON.stringify(next) ? current : next,
@@ -66,15 +66,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [revalidate])
   const login = async (username: string, password: string) => {
     setUser(
-      await api<User>("/auth/login", {
-        method: "POST",
-        body: JSON.stringify({ username, password }),
-      }),
+      await call("authLogin", { body: { username, password } }),
     )
     setError("")
   }
   const logout = async () => {
-    await api("/auth/logout", { method: "POST" })
+    await call("authLogout")
     setUser(null)
   }
   return (

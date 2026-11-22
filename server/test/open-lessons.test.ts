@@ -14,6 +14,9 @@ const lesson = () => ({ id: randomUUID(), teacherId: owner.id, accessMode: 'OPEN
 const errorCode = (expected: string) => (error: any) => error instanceof ApiError && (error.getResponse() as any).code === expected
 function service(current = lesson(), extra: any = {}) { return new Lessons({ lesson: { findUnique: async () => current }, ...extra } as any) }
 
+// Stored shares always carry every Share field (see src/lesson/share.ts); fixtures override only what matters.
+const storedShare = <T extends object>(share: T) => ({ page: 1, playing: false, position: 0, updatedAt: new Date().toISOString(), ...share })
+
 test('open booking needs no selected students; default remains invitation-only', () => {
   assert.equal(lessonInput.safeParse(input()).success, true)
   assert.equal(lessonInput.safeParse({ ...input(), studentIds: [] }).success, true)
@@ -85,7 +88,7 @@ test('unjoined open-room viewers cannot issue live commands', async () => {
 })
 
 test('visiting teachers cannot manage open rooms or control owner shares', async () => {
-  const current = { ...lesson(), status: 'LIVE', share: { id: randomUUID(), ownerId: owner.id, type: 'screen' } }
+  const current = { ...lesson(), status: 'LIVE', share: storedShare({ id: randomUUID(), ownerId: owner.id, type: 'screen' }) }
   current.members.push({ userId: visitingTeacher.id, banned: false })
   const svc = service(current)
   for (const action of [() => svc.end(current.id, visitingTeacher), () => svc.kick(current.id, visitingTeacher, { userId: owner.id }), () => svc.edit(current.id, visitingTeacher, input()), () => svc.invite(current.id, visitingTeacher, { studentIds: [visitor.id] })]) await assert.rejects(action, errorCode('FORBIDDEN'))

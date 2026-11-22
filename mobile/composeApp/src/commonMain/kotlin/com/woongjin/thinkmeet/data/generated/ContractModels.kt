@@ -207,6 +207,8 @@ data class ErrorResponse(
     val message: String,
 )
 
+typealias ErrorCode = String
+
 @Serializable
 data class LoginInput(
     val username: String,

@@ -15,6 +15,7 @@ import type { ClassNoteCapture, ClassNoteImage, ClassNoteLesson, ClassNoteTarget
 import { Lessons } from './lessons'
 import { Materials } from './materials'
 import type { PublicUser, Share } from './types'
+import { readShare } from './lesson/share'
 
 export const CLASS_NOTE_IMAGE_LIMIT = 10 * 1024 * 1024
 const run = promisify(execFile)
@@ -160,7 +161,7 @@ export class ClassNotes {
       if (!member || !(await this.db.attendance.findFirst({ where: { lessonId, userId: user.id, admissionId: input.admissionId, leftAt: null } }))) {
         throw new ApiError('NOT_CONNECTED', '수업에 연결한 뒤 다시 시도해 주세요.', 409)
       }
-      const share = lesson.share as Share | null
+      const share = readShare(lesson.share)
       if (!share || share.assistanceId || share.id !== input.shareId || share.page !== input.page) throw changedShare()
       return { lessonId, studentId: lesson.teacherId === user.id ? null : user.id, kind: 'capture' }
     })

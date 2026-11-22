@@ -131,8 +131,8 @@ internal fun SharedStage(
         while (true) { delay(1000); val cutoff = Clock.System.now().toEpochMilliseconds() - 2000; previews = previews.filterValues { it.second > cutoff } }
     }
     LaunchedEffect(snapshot.seq) { optimistic = optimistic.filterKeys { id -> strokes.none { it.id == id } } }
-    fun command(type: String, payload: JsonObject = buildJsonObject {}) {
-        scope.launch { pending = true; try { realtime.command(type, payload) } catch (error: Throwable) { report(error) } finally { pending = false } }
+    fun <P> command(command: ContractCommand<P>, payload: P) {
+        scope.launch { pending = true; try { realtime.send(command, payload) } catch (error: Throwable) { report(error) } finally { pending = false } }
     }
     fun addStroke(value: DraftStroke) {
         val id = uniqueId()
@@ -141,10 +141,7 @@ internal fun SharedStage(
         optimistic = optimistic + (id to finalStroke)
         scope.launch {
             try {
-                realtime.command("stroke.add", buildJsonObject {
-                    put("id", id); put("shareId", share.id); put("page", share.page); put("tool", value.tool); put("color", value.color)
-                    put("points", pointsJson(points))
-                })
+                realtime.send(ContractProtocol.Commands.StrokeAdd, StrokeAddPayload(id, share.id, share.page, value.tool, value.color, points))
             } catch (error: Throwable) { optimistic = optimistic - id; report(error) }
             finally { runCatching { realtime.preview(share.id, share.page, value.tool, value.color, emptyList()) } }
         }
@@ -190,9 +187,9 @@ internal fun SharedStage(
                 Text("${(zoom * 100).toInt()}%", Modifier.padding(horizontal = Space.S6, vertical = Space.S10), style = MaterialTheme.typography.bodySmall.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f), color = Palette.MeetingMuted)
                 StageButton("＋ 확대", enabled = zoom < 4f, description = "PDF 확대") { zoom = (zoom + .25f).coerceAtMost(4f) }
                 StageButton("화면에 맞추기") { zoom = 1f }
-                StageButton("이전", enabled = owner && !pending && share.page > 1, description = "PDF 이전 페이지") { command("document.page", buildJsonObject { put("page", share.page - 1) }) }
+                StageButton("이전", enabled = owner && !pending && share.page > 1, description = "PDF 이전 페이지") { command(ContractProtocol.Commands.DocumentPage, DocumentPagePayload(share.page - 1)) }
                 Text("${share.page} / ${share.material?.pages ?: 1}쪽", Modifier.padding(horizontal = Space.S6, vertical = Space.S10), style = MaterialTheme.typography.bodySmall.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f), color = Palette.MeetingMuted)
-                StageButton("다음", enabled = owner && !pending && share.page < (share.material?.pages ?: 1), description = "PDF 다음 페이지") { command("document.page", buildJsonObject { put("page", share.page + 1) }) }
+                StageButton("다음", enabled = owner && !pending && share.page < (share.material?.pages ?: 1), description = "PDF 다음 페이지") { command(ContractProtocol.Commands.DocumentPage, DocumentPagePayload(share.page + 1)) }
                 if (textbookLayout) captureControl()
             }
         }
@@ -218,8 +215,8 @@ internal fun SharedStage(
                         }
                     }
                 }
-                StageButton(if (compact) null else "실행 취소", icon = "undo", description = "실행 취소", enabled = !pending, minHeight = if (compact) Space.S36 else Space.S44) { command("annotation.undo") }
-                StageButton(if (compact) null else "다시 실행", icon = "redo", description = "다시 실행", enabled = !pending, minHeight = if (compact) Space.S36 else Space.S44) { command("annotation.redo") }
+                StageButton(if (compact) null else "실행 취소", icon = "undo", description = "실행 취소", enabled = !pending, minHeight = if (compact) Space.S36 else Space.S44) { command(ContractProtocol.Commands.AnnotationUndo, EmptyPayload()) }
+                StageButton(if (compact) null else "다시 실행", icon = "redo", description = "다시 실행", enabled = !pending, minHeight = if (compact) Space.S36 else Space.S44) { command(ContractProtocol.Commands.AnnotationRedo, EmptyPayload()) }
                 StageButton(if (owner) "전체 지우기" else "내 판서 지우기", icon = "trash", description = if (owner) "전체 지우기" else "내 판서 지우기", enabled = strokes.any { owner || it.authorId == user.id }, minHeight = if (compact) Space.S36 else Space.S44) { clearConfirm = true }
                 StageButton("판서 종료", icon = "close", minHeight = if (compact) Space.S36 else Space.S44) { annotating = false; draft = null }
             }
@@ -265,7 +262,7 @@ internal fun SharedStage(
                         }.map { it.id }
                         if (ids.isNotEmpty()) {
                             erasedThisGesture += ids
-                            ids.chunked(500).forEach { batch -> command("stroke.erase", buildJsonObject { put("ids", JsonArray(batch.map(::JsonPrimitive))) }) }
+                            ids.chunked(500).forEach { batch -> command(ContractProtocol.Commands.StrokeErase, StrokeErasePayload(batch)) }
                         }
                     }
                     awaitEachGesture {
@@ -319,7 +316,7 @@ internal fun SharedStage(
                 documentControls(Modifier.align(Alignment.BottomCenter).padding(Space.S12).fillMaxWidth())
             }
             if (share.type == "media") Surface(Modifier.align(Alignment.BottomCenter).padding(Space.S12).fillMaxWidth(), shape = RoundedCornerShape(Corner.R8), color = Palette.MeetingTile) {
-                MediaTransport(share, snapshot.serverTime, owner, pending) { command("media.update", it) }
+                MediaTransport(share, snapshot.serverTime, owner, pending) { command(ContractProtocol.Commands.MediaUpdate, it) }
             }
             if (assistance != null) Surface(Modifier.align(Alignment.TopStart).padding(Space.S12), color = Palette.MeetingTile, shape = RoundedCornerShape(Corner.R8)) {
                 Text(if (guideReady) DesignContent.RemoteAssistActive else if (owner) DesignContent.RemoteAssistGeometryWaiting else DesignContent.RemoteAssistActiveStudent,
@@ -366,7 +363,7 @@ internal fun SharedStage(
         AlertDialog(onDismissRequest = { clearConfirm = false }, shape = RoundedCornerShape(Corner.R14), containerColor = Palette.White,
             title = { Text(if (owner) "판서를 모두 지울까요?" else "내 판서를 지울까요?", style = MaterialTheme.typography.titleLarge.copy(fontSize = Type.Dialog, lineHeight = Type.Dialog * 1.4091f), fontWeight = DesignWeight.Bold, color = Palette.Ink) },
             text = { Text("현재 페이지의 판서를 삭제합니다. 이 작업은 되돌릴 수 없습니다.", color = Palette.Muted) },
-            confirmButton = { DesignButton("지우기", onClick = { clearConfirm = false; command("annotation.clear") }) },
+            confirmButton = { DesignButton("지우기", onClick = { clearConfirm = false; command(ContractProtocol.Commands.AnnotationClear, EmptyPayload()) }) },
             dismissButton = { DesignButton("취소", onClick = { clearConfirm = false }, secondary = true) })
     }
 }
@@ -412,7 +409,7 @@ internal fun SharedParticipants(snapshot: MeetingSnapshot, user: User, media: Me
 }
 
 @Composable
-private fun MediaTransport(share: Share, serverTime: String, owner: Boolean, pending: Boolean, update: (JsonObject) -> Unit) {
+private fun MediaTransport(share: Share, serverTime: String, owner: Boolean, pending: Boolean, update: (MediaUpdatePayload) -> Unit) {
     var now by remember { mutableStateOf(Clock.System.now()) }
     val receivedAt = remember(serverTime) { Clock.System.now() }
     val serverAt = remember(serverTime) { runCatching { Instant.parse(serverTime) }.getOrDefault(receivedAt) }
@@ -423,10 +420,10 @@ private fun MediaTransport(share: Share, serverTime: String, owner: Boolean, pen
     val position = (share.position.toDouble() + elapsed).coerceIn(0.0, if (duration > 0) duration else Double.MAX_VALUE)
     var seeking by remember { mutableStateOf<Float?>(null) }
     FlowRow(Modifier.padding(Space.S5), horizontalArrangement = Arrangement.spacedBy(Space.S4, Alignment.CenterHorizontally), verticalArrangement = Arrangement.spacedBy(Space.S4)) {
-        StageButton("재생", "play", "영상 재생", enabled = owner && !pending, selected = share.playing, media = true) { update(buildJsonObject { put("playing", true); put("position", position) }) }
-        StageButton("정지", "pause", "영상 정지", enabled = owner && !pending, selected = !share.playing, media = true) { update(buildJsonObject { put("playing", false); put("position", position) }) }
+        StageButton("재생", "play", "영상 재생", enabled = owner && !pending, selected = share.playing, media = true) { update(MediaUpdatePayload(playing = true, position = position)) }
+        StageButton("정지", "pause", "영상 정지", enabled = owner && !pending, selected = !share.playing, media = true) { update(MediaUpdatePayload(playing = false, position = position)) }
         Slider(value = seeking ?: position.toFloat(), onValueChange = { seeking = it }, onValueChangeFinished = {
-            seeking?.let { target -> update(buildJsonObject { put("playing", share.playing); put("position", target) }) }; seeking = null
+            seeking?.let { target -> update(MediaUpdatePayload(playing = share.playing, position = target.toDouble())) }; seeking = null
         }, valueRange = 0f..duration.toFloat().coerceAtLeast(.1f), enabled = owner && duration > 0 && !pending,
             colors = SliderDefaults.colors(thumbColor = Palette.PrimaryOnDark, activeTrackColor = Palette.PrimaryOnDark, inactiveTrackColor = Palette.MeetingBorder),
             modifier = Modifier.width(130.dp).height(Space.S40).semantics { contentDescription = "영상 재생 위치" })
@@ -435,7 +432,6 @@ private fun MediaTransport(share: Share, serverTime: String, owner: Boolean, pen
 }
 
 private fun timeLabel(seconds: Double): String { val total = seconds.toLong().coerceAtLeast(0); return "${total / 60}:${(total % 60).toString().padStart(2, '0')}" }
-private fun pointsJson(points: List<Point>) = JsonArray(points.map { point -> buildJsonObject { put("x", point.x); put("y", point.y) } })
 private fun hexColor(value: String): Color = Color((0xff000000L or (value.removePrefix("#").toLongOrNull(16) ?: 0L)).toInt())
 // Pen geometry stays local so theme changes never alter shared annotation rendering.
 private fun DrawScope.drawAnnotation(tool: String, color: String, points: List<Point>) {

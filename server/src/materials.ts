@@ -11,6 +11,7 @@ import { Database } from './auth'
 import { Lessons } from './lessons'
 import { ApiError } from './errors'
 import type { PublicUser, Share } from './types'
+import { readShare } from './lesson/share'
 const run = promisify(execFile)
 @Injectable()
 export class Materials {
@@ -92,7 +93,7 @@ export class Materials {
     if (material.ownerId !== user.id) {
       if (!lessonId) throw new ApiError('FORBIDDEN', '수업에 참여해야 파일을 볼 수 있습니다.', 403)
       const lesson = await this.lessons.access(lessonId, user, true)
-      if ((lesson.share as Share | null)?.materialId !== id) throw new ApiError('FORBIDDEN', '현재 공유 중인 파일만 열 수 있습니다.', 403)
+      if (readShare(lesson.share)?.materialId !== id) throw new ApiError('FORBIDDEN', '현재 공유 중인 파일만 열 수 있습니다.', 403)
     }
     let range: string | undefined
     if (req.headers.range) {

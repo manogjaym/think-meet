@@ -25,6 +25,17 @@ node contracts/scripts/check.mjs
 
 웹·서버는 생성 타입을 사용하고, KMP는 같은 모델로 데이터를 읽고 씁니다. 쿠키, 업로드 스트리밍, 오류 처리, Socket.IO transport는 기존 어댑터에 유지합니다. 기존 HTTP 클라이언트를 새 라이브러리로 교체하지 않습니다.
 
+## 오류 코드·명령·연산 생성물
+
+| 생성물 | 원본 | 용도 |
+|---|---|---|
+| TS `ErrorCode`·`ERROR_CODES`, Kotlin `ErrorCodes` | `components.schemas.ErrorCode` | 서버 `ApiError`는 이 값만 받습니다. 클라이언트는 부분 문자열이 아니라 값 전체로 비교합니다. |
+| TS `ApiOperations`·`API_OPERATIONS` | `paths` | 웹의 타입 지정 호출 `call(operationId, …)` |
+| TS `FEATURE_IDS` | `features/catalog.json` | 기능 ID 오타를 컴파일 시점에 막습니다. |
+| Kotlin `Commands`(`ContractCommand<P>`) | `realtime.json` `commands` | 앱의 타입 지정 명령 전송 |
+
+`ErrorResponse.code`와 `RealtimeError.code`는 구버전 호환을 위해 string으로 둡니다. 서버에 새 오류 코드가 필요하면 `ErrorCode` enum에 먼저 추가합니다. enum 값을 추가하는 것은 호환되는 변경입니다.
+
 ## 생성기 지원 범위
 
 - 지원: string/enum, integer/int64, number, boolean, 배열, 모델 참조, nullable/default 참조 wrapper, object/map, ack oneOf.
@@ -64,6 +75,11 @@ HTML video/PDF와 네이티브 미디어는 기존 인증 쿠키·Range 경로�
 
 ## 서버 검사 범위
 
-공개 route 검사는 현재 `ApiController`와 `Gateway`를 대상으로 합니다. 새 공개 컨트롤러·게이트웨이를 별도 파일에 추가하면 coverage/policy 등록도 확장해야 합니다. 등록 전에는 검사가 실패합니다.
+공개 route 검사는 `server/src`의 모든 파일(generated 제외)을 대상으로 합니다.
+
+- `@Controller('api/v1…')` 클래스의 prefix와 메서드 경로를 합쳐 계약과 양방향으로 비교합니다. 그래서 컨트롤러는 여러 파일로 나눌 수 있습니다.
+- `internal` 컨트롤러는 공개 계약에서 제외합니다.
+- 경로는 작은따옴표 문자열로 씁니다. `api/v1` 밖의 공개 prefix는 거부합니다.
+- `@SubscribeMessage`도 모든 파일에서 모으며, 한 이벤트에 handler는 하나만 둡니다.
 
 실제 동작·권한·상태 전이는 계약 검사와 함께 필요한 동작 테스트로 확인합니다.

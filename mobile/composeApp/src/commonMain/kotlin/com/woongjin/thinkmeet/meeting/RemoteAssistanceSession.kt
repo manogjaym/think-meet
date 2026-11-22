@@ -70,9 +70,7 @@ internal class RemoteAssistanceSession(
                         geometryJob?.cancel()
                         sendingGeometry = geometry
                         geometryJob = scope.launch {
-                            try { link.command("assistance.geometry", buildJsonObject {
-                                put("sessionId", id); put("geometry", ThinkMeetJson.encodeToJsonElement(geometry))
-                            }) } catch (error: CancellationException) { throw error }
+                            try { link.send(ContractProtocol.Commands.AssistanceGeometry, AssistanceGeometryPayload(id, geometry)) } catch (error: CancellationException) { throw error }
                             catch (error: Throwable) { report(error); withContext(NonCancellable) { cleanup(id, notify = true) } }
                         }
                     }
@@ -101,11 +99,11 @@ internal class RemoteAssistanceSession(
                 pip.update(false, null)
                 remote.ensureOverlayPermission()
                 requireCurrent(sessionId, token, "pending")
-                link.command("assistance.respond", ThinkMeetJson.encodeToJsonElement(AssistanceRespondPayload(sessionId, true)).jsonObject)
+                link.send(ContractProtocol.Commands.AssistanceRespond, AssistanceRespondPayload(sessionId, true))
                 requireCurrent(sessionId, token, "approved")
                 val geometry = remote.startScreenShare()
                 requireCurrent(sessionId, token, "approved")
-                val snapshot = link.command("assistance.start", ThinkMeetJson.encodeToJsonElement(AssistanceStartPayload(sessionId, geometry)).jsonObject)
+                val snapshot = link.send(ContractProtocol.Commands.AssistanceStart, AssistanceStartPayload(sessionId, geometry))
                 requireCurrent(sessionId, token, "active")
                 // A teacher with the camera off still has an audio-call PiP presentation.
                 pip.update(true, PipVideoTarget(snapshot.lesson.teacher.id))
@@ -122,7 +120,7 @@ internal class RemoteAssistanceSession(
         approval?.cancel()
         geometryJob?.cancel()
         if (ownedId == sessionId) cleanup(sessionId, notify = true)
-        else link.command("assistance.stop", ThinkMeetJson.encodeToJsonElement(AssistanceStopPayload(sessionId)).jsonObject)
+        else link.send(ContractProtocol.Commands.AssistanceStop, AssistanceStopPayload(sessionId))
     }
 
     private fun requireCurrent(id: String, token: Long, status: String) {
@@ -143,7 +141,7 @@ internal class RemoteAssistanceSession(
         catch (error: Throwable) { report(error) }
         finally {
             if (notify && link.connected.value) runCatching {
-                link.command("assistance.stop", ThinkMeetJson.encodeToJsonElement(AssistanceStopPayload(id)).jsonObject)
+                link.send(ContractProtocol.Commands.AssistanceStop, AssistanceStopPayload(id))
             }
         }
     }
@@ -160,6 +158,7 @@ internal interface AssistanceTransport {
     val capabilities: StateFlow<FeatureCapabilities>
     val pointers: SharedFlow<AssistancePointer>
     suspend fun command(type: String, payload: JsonObject): MeetingSnapshot
+    suspend fun <P> send(command: ContractCommand<P>, payload: P): MeetingSnapshot = command(command.type, command.encode(payload))
 }
 
 private class ApiAssistanceTransport(private val api: ThinkMeetApi, private val realtime: MeetingRealtime) : AssistanceTransport {

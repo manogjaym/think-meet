@@ -34,6 +34,7 @@ export type LessonInstruction = { phase: "preparing" | "classroom" | "mirroring"
 export type MeetingSnapshot = { lessonId: string; lesson: Lesson; instruction?: LessonInstruction; participants: Array<MeetingParticipant>; messages: Array<ChatMessage>; share: (Share) | null; strokes: Array<Stroke>; seq: number; serverTime: string; assistance?: (AssistanceSession) | null };
 export type RealtimeError = { code: string; message: string };
 export type ErrorResponse = { code: string; message: string };
+export type ErrorCode = "ACCOUNT" | "ASSISTANCE_BUSY" | "ASSISTANCE_UNAVAILABLE" | "CANCELLED" | "CLIENT_UPDATE_REQUIRED" | "CONFLICT" | "CONNECTION" | "CONSENT_REQUIRED" | "ENDED" | "FEATURE_UNAVAILABLE" | "FILE_TOO_LARGE" | "FORBIDDEN" | "INTERNAL" | "INVALID" | "INVALID_CREDENTIALS" | "INVALID_FILE" | "INVALID_MATERIAL" | "INVALID_SIGNATURE" | "KICKED" | "LESSON_MODE_CHANGED" | "LESSON_MODE_REQUIRED" | "LESSON_NOT_STARTED" | "LIVE" | "MATERIAL_IN_USE" | "NOTE_SHARE_CHANGED" | "NOTE_TARGET_CHANGED" | "NOT_CONNECTED" | "NOT_FOUND" | "NOT_READY" | "NO_SHARE" | "RATE_LIMIT" | "REQUEST_FAILED" | "SCREEN_NOT_PUBLISHED" | "SHARE_BUSY" | "STALE_ASSISTANCE" | "STALE_GEOMETRY" | "STALE_SHARE" | "UNAUTHENTICATED" | "UNKNOWN_COMMAND" | "UNSUPPORTED_CODEC" | "UNSUPPORTED_FILE" | "UPLOAD_CANCELLED" | "VALIDATION" | "WAITING";
 export type LoginInput = { username: string; password: string };
 export type KickInput = { userId: string };
 export type InviteInput = { studentIds: Array<string> };
@@ -76,5 +77,196 @@ export type StudentAttendanceInput = { status: StudentAttendanceStatus; reason?:
 export type PrejoinStudent = { id: string; name: string };
 export type PrejoinStatus = { status: "SCHEDULED" | "LIVE" | "ENDED" | "CANCELLED"; waitingStudents?: Array<PrejoinStudent> };
 export type ApiLesson = Lesson;
+export const ERROR_CODES = ["ACCOUNT","ASSISTANCE_BUSY","ASSISTANCE_UNAVAILABLE","CANCELLED","CLIENT_UPDATE_REQUIRED","CONFLICT","CONNECTION","CONSENT_REQUIRED","ENDED","FEATURE_UNAVAILABLE","FILE_TOO_LARGE","FORBIDDEN","INTERNAL","INVALID","INVALID_CREDENTIALS","INVALID_FILE","INVALID_MATERIAL","INVALID_SIGNATURE","KICKED","LESSON_MODE_CHANGED","LESSON_MODE_REQUIRED","LESSON_NOT_STARTED","LIVE","MATERIAL_IN_USE","NOTE_SHARE_CHANGED","NOTE_TARGET_CHANGED","NOT_CONNECTED","NOT_FOUND","NOT_READY","NO_SHARE","RATE_LIMIT","REQUEST_FAILED","SCREEN_NOT_PUBLISHED","SHARE_BUSY","STALE_ASSISTANCE","STALE_GEOMETRY","STALE_SHARE","UNAUTHENTICATED","UNKNOWN_COMMAND","UNSUPPORTED_CODEC","UNSUPPORTED_FILE","UPLOAD_CANCELLED","VALIDATION","WAITING"] as const;
+export type ApiOperations = {
+  health: { method: "GET"; path: "/health"; params: undefined; query: undefined; body: undefined; response: Record<string, unknown> };
+  capabilities: { method: "GET"; path: "/capabilities"; params: undefined; query: undefined; body: undefined; response: CapabilitiesResponse };
+  authMe: { method: "GET"; path: "/auth/me"; params: undefined; query: undefined; body: undefined; response: User };
+  authLogin: { method: "POST"; path: "/auth/login"; params: undefined; query: undefined; body: LoginInput; response: User };
+  authLogout: { method: "POST"; path: "/auth/logout"; params: undefined; query: undefined; body: undefined; response: Record<string, unknown> };
+  listStudents: { method: "GET"; path: "/students"; params: undefined; query: undefined; body: undefined; response: Array<User> };
+  listStudentAttendance: { method: "GET"; path: "/students/{studentId}/attendance"; params: { studentId: string }; query: { month: string }; body: undefined; response: StudentAttendanceMonth };
+  saveStudentAttendance: { method: "PUT"; path: "/students/{studentId}/attendance/{lessonId}"; params: { studentId: string; lessonId: string }; query: undefined; body: StudentAttendanceInput; response: StudentAttendanceMonth };
+  listTeacherSubjects: { method: "GET"; path: "/subjects"; params: undefined; query: undefined; body: undefined; response: Array<TeacherSubject> };
+  listLessons: { method: "GET"; path: "/lessons"; params: undefined; query: undefined; body: undefined; response: Array<Lesson> };
+  createLesson: { method: "POST"; path: "/lessons"; params: undefined; query: undefined; body: LessonInput; response: Lesson };
+  resolveLesson: { method: "GET"; path: "/join/{code}"; params: { code: string }; query: undefined; body: undefined; response: Lesson };
+  getLesson: { method: "GET"; path: "/lessons/{id}"; params: { id: string }; query: undefined; body: undefined; response: Lesson };
+  updateLesson: { method: "PATCH"; path: "/lessons/{id}"; params: { id: string }; query: undefined; body: LessonInput; response: Lesson };
+  cancelLesson: { method: "POST"; path: "/lessons/{id}/cancel"; params: { id: string }; query: undefined; body: undefined; response: Lesson };
+  connectedLesson: { method: "POST"; path: "/lessons/{id}/connected"; params: { id: string }; query: undefined; body: undefined; response: Lesson };
+  endLesson: { method: "POST"; path: "/lessons/{id}/end"; params: { id: string }; query: undefined; body: undefined; response: Lesson };
+  joinLesson: { method: "POST"; path: "/lessons/{id}/join"; params: { id: string }; query: undefined; body: undefined; response: JoinResult };
+  leaveLesson: { method: "POST"; path: "/lessons/{id}/leave"; params: { id: string }; query: undefined; body: undefined; response: Record<string, unknown> };
+  kickParticipant: { method: "POST"; path: "/lessons/{id}/kick"; params: { id: string }; query: undefined; body: KickInput; response: Record<string, unknown> };
+  inviteStudents: { method: "POST"; path: "/lessons/{id}/invites"; params: { id: string }; query: undefined; body: InviteInput; response: Lesson };
+  getSnapshot: { method: "GET"; path: "/lessons/{id}/snapshot"; params: { id: string }; query: undefined; body: undefined; response: MeetingSnapshot };
+  listMaterials: { method: "GET"; path: "/materials"; params: undefined; query: undefined; body: undefined; response: Array<Material> };
+  uploadMaterial: { method: "POST"; path: "/materials"; params: undefined; query: undefined; body: FormData; response: Material };
+  deleteMaterial: { method: "DELETE"; path: "/materials/{id}"; params: { id: string }; query: undefined; body: undefined; response: Record<string, unknown> };
+  getMaterialContent: { method: "GET"; path: "/materials/{id}/content"; params: { id: string }; query: { lessonId?: string }; body: undefined; response: Response };
+  livekitWebhook: { method: "POST"; path: "/webhooks/livekit"; params: undefined; query: undefined; body: string; response: Record<string, unknown> };
+  getClassNoteTarget: { method: "GET"; path: "/class-notes/target"; params: undefined; query: undefined; body: undefined; response: ClassNoteTarget };
+  listClassNoteWorksheets: { method: "GET"; path: "/class-notes/worksheets"; params: undefined; query: { month?: string; lessonId?: string }; body: undefined; response: Array<ClassNoteWorksheet> };
+  submitClassNoteWorksheet: { method: "POST"; path: "/class-notes/lessons/{id}/worksheets"; params: { id: string }; query: undefined; body: FormData; response: ClassNoteImage };
+  submitClassNoteCorrection: { method: "POST"; path: "/class-notes/worksheets/{id}/correction"; params: { id: string }; query: undefined; body: FormData; response: ClassNoteImage };
+  listClassNoteCaptures: { method: "GET"; path: "/class-notes/captures"; params: undefined; query: undefined; body: undefined; response: Array<ClassNoteCapture> };
+  saveClassNoteCapture: { method: "POST"; path: "/class-notes/lessons/{id}/captures"; params: { id: string }; query: undefined; body: FormData; response: ClassNoteImage };
+  getClassNoteImage: { method: "GET"; path: "/class-notes/images/{id}"; params: { id: string }; query: undefined; body: undefined; response: Response };
+  getPrejoinStatus: { method: "GET"; path: "/lessons/{id}/prejoin"; params: { id: string }; query: undefined; body: undefined; response: PrejoinStatus };
+  renewPrejoinWait: { method: "PUT"; path: "/lessons/{id}/waiting/{clientId}"; params: { id: string; clientId: string }; query: undefined; body: undefined; response: void };
+  clearPrejoinWait: { method: "DELETE"; path: "/lessons/{id}/waiting/{clientId}"; params: { id: string; clientId: string }; query: undefined; body: undefined; response: void };
+};
+export type ApiOperationId = keyof ApiOperations;
+export const API_OPERATIONS = {
+  "health": {
+    "method": "GET",
+    "path": "/health"
+  },
+  "capabilities": {
+    "method": "GET",
+    "path": "/capabilities"
+  },
+  "authMe": {
+    "method": "GET",
+    "path": "/auth/me"
+  },
+  "authLogin": {
+    "method": "POST",
+    "path": "/auth/login"
+  },
+  "authLogout": {
+    "method": "POST",
+    "path": "/auth/logout"
+  },
+  "listStudents": {
+    "method": "GET",
+    "path": "/students"
+  },
+  "listStudentAttendance": {
+    "method": "GET",
+    "path": "/students/{studentId}/attendance"
+  },
+  "saveStudentAttendance": {
+    "method": "PUT",
+    "path": "/students/{studentId}/attendance/{lessonId}"
+  },
+  "listTeacherSubjects": {
+    "method": "GET",
+    "path": "/subjects"
+  },
+  "listLessons": {
+    "method": "GET",
+    "path": "/lessons"
+  },
+  "createLesson": {
+    "method": "POST",
+    "path": "/lessons"
+  },
+  "resolveLesson": {
+    "method": "GET",
+    "path": "/join/{code}"
+  },
+  "getLesson": {
+    "method": "GET",
+    "path": "/lessons/{id}"
+  },
+  "updateLesson": {
+    "method": "PATCH",
+    "path": "/lessons/{id}"
+  },
+  "cancelLesson": {
+    "method": "POST",
+    "path": "/lessons/{id}/cancel"
+  },
+  "connectedLesson": {
+    "method": "POST",
+    "path": "/lessons/{id}/connected"
+  },
+  "endLesson": {
+    "method": "POST",
+    "path": "/lessons/{id}/end"
+  },
+  "joinLesson": {
+    "method": "POST",
+    "path": "/lessons/{id}/join"
+  },
+  "leaveLesson": {
+    "method": "POST",
+    "path": "/lessons/{id}/leave"
+  },
+  "kickParticipant": {
+    "method": "POST",
+    "path": "/lessons/{id}/kick"
+  },
+  "inviteStudents": {
+    "method": "POST",
+    "path": "/lessons/{id}/invites"
+  },
+  "getSnapshot": {
+    "method": "GET",
+    "path": "/lessons/{id}/snapshot"
+  },
+  "listMaterials": {
+    "method": "GET",
+    "path": "/materials"
+  },
+  "uploadMaterial": {
+    "method": "POST",
+    "path": "/materials"
+  },
+  "deleteMaterial": {
+    "method": "DELETE",
+    "path": "/materials/{id}"
+  },
+  "getMaterialContent": {
+    "method": "GET",
+    "path": "/materials/{id}/content"
+  },
+  "livekitWebhook": {
+    "method": "POST",
+    "path": "/webhooks/livekit"
+  },
+  "getClassNoteTarget": {
+    "method": "GET",
+    "path": "/class-notes/target"
+  },
+  "listClassNoteWorksheets": {
+    "method": "GET",
+    "path": "/class-notes/worksheets"
+  },
+  "submitClassNoteWorksheet": {
+    "method": "POST",
+    "path": "/class-notes/lessons/{id}/worksheets"
+  },
+  "submitClassNoteCorrection": {
+    "method": "POST",
+    "path": "/class-notes/worksheets/{id}/correction"
+  },
+  "listClassNoteCaptures": {
+    "method": "GET",
+    "path": "/class-notes/captures"
+  },
+  "saveClassNoteCapture": {
+    "method": "POST",
+    "path": "/class-notes/lessons/{id}/captures"
+  },
+  "getClassNoteImage": {
+    "method": "GET",
+    "path": "/class-notes/images/{id}"
+  },
+  "getPrejoinStatus": {
+    "method": "GET",
+    "path": "/lessons/{id}/prejoin"
+  },
+  "renewPrejoinWait": {
+    "method": "PUT",
+    "path": "/lessons/{id}/waiting/{clientId}"
+  },
+  "clearPrejoinWait": {
+    "method": "DELETE",
+    "path": "/lessons/{id}/waiting/{clientId}"
+  }
+} as const satisfies Record<ApiOperationId, { method: string; path: string }>;
 export type CommandType = "lesson.start" | "lesson.mode.set" | "chat.send" | "hand.set" | "share.start" | "share.stop" | "media.update" | "document.page" | "document.open" | "stroke.add" | "stroke.erase" | "annotation.undo" | "annotation.redo" | "annotation.clear" | "assistance.request" | "assistance.respond" | "assistance.start" | "assistance.geometry" | "assistance.stop";
 export type CommandPayloads = { "lesson.start": EmptyPayload; "lesson.mode.set": LessonModeSetPayload; "chat.send": ChatSendPayload; "hand.set": HandSetPayload; "share.start": ShareStartPayload; "share.stop": EmptyPayload; "media.update": MediaUpdatePayload; "document.page": DocumentPagePayload; "document.open": DocumentOpenPayload; "stroke.add": StrokeAddPayload; "stroke.erase": StrokeErasePayload; "annotation.undo": EmptyPayload; "annotation.redo": EmptyPayload; "annotation.clear": EmptyPayload; "assistance.request": AssistanceRequestPayload; "assistance.respond": AssistanceRespondPayload; "assistance.start": AssistanceStartPayload; "assistance.geometry": AssistanceGeometryPayload; "assistance.stop": AssistanceStopPayload };

@@ -69,7 +69,7 @@ internal val LocalLessonWidth = staticCompositionLocalOf { LayoutToken.PageMaxWi
     var copied by remember(lesson.id) { mutableStateOf(false) }
     val owner = lesson.teacher.id == state.user?.id
     val capabilities = controller.capabilities.collectAsState().value
-    val notesEnabled = capabilities.supports("classroom.notes")
+    val notesEnabled = capabilities.supports(ContractProtocol.FeatureIds.ClassroomNotes)
     val link = "$origin/join/${lesson.code}"
     PageColumn {
         val width = LocalLessonWidth.current

@@ -65,6 +65,32 @@ Vite는 `/api`, `/socket.io`를 로컬 HTTPS 서비스에 전달합니다. 주�
 
 갱신 API를 시작하기 전에 `DATABASE_URL` 대상에 `npm run migrate`를 적용합니다. `20261109000000_open_lessons`는 기존 수업을 `INVITE_ONLY`로 유지하며 참여 방식 필드를 추가합니다. 로컬 직접 실행은 `npm run generate`로 Prisma 클라이언트도 갱신하세요. [`../infra/local/scripts/start.sh`](../infra/local/scripts/start.sh)는 이미지 빌드·마이그레이션을 포함합니다. 직접 마이그레이션할 때는 `DATABASE_URL`을 환경 변수로 주입해야 합니다. 예: `DATABASE_URL=postgresql://… npm run migrate`.
 
+### DB 무결성 마이그레이션
+
+`20261122000000_integrity`는 다음 두 가지를 바꿉니다.
+
+- **enum 전환:** `User.role`, `Lesson.status`, `Lesson.accessMode`, `Material.kind`, `Stroke.tool`, `ClassNoteImage.kind`를 PostgreSQL enum으로 바꿉니다.
+- **FK 추가:** 사용자 참조 9곳과 `AnnotationOperation.lessonId`에 FK를 추가합니다. 사용자 참조는 `RESTRICT`라서, 기록이 있는 계정은 삭제할 수 없습니다.
+
+배포 순서는 다음과 같습니다.
+
+1. API를 중지합니다. 이전 서버는 enum 컬럼을 text로 보내므로 함께 실행하면 안 됩니다.
+2. `npm run migrate`를 실행합니다.
+3. 새 API를 시작합니다.
+
+허용되지 않은 값이나 고아 참조가 하나라도 있으면 마이그레이션은 아무것도 바꾸지 않고 실패합니다. 미리 아래 쿼리로 점검하세요. 모든 결과가 0이어야 합니다.
+
+```sql
+SELECT count(*) FROM "User" WHERE role NOT IN ('teacher','student');
+SELECT count(*) FROM "Lesson" WHERE status NOT IN ('SCHEDULED','LIVE','ENDED','CANCELLED') OR "accessMode" NOT IN ('INVITE_ONLY','OPEN');
+SELECT count(*) FROM "Material" WHERE kind NOT IN ('media','document');
+SELECT count(*) FROM "Lesson" l WHERE NOT EXISTS (SELECT 1 FROM "User" u WHERE u.id = l."teacherId");
+-- LessonMember·Attendance·Message(userId), Material(ownerId), Stroke(authorId),
+-- AnnotationOperation(actorId, lessonId), ClassNoteImage(authorId, studentId)도 같은 방식으로 확인합니다.
+```
+
+실패하면 Prisma가 실패 기록을 남깁니다. 데이터를 정리한 뒤 `npx prisma migrate resolve --rolled-back 20261122000000_integrity`를 실행하고 다시 적용합니다.
+
 ### 실제 인프라 테스트
 
 ```sh

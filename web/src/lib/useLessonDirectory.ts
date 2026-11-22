@@ -7,7 +7,7 @@ import {
   useState,
 } from "react"
 import { SOCKET_EVENTS } from "../generated/contracts"
-import { api, type ApiLesson, type User } from "./api"
+import { call, type ApiLesson, type User } from "./api"
 import { createAppSocket } from "./socket"
 
 type Account = Pick<User, "id" | "role">
@@ -52,9 +52,9 @@ export function useLessonDirectory(
     const { signal } = controller
     try {
       const [lessons, students] = await Promise.all([
-        api<ApiLesson[]>("/lessons", { signal }),
+        call("listLessons", { signal }),
         account.role === "teacher"
-          ? api<User[]>("/students", { signal })
+          ? call("listStudents", { signal })
           : Promise.resolve([]),
       ])
       if (!signal.aborted)

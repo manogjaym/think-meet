@@ -3,13 +3,14 @@ import { Link } from "react-router-dom"
 import { Avatar, Icon } from "../components/ui"
 import type {
   StudentAttendanceInput, StudentAttendanceMonth, StudentAttendanceReason,
-  StudentAttendanceRow, StudentAttendanceStatus, User,
+  StudentAttendanceRow, StudentAttendanceStatus,
 } from "../generated/contracts"
 import { designContent as copy } from "../generated/design-content"
-import { api, colorFor, koreaParts } from "../lib/api"
+import { call, colorFor, koreaParts } from "../lib/api"
 import "../student-attendance.css"
+import { FEATURE_IDS } from "../generated/feature-policy"
 
-export const attendanceFeature = "classroom.attendance"
+export const attendanceFeature = FEATURE_IDS.ClassroomAttendance
 const statusLabels: Record<StudentAttendanceStatus, string> = {
   PRESENT: copy.attendancePresent, LATE: copy.attendanceLate, ABSENT: copy.attendanceAbsent,
 }
@@ -57,7 +58,7 @@ function LoadStatus({ error, loading, retry }: { error?: string; loading: string
 }
 
 export function AttendanceStudents() {
-  const load = useCallback((signal: AbortSignal) => api<User[]>("/students", { signal }), [])
+  const load = useCallback((signal: AbortSignal) => call("listStudents", { signal }), [])
   const { value, error, retry } = useAttendanceRequest(load)
   return <main className="attendance-page attendance-roster">
     <h1>{copy.attendanceStudents}</h1>
@@ -93,8 +94,7 @@ export function StudentAttendance({ studentId }: { studentId: string }) {
 function AttendanceMonth({ studentId, month, onMonth, onName }: {
   studentId: string; month: string; onMonth: (value: string) => void; onName: (name: string) => void
 }) {
-  const path = `/students/${encodeURIComponent(studentId)}/attendance`
-  const load = useCallback((signal: AbortSignal) => api<StudentAttendanceMonth>(`${path}?month=${encodeURIComponent(month)}`, { signal }), [path, month])
+  const load = useCallback((signal: AbortSignal) => call("listStudentAttendance", { params: { studentId }, query: { month }, signal }), [studentId, month])
   const { value, error, retry, update } = useAttendanceRequest(load)
   const [editing, setEditing] = useState<StudentAttendanceRow>()
   const studentName = value?.student.name
@@ -131,13 +131,13 @@ function AttendanceMonth({ studentId, month, onMonth, onName }: {
           <button type="button" className="attendance-edit-button" aria-label={`${row.lessonTitle} ${copy.attendanceEdit}`} onClick={() => setEditing(row)}>{copy.attendanceEditAction}</button>
         </li>)}
       </ul>}
-    {editing && <AttendanceEdit row={editing} path={`${path}/${encodeURIComponent(editing.lessonId)}`}
+    {editing && <AttendanceEdit row={editing} studentId={studentId}
       onCancel={() => setEditing(undefined)} onSave={report => { update(report); setEditing(undefined) }} />}
   </main>
 }
 
-function AttendanceEdit({ row, path, onCancel, onSave }: {
-  row: StudentAttendanceRow; path: string; onCancel: () => void; onSave: (value: StudentAttendanceMonth) => void
+function AttendanceEdit({ row, studentId, onCancel, onSave }: {
+  row: StudentAttendanceRow; studentId: string; onCancel: () => void; onSave: (value: StudentAttendanceMonth) => void
 }) {
   const dialog = useRef<HTMLDialogElement>(null)
   const request = useRef<AbortController>(null)
@@ -167,9 +167,7 @@ function AttendanceEdit({ row, path, onCancel, onSave }: {
     setError("")
     const body: StudentAttendanceInput = { status, reason, memo }
     try {
-      const value = await api<StudentAttendanceMonth>(path, {
-        method: "PUT", body: JSON.stringify(body), signal: controller.signal,
-      })
+      const value = await call("saveStudentAttendance", { params: { studentId, lessonId: row.lessonId }, body, signal: controller.signal })
       if (!controller.signal.aborted) onSave(value)
     } catch (error) {
       if (controller.signal.aborted) return

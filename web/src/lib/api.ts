@@ -1,6 +1,6 @@
 import { avatarColors } from "../generated/design-palette"
 import type { ApiLesson } from "../generated/contracts"
-import { API_BASE_PATH } from "../generated/contracts"
+import { API_BASE_PATH, API_OPERATIONS, type ApiOperationId, type ApiOperations } from "../generated/contracts"
 import { capabilityHeaders, requireHttpFeature } from "./features"
 export type { User, LessonAccessMode, ApiLesson, JoinResult } from "../generated/contracts"
 export class ApiError extends Error {
@@ -66,6 +66,36 @@ export async function api<T = void>(path: string, options: RequestInit = {}): Pr
   const body = await response.text()
   return (body ? JSON.parse(body) : undefined) as T
 }
+type Operation<K extends ApiOperationId> = ApiOperations[K]
+type Field<Name extends string, Value> = [Value] extends [undefined] ? { [P in Name]?: undefined } : { [P in Name]: Value }
+type OptionalField<Name extends string, Value> = [Value] extends [undefined] ? { [P in Name]?: undefined } : { [P in Name]?: Value }
+/** Path params, query and body are typed from contracts/openapi.json for each operationId. */
+export type CallOptions<K extends ApiOperationId> = Omit<RequestInit, "body" | "method"> &
+  Field<"params", Operation<K>["params"]> & OptionalField<"query", Operation<K>["query"]> & Field<"body", Operation<K>["body"]>
+type OptionalArgs<K extends ApiOperationId> = [Operation<K>["params"], Operation<K>["body"]] extends [undefined, undefined] ? [options?: CallOptions<K>] : [options: CallOptions<K>]
+
+/** Builds `/path` for an operation, encoding every path parameter. */
+export function operationPath<K extends ApiOperationId>(id: K, params?: Record<string, string>, query?: Record<string, string | undefined>) {
+  const path = API_OPERATIONS[id].path.replace(/\{([A-Za-z]+)\}/g, (_match, name: string) => {
+    const value = params?.[name]
+    if (value === undefined) throw new Error(`Missing path parameter ${name} for ${id}`)
+    return encodeURIComponent(value)
+  })
+  const search = new URLSearchParams(Object.entries(query ?? {}).filter((entry): entry is [string, string] => entry[1] !== undefined)).toString()
+  return search ? `${path}?${search}` : path
+}
+
+/**
+ * Typed JSON call by contract operationId. The response type comes from the contract, so a renamed
+ * field or route fails type checking instead of at runtime. Binary responses use apiResponse instead.
+ */
+export function call<K extends ApiOperationId>(id: K, ...[options]: OptionalArgs<K>): Promise<Operation<K>["response"]> {
+  const { params, query, body, ...init } = (options ?? {}) as CallOptions<K> & { params?: Record<string, string>; query?: Record<string, string | undefined>; body?: unknown }
+  const request: RequestInit = { ...init, method: API_OPERATIONS[id].method }
+  if (body !== undefined) request.body = body instanceof FormData || typeof body === "string" ? body : JSON.stringify(body)
+  return api<Operation<K>["response"]>(operationPath(id, params, query), request)
+}
+
 export const joinLink = (lesson: Pick<ApiLesson, "code">) =>
   `${window.location.origin}/join/${encodeURIComponent(lesson.code)}`
 export const colorFor = (value: string) =>

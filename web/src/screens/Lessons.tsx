@@ -5,18 +5,11 @@ import { designContent } from "../generated/design-content"
 import { useFeature } from "../lib/useFeature"
 import { completedLessonTime } from "../lib/lessonRecord"
 import { LessonSubjectDialog } from "../components/LessonSubjectDialog"
-import {
-  api,
-  colorFor,
-  displayLesson,
-  joinLink,
-  type ApiLesson,
-  type LessonAccessMode,
-  type User,
-} from "../lib/api"
+import { call, colorFor, displayLesson, joinLink, type ApiLesson, type LessonAccessMode, type User } from "../lib/api"
 import type { Role, Screen } from "../models"
 import type { Lesson } from "./Home"
 import { Avatar, Badge, Confirm, Icon } from "../components/ui"
+import { FEATURE_IDS } from "../generated/feature-policy"
 
 function dateInputValue(date: Date) {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -52,7 +45,7 @@ export function Detail({
   onCancel?: (lesson: Lesson) => Promise<void>
   onEdit?: (lesson: Lesson) => void
 }) {
-  const subjectsEnabled = useFeature("classroom.subjects")
+  const subjectsEnabled = useFeature(FEATURE_IDS.ClassroomSubjects)
   const [cancel, setCancel] = useState(false)
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">(
     "idle",
@@ -327,7 +320,7 @@ export function Form({
   teacherId: string
 }) {
   const details = lesson
-  const subjectsEnabled = useFeature("classroom.subjects")
+  const subjectsEnabled = useFeature(FEATURE_IDS.ClassroomSubjects)
   const [subjects, setSubjects] = useState<TeacherSubject[] | null>(null)
   const [subjectsFailed, setSubjectsFailed] = useState(false)
   const [subjectRetry, setSubjectRetry] = useState(0)
@@ -342,7 +335,7 @@ export function Form({
     const request = new AbortController()
     setSubjects(null)
     setSubjectsFailed(false)
-    void api<TeacherSubject[]>("/subjects", { signal: request.signal }).then(
+    void call("listTeacherSubjects", { signal: request.signal }).then(
       (rows) => { if (!request.signal.aborted) setSubjects(rows) },
       () => { if (!request.signal.aborted) setSubjectsFailed(true) },
     )
@@ -422,11 +415,7 @@ export function Form({
     if (Object.keys(nextErrors).length) return
     setSaving(true)
     try {
-      const result = await api<ApiLesson>(
-        lesson ? `/lessons/${lesson.id}` : "/lessons",
-        {
-          method: lesson ? "PATCH" : "POST",
-          body: JSON.stringify({
+      const body: LessonInput = {
             title: title.trim(),
             description: description.trim(),
             startsAt: new Date(`${date}T${startTime}:00+09:00`).toISOString(),
@@ -436,9 +425,10 @@ export function Form({
             accessMode,
             studentIds: isOpen ? [] : selected,
             ...(subjectsEnabled && subjects !== null && subjectChange !== undefined ? { subjectId: subjectChange } : {}),
-          } satisfies LessonInput),
-        },
-      )
+          }
+      const result = lesson
+        ? await call("updateLesson", { params: { id: lesson.id }, body })
+        : await call("createLesson", { body })
       onCreated?.(displayLesson(result))
     } catch (e) {
       setErrors({

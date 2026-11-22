@@ -1,53 +1,63 @@
 import { WebSocketGateway, WebSocketServer, SubscribeMessage, ConnectedSocket, MessageBody, OnGatewayConnection, OnGatewayDisconnect } from '@nestjs/websockets'
 import { OnModuleInit } from '@nestjs/common'
 import { Server, Socket } from 'socket.io'
-import { z, ZodError } from 'zod'
+import { z } from 'zod'
 import { Auth } from './auth'
 import { Lessons } from './lessons'
-import { ApiError } from './errors'
+import { ApiError, toErrorBody, type ErrorCode } from './errors'
+import { assertLessonAccess } from './lesson/access'
+import { readShare } from './lesson/share'
+import type { LessonRealtimeSink } from './realtime-port'
 import { FeaturePolicy } from './features'
 import { socketFeatureClient } from './feature-policy'
 import type { AssistanceBinding, AssistanceCommandContext } from './assistance'
 import { SOCKET_EVENTS } from './generated/contracts'
 import type { CommandEnvelope, SubscribeInput, StrokePreview, AssistancePointer } from './generated/contracts'
 const commandSchema = z.object({ lessonId: z.string().uuid(), type: z.string().min(1).max(100), payload: z.any().default({}), requestId: z.string().max(100).optional(), expectedShareId: z.string().uuid().optional() })
-export function socketError(error: any) {
-  if (error instanceof ApiError) return error.getResponse()
-  if (error instanceof ZodError) return { code: 'VALIDATION', message: error.issues[0]?.message || '입력값이 올바르지 않습니다.' }
-  console.error('socket command failed', error?.message)
-  return { code: 'INTERNAL', message: '요청을 처리하지 못했습니다.' }
-}
+/** Socket acks use the same code/message mapping as HTTP responses. */
+export function socketError(error: unknown) { return toErrorBody(error).body }
 @WebSocketGateway({ cors: false, maxHttpBufferSize: 1024 * 1024, transports: ['websocket', 'polling'] })
-export class Gateway implements OnGatewayConnection, OnGatewayDisconnect, OnModuleInit {
+export class Gateway implements OnGatewayConnection, OnGatewayDisconnect, OnModuleInit, LessonRealtimeSink {
   @WebSocketServer() server!: Server
   private rates = new Map<string, { count: number; at: number }>()
   private subscriptions = new Map<string, string>()
   private pointerOrders = new WeakMap<AssistanceBinding, { received: number; delivered: number }>()
   constructor(readonly auth: Auth, readonly lessons: Lessons, readonly features: FeaturePolicy = new FeaturePolicy()) {}
-  onModuleInit() {
-    this.lessons.assistanceConnected = session => this.assistanceConnected(session)
-    this.lessons.publishSnapshot = (id, snapshot) => this.emitAuthorized(id, SOCKET_EVENTS.Snapshot, snapshot, new Set(snapshot.participants.map((member: any) => member.user.id)))
-    this.lessons.notifyUsers = ids => { for (const id of ids) this.server?.to(`user:${id}`).emit(SOCKET_EVENTS.LessonsChanged) }
-    this.lessons.notifyAllUsers = () => { this.server?.emit(SOCKET_EVENTS.LessonsChanged) }
-    this.lessons.disconnectUser = (id, userId, code) => {
-      if (!this.server) return
-      for (const socket of this.server.sockets.sockets.values()) {
-        if (socket.data.user?.id !== userId || !socket.rooms.has(`lesson:${id}`)) continue
-        // Replacement media disconnect is communicated by LiveKit's duplicate-identity event.
-        // Do not evict the newly connecting socket together with the old socket.
-        if (code === 'REPLACED') continue
-        socket.emit(SOCKET_EVENTS.RoomError, { code, message: '선생님에 의해 수업에서 퇴장되었습니다.' })
-        socket.leave(`lesson:${id}`)
-      }
+  /** Gateway is the lesson realtime transport (see realtime-port.ts). */
+  onModuleInit() { this.lessons.realtime.attach(this) }
+  publishSnapshot(id: string, snapshot: { participants: Array<{ user: { id: string } }> }) {
+    return this.emitAuthorized(id, SOCKET_EVENTS.Snapshot, snapshot, new Set(snapshot.participants.map(member => member.user.id)))
+  }
+  notifyUsers(ids: string[]) { for (const id of ids) this.server?.to(`user:${id}`).emit(SOCKET_EVENTS.LessonsChanged) }
+  notifyAllUsers() { this.server?.emit(SOCKET_EVENTS.LessonsChanged) }
+  disconnectUser(id: string, userId: string, code: ErrorCode | 'REPLACED') {
+    if (!this.server) return
+    // Replacement media disconnect is communicated by LiveKit's duplicate-identity event.
+    // Do not evict the newly connecting socket together with the old socket.
+    if (code === 'REPLACED') return
+    for (const socket of this.server.sockets.sockets.values()) {
+      if (socket.data.user?.id !== userId || !socket.rooms.has(`lesson:${id}`)) continue
+      socket.emit(SOCKET_EVENTS.RoomError, { code, message: '선생님에 의해 수업에서 퇴장되었습니다.' })
+      socket.leave(`lesson:${id}`)
     }
   }
+  /**
+   * Every delivery re-checks each socket's session, so a revoked session or kicked member stops
+   * receiving immediately. Within one delivery the session lookup is shared per cookie and, when no
+   * participant set is given, the lesson is read once and checked in memory.
+   */
   async emitAuthorized(id: string, event: string, payload: any, allowed?: Set<string>, exceptSocketId?: string) {
     if (!this.server) return
     const sockets = [...this.server.sockets.sockets.values()].filter(socket => socket.id !== exceptSocketId && socket.rooms.has(`lesson:${id}`))
+    if (!sockets.length) return
+    const sessions = new Map<string, ReturnType<Auth['userFromCookie']>>()
+    const userFor = (cookie = '') => { let user = sessions.get(cookie); if (!user) sessions.set(cookie, user = this.auth.userFromCookie(cookie)); return user }
+    let lesson: ReturnType<Lessons['get']> | undefined
     await Promise.all(sockets.map(async socket => {
       try {
-        const user = await this.auth.userFromCookie(socket.handshake.headers.cookie)
-        if (allowed ? !allowed.has(user.id) : !(await this.lessons.access(id, user, true))) throw new ApiError('ACCOUNT', '이 수업의 초대 대상이 아닙니다.', 403)
+        const user = await userFor(socket.handshake.headers.cookie)
+        if (allowed) { if (!allowed.has(user.id)) throw new ApiError('ACCOUNT', '이 수업의 초대 대상이 아닙니다.', 403) }
+        else assertLessonAccess(await (lesson ??= this.lessons.get(id)), user, true)
         socket.emit(event, payload)
       } catch (error) {
         socket.emit(SOCKET_EVENTS.RoomError, socketError(error))
@@ -76,7 +86,7 @@ export class Gateway implements OnGatewayConnection, OnGatewayDisconnect, OnModu
       throw error
     }
   }
-  private assistanceConnected(session: AssistanceBinding) {
+  assistanceConnected(session: AssistanceBinding) {
     const room = `lesson:${session.lessonId}`
     return [[session.teacherId, session.teacherSocketId], [session.studentId, session.studentSocketId]].every(([userId, socketId]) => {
       const socket = this.server?.sockets.sockets.get(socketId)
@@ -153,7 +163,7 @@ export class Gateway implements OnGatewayConnection, OnGatewayDisconnect, OnModu
       const user = await this.auth.userFromCookie(socket.handshake.headers.cookie)
       this.features.assertEvent(SOCKET_EVENTS.StrokePreview, body, socket.handshake.headers, socket.handshake.auth)
       const lesson = await this.lessons.access(body.lessonId, user, true)
-      const share: any = lesson.share
+      const share = readShare(lesson.share)
       if (!share || share.id !== body.shareId || share.page !== body.page) return
       await this.emitAuthorized(body.lessonId, SOCKET_EVENTS.StrokePreview, { ...body, authorId: user.id }, undefined, socket.id)
     } catch (error) {
@@ -166,20 +176,20 @@ export class Gateway implements OnGatewayConnection, OnGatewayDisconnect, OnModu
       this.rate(socket)
       const body: AssistancePointer = z.object({ lessonId: z.string().uuid(), sessionId: z.string().uuid(), shareId: z.string().uuid(),
         geometryVersion: z.number().int().min(1).max(2147483647), x: z.number().min(0).max(1), y: z.number().min(0).max(1) }).parse(input)
-      const candidate = this.lessons.assistance.current(body.lessonId)
+      const candidate = this.lessons.currentAssistance(body.lessonId)
       let order = candidate ? this.pointerOrders.get(candidate) : undefined
       if (candidate && !order) { order = { received: 0, delivered: 0 }; this.pointerOrders.set(candidate, order) }
       const received = order ? ++order.received : 0
       const user = await this.assistanceUser(socket)
       this.features.assertEvent(SOCKET_EVENTS.AssistancePointer, body, socket.handshake.headers, socket.handshake.auth)
       const lesson = await this.lessons.access(body.lessonId, user, true, true)
-      const session = this.lessons.assistance.require(body.lessonId, body.sessionId)
+      const session = this.lessons.requireAssistance(body.lessonId, body.sessionId)
       if (session !== candidate || !order) return
       this.assertLessonSocket(socket, body.lessonId, user.id)
       if (session.teacherId !== user.id || session.teacherSocketId !== socket.id) throw new ApiError('FORBIDDEN', '이 요청의 선생님만 위치를 알려줄 수 있어요.', 403)
-      const current = () => this.lessons.assistance.current(body.lessonId) === session && session.status === 'active'
+      const current = () => this.lessons.currentAssistance(body.lessonId) === session && session.status === 'active'
         && session.shareId === body.shareId && session.geometry?.version === body.geometryVersion && this.assistanceConnected(session)
-      const share = lesson.share as any
+      const share = readShare(lesson.share)
       if (!current() || share?.id !== body.shareId || share.assistanceId !== session.id || share.ownerId !== session.studentId || share.type !== 'screen') return
       const target = this.server?.sockets.sockets.get(session.studentSocketId)
       if (!target) return

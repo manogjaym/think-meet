@@ -9,7 +9,7 @@ model User {
   id String @id @default(uuid()) @db.Uuid
   username String @unique
   name String
-  role String
+  role UserRole
   passwordHash String
   createdAt DateTime @default(now())
   sessions LoginSession[]
@@ -17,6 +17,43 @@ model User {
   studentLinks TeacherStudent[] @relation("student")
   attendanceOverrides StudentAttendanceOverride[]
   subjects TeacherSubject[]
+  // History references are RESTRICT: there is no user deletion, and records must not be orphaned.
+  taughtLessons Lesson[] @relation("LessonTeacher")
+  lessonMemberships LessonMember[]
+  attendance Attendance[]
+  messages Message[]
+  materials Material[]
+  strokes Stroke[]
+  annotationOperations AnnotationOperation[]
+  authoredNoteImages ClassNoteImage[] @relation("ClassNoteAuthor")
+  studentNoteImages ClassNoteImage[] @relation("ClassNoteStudent")
+}
+enum UserRole {
+  teacher
+  student
+}
+enum LessonStatus {
+  SCHEDULED
+  LIVE
+  ENDED
+  CANCELLED
+}
+enum LessonAccessMode {
+  INVITE_ONLY
+  OPEN
+}
+enum MaterialKind {
+  media
+  document
+}
+enum StrokeTool {
+  pen
+  highlighter
+}
+enum ClassNoteImageKind {
+  worksheet
+  capture
+  correction
 }
 model LoginSession {
   id String @id
@@ -50,14 +87,15 @@ enum LessonInstructionPhase {
 model Lesson {
   id String @id @default(uuid()) @db.Uuid
   teacherId String @db.Uuid
+  teacher User @relation("LessonTeacher", fields: [teacherId], references: [id], onDelete: Restrict)
   subjectId String? @db.Uuid
   subject TeacherSubject? @relation(fields: [subjectId], references: [id], onDelete: SetNull)
   title String
   description String @default("")
-  accessMode String @default("INVITE_ONLY")
+  accessMode LessonAccessMode @default(INVITE_ONLY)
   startsAt DateTime
   endsAt DateTime?
-  status String @default("SCHEDULED")
+  status LessonStatus @default(SCHEDULED)
   code String @unique
   startedAt DateTime?
   instructionPhase LessonInstructionPhase?
@@ -74,6 +112,7 @@ model Lesson {
   attendance Attendance[]
   attendanceOverrides StudentAttendanceOverride[]
   noteImages ClassNoteImage[]
+  annotationOperations AnnotationOperation[]
   @@index([teacherId, startsAt])
   @@index([subjectId])
   @@index([accessMode, status, startsAt])
@@ -82,6 +121,7 @@ model LessonMember {
   lessonId String @db.Uuid
   userId String @db.Uuid
   lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
   banned Boolean @default(false)
   raised Boolean @default(false)
   admissionId String?
@@ -109,6 +149,7 @@ model Attendance {
   joinedAt DateTime @default(now())
   leftAt DateTime?
   lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
   @@index([lessonId, userId])
 }
 enum StudentAttendanceStatus {
@@ -141,14 +182,16 @@ model Message {
   text String
   createdAt DateTime @default(now())
   lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
   @@unique([lessonId, userId, clientId])
   @@index([lessonId, createdAt])
 }
 model Material {
   id String @id @default(uuid()) @db.Uuid
   ownerId String @db.Uuid
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Restrict)
   name String
-  kind String
+  kind MaterialKind
   objectKey String @unique
   size Int
   contentType String
@@ -163,13 +206,14 @@ model Stroke {
   authorId String @db.Uuid
   shareId String
   page Int @default(1)
-  tool String
+  tool StrokeTool
   color String
   points Json
   deleted Boolean @default(false)
   revision Int @default(0)
   createdAt DateTime @default(now())
   lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  author User @relation(fields: [authorId], references: [id], onDelete: Restrict)
   @@index([lessonId, shareId, page])
 }
 model WebhookEvent {
@@ -186,6 +230,8 @@ model AnnotationOperation {
   undone Boolean @default(false)
   createdAt DateTime @default(now())
   touchedAt DateTime @updatedAt
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  actor User @relation(fields: [actorId], references: [id], onDelete: Restrict)
   @@index([lessonId, actorId, shareId, page, undone])
 }
 
@@ -194,8 +240,10 @@ model ClassNoteImage {
   lessonId String @db.Uuid
   lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
   authorId String @db.Uuid
+  author User @relation("ClassNoteAuthor", fields: [authorId], references: [id], onDelete: Restrict)
   studentId String? @db.Uuid
-  kind String
+  student User? @relation("ClassNoteStudent", fields: [studentId], references: [id], onDelete: Restrict)
+  kind ClassNoteImageKind
   requestId String @db.Uuid
   originalId String? @unique @db.Uuid
   original ClassNoteImage? @relation("ClassNoteCorrection", fields: [originalId], references: [id], onDelete: Cascade)

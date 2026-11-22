@@ -1,12 +1,14 @@
 package com.woongjin.thinkmeet.meeting
 
 import com.woongjin.thinkmeet.data.ApiException
+import com.woongjin.thinkmeet.data.ContractProtocol
 import com.woongjin.thinkmeet.data.JoinResult
 import com.woongjin.thinkmeet.data.MeetingRealtime
 import com.woongjin.thinkmeet.data.MeetingSnapshot
 import com.woongjin.thinkmeet.data.RealtimeError
 import com.woongjin.thinkmeet.data.ThinkMeetApi
 import com.woongjin.thinkmeet.platform.MediaController
+import com.woongjin.thinkmeet.platform.MediaFailure
 import com.woongjin.thinkmeet.platform.PictureInPictureController
 import com.woongjin.thinkmeet.platform.RemoteAssistanceController
 import kotlinx.coroutines.CancellationException
@@ -69,18 +71,17 @@ internal class MeetingSession(
         watch.launch { pip.state.collect { if (it.closedByUser) requestExit(Exit.Pip) } }
         watch.launch {
             link.roomErrors.collect { error ->
-                val code = error.code.lowercase()
-                when {
-                    code == "ended" || code == "cancelled" -> endFromServer()
-                    roomAccessErrors.any(code::contains) -> fail(error.message)
+                when (error.code) {
+                    in endedCodes -> endFromServer()
+                    in roomAccessErrors -> fail(error.message)
                 }
             }
         }
         watch.launch {
-            media.state.map { it.error }.distinctUntilChanged().collect { message ->
-                if (message != null) {
-                    if (mediaAccessErrors.any(message.lowercase()::contains)) fail("다른 기기에서 입장했거나 수업 접근이 종료되었어요.")
-                    else report(message)
+            media.state.map { (it.failure ?: MediaFailure.fromLegacyMessage(it.error)) to it.error }.distinctUntilChanged().collect { (failure, message) ->
+                when {
+                    failure != null -> fail("다른 기기에서 입장했거나 수업 접근이 종료되었어요.")
+                    message != null -> report(message)
                 }
             }
         }
@@ -119,7 +120,7 @@ internal class MeetingSession(
         catch (error: CancellationException) { throw error }
         catch (error: ApiException) {
             when {
-                error.code == "ENDED" || error.code == "CANCELLED" -> endFromServer()
+                error.code in endedCodes -> endFromServer()
                 error.status == 401 || error.status == 403 || error.code in snapshotAccessErrors -> fail(error.message)
                 reportFailure -> report(error.message)
             }
@@ -247,9 +248,12 @@ internal class MeetingSession(
 
     private companion object {
         const val requestError = "요청을 처리하지 못했어요."
-        val roomAccessErrors = listOf("kick", "forbidden", "unauthorized", "unauthenticated", "not_invited", "account", "expired", "replaced", "banned")
-        val snapshotAccessErrors = setOf("KICKED", "NOT_INVITED", "ACCOUNT", "REPLACED")
-        val mediaAccessErrors = listOf("replaced", "duplicate_identity", "participant_removed", "kicked")
+        // Exact codes from contracts/openapi.json ErrorCode (plus the client-side session replacement).
+        val endedCodes = setOf(ContractProtocol.ErrorCodes.Ended, ContractProtocol.ErrorCodes.Cancelled)
+        val roomAccessErrors = setOf(ContractProtocol.ErrorCodes.Kicked, ContractProtocol.ErrorCodes.Forbidden, ContractProtocol.ErrorCodes.Unauthenticated, ContractProtocol.ErrorCodes.Account, SESSION_REPLACED)
+        val snapshotAccessErrors = setOf(ContractProtocol.ErrorCodes.Kicked, ContractProtocol.ErrorCodes.Account)
+        /** Emitted by MeetingRealtime when the same account subscribes from another device. */
+        const val SESSION_REPLACED = "SESSION_REPLACED"
     }
 }
 

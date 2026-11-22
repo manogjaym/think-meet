@@ -1,0 +1,38 @@
+{
+  "id": "architecture-structure",
+  "summary": "큰 파일을 역할별로 나누고, 서비스 간 숨은 결합을 없애고, 문자열에 의존하던 기능 ID·오류 코드·명령·API 호출을 생성 타입으로 바꾸고, HTTP 인증을 전역 기본값으로 하고, DB에 enum·FK 무결성 제약을 추가합니다. 통신 규격과 동작은 바꾸지 않습니다.",
+  "scope": "platform-only",
+  "featureIds": [
+    "classroom.core",
+    "classroom.subjects",
+    "classroom.notes",
+    "classroom.attendance",
+    "classroom.prejoin",
+    "classroom.lesson-modes",
+    "meeting.remote-assistance"
+  ],
+  "platforms": {
+    "server": {
+      "status": "implemented",
+      "reason": "전역 AuthGuard·도메인별 컨트롤러, Gateway↔Lessons 실시간 포트, lessons.ts 분리(명령 handler map·판서·원격 지원·정리·DTO·LiveKit), 한 번 전송할 때 세션·수업 조회 중복 제거, ErrorCode 타입, share JSON 검증, enum·FK 마이그레이션을 반영합니다."
+    },
+    "web": {
+      "status": "implemented"
+    },
+    "android": {
+      "status": "implemented"
+    },
+    "ios": {
+      "status": "implemented",
+      "reason": "공통 Kotlin(commonMain)의 타입 지정 명령, 오류 코드 정확 일치, MeetingScreen 분리는 iOS에도 적용됩니다. 사용자 결정으로 Swift 브리지와 iosMain은 수정하지 않았습니다. iOS가 보내는 기존 REPLACED:/KICKED: 접두어는 MediaFailure.fromLegacyMessage가 해석합니다. 이 Linux 환경에는 Xcode가 없어 iOS 빌드·실행은 검증하지 않았습니다."
+    }
+  },
+  "verification": [
+    "2026-11-22 Asia/Seoul. 루트에서 node contracts/scripts/generate.mjs --check, node contracts/scripts/check.mjs, node features/check.mjs --changed-files <이번 작업 파일 목록>, node --test design/test contracts/test(13개) 통과. 디자인 생성물 검사는 git-lfs가 없어 글꼴 포인터 때문에 실패하며, 수정 전 HEAD에서도 같습니다.",
+    "server/에서 tsc --noEmit, npx tsx --test test/*.test.ts 66개 통과. 새 테스트: 모든 HTTP 핸들러의 공개·비공개 여부와 AuthGuard→HttpFeatureGuard 순서, 여러 컨트롤러 파일의 route 검사, 한 번 전송할 때 세션 조회 1회(쿠키별)·수업 조회 1회와 권한 없는 소켓 차단, 잘못된 share 무시.",
+    "로컬 PostgreSQL 18의 임시 DB에서 이전 마이그레이션과 enum별 표본 데이터에 prisma migrate deploy로 20261122000000_integrity를 적용했습니다. 값·기본값 변환, FK 10개, RESTRICT, ClassNoteImage 종류 규칙을 확인했고 prisma migrate diff 결과 스키마와 차이가 없었습니다. 고아 데이터가 있으면 아무것도 바꾸지 않고 실패하는 것도 확인했습니다. 임시 DB는 삭제했고 사용자 DB에는 적용하지 않았습니다.",
+    "web/에서 tsc --noEmit, 단위 테스트 19개(routes 3개 포함), vite build 통과. 설치된 Chromium headless shell 1255로 모의·혼합 e2e 20개를 실행해 13개가 통과했습니다. 실패 7개(home-live 5개, lesson-subjects:52, prejoin:11)는 수정 전 HEAD에서도 같은 오류로 실패합니다. 개발 서버 8443에서 teacher1로 홈·수업 상세·학생 관리를 1280x800·390x844로 확인했고, 로그인 전 /auth/me 401 외의 콘솔 오류는 없었습니다. 알 수 없는 경로는 /로 이동합니다.",
+    "mobile/에서 JDK 17로 :composeApp:testDebugUnitTest 45개(새 테스트 5개: 수업 모드 2단계 전환·확인·중복 방지, 안 읽은 채팅, 오류 코드 정확 일치, MediaFailure), assembleDebug, compileDebugAndroidTestKotlin 통과. test_device 에뮬레이터에서 teacher1로 검증용 임시 수업에 입장해 LiveKit 연결, 미러링 모드 전환(DB LIVE|mirroring, 학생 선택 창), 채팅 전송, 손들기, 모두 종료를 확인했습니다. 임시 수업·세션·e2e가 만든 수업 8개를 삭제했고 에뮬레이터 설정을 되돌렸습니다.",
+    "iOS 빌드·실행, 원격 CI, 운영 DB 마이그레이션, 2대 이상 서버 실행은 검증하지 않았습니다."
+  ]
+}

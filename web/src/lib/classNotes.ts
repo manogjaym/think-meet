@@ -1,21 +1,21 @@
-import type { ClassNoteCapture, ClassNoteImage, ClassNoteTarget, ClassNoteWorksheet } from "../generated/contracts"
-import { api, apiResponse } from "./api"
+import { apiResponse, call, operationPath } from "./api"
+import { FEATURE_IDS } from "../generated/feature-policy"
 
-export const notesFeature = "classroom.notes"
+export const notesFeature = FEATURE_IDS.ClassroomNotes
 export const notesImageTypes = "image/jpeg,image/png"
-const base = "/class-notes"
-export const noteTarget = (signal?: AbortSignal) => api<ClassNoteTarget>(`${base}/target`, { signal })
+export const noteTarget = (signal?: AbortSignal) => call("getClassNoteTarget", { signal })
 export const noteWorksheets = (query: { month: string } | { lessonId: string }, signal?: AbortSignal) =>
-  api<ClassNoteWorksheet[]>(`${base}/worksheets?${new URLSearchParams(query)}`, { signal })
-export const noteCaptures = (signal?: AbortSignal) => api<ClassNoteCapture[]>(`${base}/captures`, { signal })
-export const noteImage = async (id: string, signal: AbortSignal) => (await apiResponse(`${base}/images/${id}`, { signal })).blob()
+  call("listClassNoteWorksheets", { query, signal })
+export const noteCaptures = (signal?: AbortSignal) => call("listClassNoteCaptures", { signal })
+export const noteImage = async (id: string, signal: AbortSignal) => (await apiResponse(operationPath("getClassNoteImage", { id }), { signal })).blob()
 
-export function uploadNote(path: string, file: Blob, requestId: string, fields: Record<string, string> = {}, signal?: AbortSignal) {
+/** Multipart upload to one of the class-note image operations; `id` is the lesson or worksheet. */
+export function uploadNote(operation: "submitClassNoteWorksheet" | "submitClassNoteCorrection" | "saveClassNoteCapture", id: string, file: Blob, requestId: string, fields: Record<string, string> = {}, signal?: AbortSignal) {
   const body = new FormData()
   body.append("file", file, file.type === "image/png" ? "image.png" : "image.jpg")
   body.append("requestId", requestId)
   Object.entries(fields).forEach(([name, value]) => body.append(name, value))
-  return api<ClassNoteImage>(`${base}${path}`, { method: "POST", body, signal })
+  return call(operation, { params: { id }, body, signal })
 }
 
 export function validateNoteFile(file: File) {

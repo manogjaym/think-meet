@@ -5,6 +5,7 @@ import { Badge, Icon } from "../components/ui"
 import { designContent } from "../generated/design-content"
 import { lessonRecordStart } from "../lib/lessonRecord"
 import { useFeature } from "../lib/useFeature"
+import { FEATURE_IDS } from "../generated/feature-policy"
 const timeFormat = new Intl.DateTimeFormat("ko-KR", {
   timeZone: "Asia/Seoul",
   hour: "numeric",
@@ -22,7 +23,7 @@ export function Ended({
   user: User
 }) {
   const ended = lesson.status === "ENDED"
-  const subjectsEnabled = useFeature("classroom.subjects")
+  const subjectsEnabled = useFeature(FEATURE_IDS.ClassroomSubjects)
   const intervals = lesson.attendance?.filter(item => item.userId === user.id) || []
   const personalStart = intervals.length ? new Date(Math.min(...intervals.map(item=>Date.parse(item.joinedAt)))) : null
   const localFinish = sessionStorage.getItem(`think-meet.left.${lesson.id}`)
@@ -79,7 +80,8 @@ export function Ended({
     </main>
   )
 }
-export type ExceptionType = "invalid" | "account" | "cancelled" | "ended" | "failed" | "kicked" | "moved"
+export type { ExceptionType } from "../routes"
+import type { ExceptionType } from "../routes"
 const copy: Record<ExceptionType, [string, string]> = {
   invalid: [
     "수업을 찾을 수 없어요",

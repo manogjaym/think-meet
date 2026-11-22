@@ -12,6 +12,8 @@ const teacher: PublicUser = { id: randomUUID(), username: 'teacher', name: 'Teac
 const student: PublicUser = { id: randomUUID(), username: 'student', name: 'Student', role: 'student' }
 const id = randomUUID()
 const base = { id, teacherId: teacher.id, members: [{ userId: teacher.id, banned: false }, { userId: student.id, banned: false }], status: 'LIVE', roomName: 'opaque-room' }
+// Stored shares always carry every Share field (see src/lesson/share.ts); fixtures override only what matters.
+const storedShare = <T extends object>(share: T) => ({ page: 1, playing: false, position: 0, updatedAt: new Date().toISOString(), ...share })
 function service(lesson: any = base) { return new Lessons({ lesson: { findUnique: async () => lesson }, teacherStudent: { count: async () => 1 } } as any) }
 function code(expected: string) { return (error: any) => error instanceof ApiError && (error.getResponse() as any).code === expected }
 test('public users never contain password hash', () => { assert.deepEqual(publicUser({ ...student, passwordHash: 'secret' } as any), student) })
@@ -37,11 +39,11 @@ test('students cannot update teacher video or PDF page', async () => {
   for (const type of ['media.update','document.page']) await assert.rejects(service().command(student, { lessonId: id, type, payload: {} }), code('FORBIDDEN'))
 })
 test('students cannot stop another sharer', async () => {
-  await assert.rejects(service({ ...base, share: { id: randomUUID(), ownerId: teacher.id, type: 'screen' } }).command(student, { lessonId: id, type: 'share.stop', payload: {} }), code('FORBIDDEN'))
+  await assert.rejects(service({ ...base, share: storedShare({ id: randomUUID(), ownerId: teacher.id, type: 'screen' }) }).command(student, { lessonId: id, type: 'share.stop', payload: {} }), code('FORBIDDEN'))
 })
 test('guarded Socket stops preserve a replacement and keep legacy stops and owner permissions', async () => {
   const oldScreenId = randomUUID()
-  const document = { id: randomUUID(), ownerId: teacher.id, type: 'document' }
+  const document = storedShare({ id: randomUUID(), ownerId: teacher.id, type: 'document' })
   let share: typeof document | null = document
   let writes = 0
   let actor = teacher
@@ -156,7 +158,7 @@ test('file deletion and simultaneous share cannot create a dangling active mater
   assert.equal(share, null)
 })
 test('share expiration still runs when all admission IDs have been cleared', async () => {
-  let share: any = { id: randomUUID(), type: 'screen', ownerId: student.id }
+  let share: any = storedShare({ id: randomUUID(), type: 'screen', ownerId: student.id })
   const lesson: any = { ...base, share, members: [{ userId: student.id, online: false, admissionId: null, disconnectedAt: new Date(Date.now() - 40000) }] }
   const db: any = {
     lesson: { findMany: async ({ where }: any) => { assert.equal(where.OR.some((entry: any) => entry.share), true); return [lesson] }, findUnique: async () => ({ ...lesson, share }), update: async () => { share = null } },
@@ -170,7 +172,7 @@ test('share expiration still runs when all admission IDs have been cleared', asy
 test('ordinary screen share survives unpublish and republish, and expires if the video stays missing', async t => {
   let now = Date.now()
   t.mock.method(Date, 'now', () => now)
-  const firstShare = { id: randomUUID(), type: 'screen', ownerId: teacher.id }
+  const firstShare = storedShare({ id: randomUUID(), type: 'screen', ownerId: teacher.id })
   let share: typeof firstShare | null = firstShare
   const owner = { userId: teacher.id, online: true, banned: false }
   const audio = { sid: 'screen-audio', source: TrackSource.SCREEN_SHARE_AUDIO }
@@ -246,4 +248,31 @@ test('status transitions never overwrite a concurrent change made outside this p
   const startsAt = new Date(Date.now() + 3600000).toISOString()
   await assert.rejects(edited.svc.edit(id, teacher, { title: 'Edited', startsAt, endsAt: null, studentIds: [student.id] }), code('CONFLICT'))
   assert.deepEqual(edited.writes, ['lesson'], 'the roster is not changed after a lost race')
+})
+test('a malformed stored share is ignored instead of breaking snapshots', async () => {
+  const { readShare } = await import('../src/lesson/share')
+  const valid = storedShare({ id: randomUUID(), ownerId: teacher.id, type: 'screen' })
+  assert.deepEqual(readShare(valid), valid)
+  assert.equal(readShare(null), null)
+  assert.equal(readShare({ id: randomUUID(), type: 'whiteboard', ownerId: teacher.id }), null)
+  assert.equal(readShare({ ...valid, page: 'one' }), null)
+})
+test('one realtime delivery looks each session and the lesson up once and still drops unauthorized sockets', async () => {
+  const lesson = { ...base, accessMode: 'INVITE_ONLY', members: [{ userId: teacher.id, banned: false }, { userId: student.id, banned: false }] }
+  const outsider: PublicUser = { ...student, id: randomUUID(), username: 'outsider' }
+  const users: Record<string, PublicUser> = { teacher, student, outsider }
+  let sessionLookups = 0, lessonReads = 0
+  const svc = new Lessons({ lesson: { findUnique: async () => { lessonReads++; return lesson } } } as any)
+  const gateway = new Gateway({ userFromCookie: async (cookie: string) => { sessionLookups++; return users[cookie] } } as any, svc)
+  const socket = (cookie: string) => ({ id: randomUUID(), rooms: new Set([`lesson:${id}`]), handshake: { headers: { cookie } }, events: [] as string[], left: false,
+    emit(event: string) { this.events.push(event) }, leave() { this.left = true }, disconnect() {} })
+  const sockets = [socket('teacher'), socket('student'), socket('student'), socket('outsider')]
+  gateway.server = { sockets: { sockets: new Map(sockets.map(s => [s.id, s])) } } as any
+  await gateway.emitAuthorized(id, 'stroke:preview', {})
+  assert.equal(sessionLookups, 3, 'one session lookup per distinct cookie')
+  assert.equal(lessonReads, 1, 'one lesson read per delivery')
+  assert.deepEqual(sockets.map(s => s.events[0]), ['stroke:preview', 'stroke:preview', 'stroke:preview', 'room:error'])
+  assert.equal(sockets[3].left, true)
+  await gateway.emitAuthorized(id, 'stroke:preview', {})
+  assert.equal(sessionLookups, 6, 'every delivery re-checks sessions so revocation is immediate')
 })

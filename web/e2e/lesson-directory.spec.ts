@@ -207,3 +207,43 @@ test("late lessons and student roster cannot replace another account's directory
       .filter({ hasText: previousStudent.name }),
   ).toHaveCount(0)
 })
+
+test("a 401 while the session is still valid re-checks it without remounting the app", async ({
+  page,
+}) => {
+  let authChecks = 0
+  let failLessons = false
+  await page.route("**/socket.io/**", (route) => route.abort())
+  await page.route("**/api/v1/**", (route) => {
+    switch (new URL(route.request().url()).pathname) {
+      case "/api/v1/capabilities":
+        return route.fulfill({ status: 404 })
+      case "/api/v1/auth/me":
+        authChecks++
+        return route.fulfill({ json: previousTeacher })
+      case "/api/v1/lessons":
+        if (failLessons) {
+          failLessons = false
+          return route.fulfill({ status: 401, json: { code: "UNAUTHENTICATED", message: "일시적인 인증 오류" } })
+        }
+        return route.fulfill({ json: [lessonFor(previousTeacher, previousStudent)] })
+      case "/api/v1/students":
+        return route.fulfill({ json: [previousStudent] })
+      default:
+        return route.fulfill({ status: 404 })
+    }
+  })
+  await page.goto("/")
+  // The account menu lives outside screen content; it only disappears if the whole app unmounts (as a live meeting would).
+  const account = page.getByRole("button", { name: "이전 선생님" })
+  await expect(account).toBeVisible()
+  await account.evaluate((element) => { (element as HTMLElement & { kept?: boolean }).kept = true })
+  const checks = authChecks
+
+  failLessons = true
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")))
+
+  await expect.poll(() => authChecks).toBe(checks + 1)
+  await expect(page).not.toHaveURL(/\/login/)
+  expect(await account.evaluate((element) => (element as HTMLElement & { kept?: boolean }).kept)).toBe(true)
+})

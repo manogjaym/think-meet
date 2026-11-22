@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react"
 import type { PrejoinStatus } from "../generated/contracts"
 import { designContent as copy } from "../generated/design-content"
-import { api, ApiError } from "./api"
+import { call, ApiError } from "./api"
+import { FEATURE_IDS } from "../generated/feature-policy"
 
-export const prejoinFeature = "classroom.prejoin"
+export const prejoinFeature = FEATURE_IDS.ClassroomPrejoin
 const refreshMillis = 5_000
 
 export type PrejoinProbe = { state: "checking" } | {
@@ -28,10 +29,7 @@ export function usePrejoinProbe(
       const timeout = setTimeout(() => request?.abort(), 4_000)
       const start = performance.now()
       try {
-        const result = await api<PrejoinStatus>(
-          `/lessons/${lessonId}/prejoin`,
-          { signal: request.signal },
-        )
+        const result = await call("getPrejoinStatus", { params: { id: lessonId }, signal: request.signal })
         if (active)
           setProbe({
             state: "connected",
@@ -64,14 +62,14 @@ export function usePrejoinProbe(
 }
 
 function startPrejoinWait(lessonId: string) {
-  const path = `/lessons/${lessonId}/waiting/${crypto.randomUUID()}`
+  const params = { id: lessonId, clientId: crypto.randomUUID() }
   let active = true
   let timer: ReturnType<typeof setTimeout>
   let renewal: Promise<void>
   const renew = () => {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 4_000)
-    renewal = api(path, { method: "PUT", signal: controller.signal })
+    renewal = call("renewPrejoinWait", { params, signal: controller.signal })
       .catch(() => {})
       .finally(() => {
         clearTimeout(timeout)
@@ -83,7 +81,7 @@ function startPrejoinWait(lessonId: string) {
     active = false
     clearTimeout(timer)
     void renewal
-      .then(() => api(path, { method: "DELETE", keepalive: true }))
+      .then(() => call("clearPrejoinWait", { params, keepalive: true }))
       .catch(() => {})
   }
   renew()

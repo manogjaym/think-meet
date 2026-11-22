@@ -1,7 +1,7 @@
 import { designContent } from "../../generated/design-content"
 import { useEffect, useRef, useState } from "react"
 import { Track, createAudioAnalyser, supportsAudioOutputSelection, type LocalAudioTrack, type Participant, type Room } from "livekit-client"
-import { api, colorFor, joinLink, type ApiLesson, type User } from "../../lib/api"
+import { call, colorFor, joinLink, type ApiLesson, type User } from "../../lib/api"
 import { API_BASE_PATH } from "../../generated/contracts"
 import { capabilityHeaders, requireHttpFeature } from "../../lib/features"
 import { friendlyError, saveDevicePreferences, readDevicePreferences, formatDuration, type Command, type Material, type MeetingSnapshot } from "../../lib/meeting"
@@ -12,11 +12,12 @@ import { useFeature } from "../../lib/useFeature"
 import { currentAssistance } from "../../lib/remoteAssistance"
 import { useMediaStreamTrack, useParticipantTrack, useRoomParticipants } from "../../lib/livekitMedia"
 import { TextbookPicker } from "./TextbookPicker"
+import { FEATURE_IDS } from "../../generated/feature-policy"
 
 type PanelProps = { panel: Panel; activePanel: Panel; setPanel: (panel: Panel) => void; user: User; lesson: ApiLesson; room: Room | null; snapshot: MeetingSnapshot | null; command: Command; onOutputChange: (id: string) => void; unreadChatCount?: number; textbookEnabled: boolean; textbookConnected: boolean; onTextbookOpened: () => void }
 export function SidePanel({ panel, activePanel, setPanel, user, lesson, room, snapshot, command, onOutputChange, unreadChatCount = 0, textbookEnabled, textbookConnected, onTextbookOpened }: PanelProps) {
   const isHost = lesson.teacher.id === user.id
-  const assistanceSupported = useFeature("meeting.remote-assistance")
+  const assistanceSupported = useFeature(FEATURE_IDS.MeetingRemoteAssistance)
   const phase = snapshot?.instruction?.phase
   const remoteAssistanceEnabled = assistanceSupported && phase === undefined
   const showMaterials = isHost && (phase === undefined || phase === "classroom")
@@ -63,7 +64,7 @@ export function SidePanel({ panel, activePanel, setPanel, user, lesson, room, sn
   useEffect(() => setContentTab(textbookEnabled ? "document" : "media"), [textbookEnabled])
   useEffect(() => {
     if (!isHost) return
-    if (panel === "invite" && !isOpen) void api<User[]>("/students").then(setStudents).catch(e => setError(friendlyError(e)))
+    if (panel === "invite" && !isOpen) void call("listStudents").then(setStudents).catch(e => setError(friendlyError(e)))
   }, [panel, isHost, isOpen])
   useEffect(() => {
     if (!contentOpen) {
@@ -80,7 +81,7 @@ export function SidePanel({ panel, activePanel, setPanel, user, lesson, room, sn
     const request = new AbortController()
     setListing(true)
     setListError(false)
-    void api<Material[]>("/materials", { signal: request.signal }).then(files => {
+    void call("listMaterials", { signal: request.signal }).then(files => {
       if (!request.signal.aborted) setMaterials(files)
     }).catch(() => {
       if (!request.signal.aborted) setListError(true)
@@ -101,7 +102,7 @@ export function SidePanel({ panel, activePanel, setPanel, user, lesson, room, sn
     try { await run(action) } finally { textbookRequest.current = false; setTextbookBusy(false) }
   }
   const removeMaterial = async (material: Material) => {
-    await api(`/materials/${material.id}`, { method: "DELETE" })
+    await call("deleteMaterial", { params: { id: material.id } })
     setMaterials(current => current.filter(item => item.id !== material.id))
     setNotice("파일을 삭제했어요.")
   }
@@ -179,7 +180,7 @@ export function SidePanel({ panel, activePanel, setPanel, user, lesson, room, sn
         {isOpen ? <div className="chat-notice"><strong>누구나 함께할 수 있는 공개 수업이에요.</strong><p>학생을 따로 초대할 필요 없이, 로그인한 누구나 수업 목록이나 참여 링크로 입장할 수 있어요.</p></div> : <>
           <label className="search compact"><Icon name="search" size={17} /><input value={search} onChange={e => setSearch(e.target.value)} placeholder="학생 이름 검색" aria-label="초대할 학생 검색" /></label>
           {students.filter(person => person.name.includes(search.trim())).map(person => { const invited = lesson.students.some(student => student.id === person.id); return <div className="invite-row" key={person.id}><Avatar name={person.name} color={colorFor(person.id)} small /><div><strong>{person.name}</strong><span>{invited ? "이미 초대됨" : "초대 가능"}</span></div><button disabled={invited} aria-pressed={selected.includes(person.id)} onClick={() => setSelected(current => current.includes(person.id) ? current.filter(id => id !== person.id) : [...current, person.id])}>{invited ? "초대됨" : selected.includes(person.id) ? "선택됨" : "선택"}</button></div> })}
-          <div className="invite-footer"><span>{selected.length}명 선택</span><button className="primary" disabled={!selected.length} onClick={() => void run(async () => { await api(`/lessons/${lesson.id}/invites`, { method: "POST", body: JSON.stringify({ studentIds: selected }) }); setSelected([]) }, "학생을 초대했어요.")}>초대하기</button></div>
+          <div className="invite-footer"><span>{selected.length}명 선택</span><button className="primary" disabled={!selected.length} onClick={() => void run(async () => { await call("inviteStudents", { params: { id: lesson.id }, body: { studentIds: selected } }); setSelected([]) }, "학생을 초대했어요.")}>초대하기</button></div>
         </>}
         <button className="copy-link" onClick={() => void run(() => navigator.clipboard.writeText(joinLink(lesson)), "참여 링크를 복사했어요.")}><Icon name="copy" size={17} />참여 링크 복사</button><p className="content-note">{joinLink(lesson)}</p>
       </div>}
@@ -221,7 +222,7 @@ export function SidePanel({ panel, activePanel, setPanel, user, lesson, room, sn
           </>)}
       </div>}
     </div>
-    <AnimatedPresence show={Boolean(kick)}><Confirm title={`${kick?.name || "참여자"} 님을 퇴장시킬까요?`} copy="이 참여자는 이 수업에 다시 입장할 수 없습니다." cancel={() => setKick(null)} confirm={() => { if (kick) void run(() => api(`/lessons/${lesson.id}/kick`, { method: "POST", body: JSON.stringify({ userId: kick.id }) }), "참여자를 퇴장시켰어요."); setKick(null) }} confirmText="퇴장시키기" /></AnimatedPresence>
+    <AnimatedPresence show={Boolean(kick)}><Confirm title={`${kick?.name || "참여자"} 님을 퇴장시킬까요?`} copy="이 참여자는 이 수업에 다시 입장할 수 없습니다." cancel={() => setKick(null)} confirm={() => { if (kick) void run(() => call("kickParticipant", { params: { id: lesson.id }, body: { userId: kick.id } }), "참여자를 퇴장시켰어요."); setKick(null) }} confirmText="퇴장시키기" /></AnimatedPresence>
   </aside>
 }
 

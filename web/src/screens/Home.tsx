@@ -5,6 +5,7 @@ import { colorFor, displayLesson, type User } from "../lib/api"
 import type { Role, Screen } from "../models"
 import { Avatar, Icon } from "../components/ui"
 import { useFeature } from "../lib/useFeature"
+import { FEATURE_IDS } from "../generated/feature-policy"
 
 export type Lesson = ReturnType<typeof displayLesson>
 
@@ -59,7 +60,7 @@ export function Home({
   view?: HomeView
   onViewChange?: (view: HomeView) => void
 }) {
-  const subjectsEnabled = useFeature("classroom.subjects")
+  const subjectsEnabled = useFeature(FEATURE_IDS.ClassroomSubjects)
   const [localView, setLocalView] = useState<HomeView>({
     tab: "upcoming",
     search: "",

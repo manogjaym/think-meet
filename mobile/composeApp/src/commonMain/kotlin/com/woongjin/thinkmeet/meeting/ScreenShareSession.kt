@@ -1,6 +1,9 @@
 package com.woongjin.thinkmeet.meeting
 
+import com.woongjin.thinkmeet.data.ContractProtocol
+import com.woongjin.thinkmeet.data.EmptyPayload
 import com.woongjin.thinkmeet.data.MeetingRealtime
+import com.woongjin.thinkmeet.data.ShareStartPayload
 import com.woongjin.thinkmeet.data.MeetingSnapshot
 import com.woongjin.thinkmeet.data.Share
 import com.woongjin.thinkmeet.data.ThinkMeetApi
@@ -13,8 +16,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
 
 /** Binds one regular OS capture to an acknowledged server share. Approved assistance has its own owner. */
 internal class ScreenShareSession(
@@ -180,8 +181,8 @@ internal class RealtimeScreenShareTransport(private val api: ThinkMeetApi, priva
     override val snapshot = realtime.snapshot
     override val subscribed = realtime.subscribed
     override fun guardedStop() = (api.capabilities.value.contractRevision ?: 0) >= 5
-    override suspend fun startShare() = realtime.command("share.start", buildJsonObject { put("type", "screen") }).share
+    override suspend fun startShare() = realtime.send(ContractProtocol.Commands.ShareStart, ShareStartPayload("screen")).share
     override suspend fun stopShare(expectedShareId: String?) {
-        realtime.command("share.stop", expectedShareId = expectedShareId)
+        realtime.send(ContractProtocol.Commands.ShareStop, EmptyPayload(), expectedShareId)
     }
 }

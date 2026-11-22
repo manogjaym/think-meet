@@ -14,6 +14,9 @@ const lesson = () => ({ id: randomUUID(), teacherId: owner.id, accessMode: 'OPEN
 const errorCode = (expected: string) => (error: any) => error instanceof ApiError && (error.getResponse() as any).code === expected
 function service(current = lesson(), extra: any = {}) { return new Lessons({ lesson: { findUnique: async () => current }, ...extra } as any) }
 
+// Stored shares always carry every Share field (see src/lesson/share.ts); fixtures override only what matters.
+const storedShare = <T extends object>(share: T) => ({ page: 1, playing: false, position: 0, updatedAt: new Date().toISOString(), ...share })
+
 test('open booking needs no selected students; default remains invitation-only', () => {
   assert.equal(lessonInput.safeParse(input()).success, true)
   assert.equal(lessonInput.safeParse({ ...input(), studentIds: [] }).success, true)
@@ -85,7 +88,7 @@ test('unjoined open-room viewers cannot issue live commands', async () => {
 })
 
 test('visiting teachers cannot manage open rooms or control owner shares', async () => {
-  const current = { ...lesson(), status: 'LIVE', share: { id: randomUUID(), ownerId: owner.id, type: 'screen' } }
+  const current = { ...lesson(), status: 'LIVE', share: storedShare({ id: randomUUID(), ownerId: owner.id, type: 'screen' }) }
   current.members.push({ userId: visitingTeacher.id, banned: false })
   const svc = service(current)
   for (const action of [() => svc.end(current.id, visitingTeacher), () => svc.kick(current.id, visitingTeacher, { userId: owner.id }), () => svc.edit(current.id, visitingTeacher, input()), () => svc.invite(current.id, visitingTeacher, { studentIds: [visitor.id] })]) await assert.rejects(action, errorCode('FORBIDDEN'))
@@ -103,10 +106,13 @@ test('editing an open lesson preserves existing members, switching to selected-o
   const current = lesson(); let deletions = 0; let notifications = 0; let rosterChecks = 0
   current.members.push({ userId: visitor.id, banned: true })
   const db: any = {
-    lesson: { findUnique: async () => ({ ...current }), update: async ({ data }: any) => { Object.assign(current, data) } },
+    lesson: { findUnique: async () => ({ ...current }), updateMany: async ({ where, data }: any) => {
+      if (where.status !== current.status) return { count: 0 }
+      Object.assign(current, data); return { count: 1 }
+    } },
     teacherStudent: { count: async () => { rosterChecks++; return 1 } },
     lessonMember: { deleteMany: async () => { deletions++ }, upsert: async () => {} },
-    $transaction: async (operations: Promise<unknown>[]) => Promise.all(operations),
+    $transaction: async (operation: (tx: any) => Promise<unknown>) => operation(db),
   }
   const svc = new Lessons(db); svc.dto = async (row: any) => row; svc.broadcast = async () => ({}) as any; svc.notifyAllUsers = () => { notifications++ }
   await svc.edit(current.id, owner, input())

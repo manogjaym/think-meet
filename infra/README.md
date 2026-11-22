@@ -60,6 +60,8 @@ AWS 인프라와 로컬 Docker 설정을 관리합니다. Terraform은 서버 �
 
 Terraform 출력의 클러스터·네트워크, ECR, DB·Redis 접속 정보와 Secret ARN, S3 버킷, IAM 역할, 대상 그룹 ARN을 전달합니다. 서버 등록은 별도 작업이므로 처음에는 대상 그룹이 비어 있습니다.
 
+앱 노드 자동 확장과 `application` Redis는 향후 수평 확장용입니다. 현재 API 서버는 1대로만 운영할 수 있습니다. [서버 운영 전제](../server/README.md#운영-전제-api-서버-1대)를 확인하세요.
+
 ## 검증
 
 ```bash

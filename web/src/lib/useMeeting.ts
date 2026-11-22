@@ -4,13 +4,14 @@ import type { Socket } from "socket.io-client"
 import { createAppSocket, emitVolatile, requestSocket } from "./socket"
 import type { CommandAck as Ack, StrokePreview, RealtimeError, AssistancePointer } from "../generated/contracts"
 import { SOCKET_EVENTS as Events } from "../generated/contracts"
-import { api, ApiError, type ApiLesson, type JoinResult, type User } from "./api"
+import { call, ApiError, type ApiLesson, type JoinResult, type User } from "./api"
 import type { JoinDevices } from "../screens/Join"
 import { friendlyError, readDevicePreferences, type Command, type MeetingSnapshot, type PreviewStroke } from "./meeting"
 import { useFeature } from "./useFeature"
 import { getCapabilityState, isFeatureEnabled } from "./features"
 import { activeAssistance, matchesAssistancePointer, REMOTE_POINTER_INTERVAL_MS, REMOTE_POINTER_TTL_MS, type RemotePointer } from "./remoteAssistance"
 import { ScreenShareSession } from "./screenShare"
+import { FEATURE_IDS } from "../generated/feature-policy"
 
 export function useMeeting({ lesson, user, initialDevices, admission, onEnded, onWaiting }: { lesson: ApiLesson; user: User; initialDevices: JoinDevices; admission?: JoinResult; onEnded: (reason?: string) => void; onWaiting?: () => void }) {
   const [room, setRoom] = useState<Room | null>(null)
@@ -21,7 +22,7 @@ export function useMeeting({ lesson, user, initialDevices, admission, onEnded, o
   const [admissionId, setAdmissionId] = useState<string>()
   const [previews, setPreviews] = useState<Record<string, PreviewStroke>>({})
   const [remotePointer, setRemotePointer] = useState<RemotePointer | null>(null)
-  const assistanceEnabled = useFeature("meeting.remote-assistance")
+  const assistanceEnabled = useFeature(FEATURE_IDS.MeetingRemoteAssistance)
   const remotePointerTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const remotePointerSentAt = useRef(0)
   const [serverOffset, setServerOffset] = useState(0)
@@ -98,7 +99,7 @@ export function useMeeting({ lesson, user, initialDevices, admission, onEnded, o
     })
     const start = async () => {
       try {
-        const join = options.current.admission || await api<JoinResult>(`/lessons/${lesson.id}/join`, { method: "POST" })
+        const join = options.current.admission || await call("joinLesson", { params: { id: lesson.id } })
         if (cancelled) return
         if (join.waiting) { onWaitingRef.current?.(); return }
         if (!join.token || !join.livekitUrl) throw new Error("수업 연결 정보를 받지 못했어요.")
@@ -141,7 +142,7 @@ export function useMeeting({ lesson, user, initialDevices, admission, onEnded, o
           : join.livekitUrl
         await nextRoom.connect(livekitUrl, join.token)
         if (cancelled) { await nextRoom.disconnect(); return }
-        await api(`/lessons/${lesson.id}/connected`, { method: "POST" })
+        await call("connectedLesson", { params: { id: lesson.id } })
         if (!cancelled) setAdmissionId(join.admissionId)
         const results = await Promise.allSettled([
           nextRoom.localParticipant.setMicrophoneEnabled(devices.mic),
@@ -150,7 +151,7 @@ export function useMeeting({ lesson, user, initialDevices, admission, onEnded, o
         if (cancelled) return
         const failed = results.find(result => result.status === "rejected")
         if (failed?.status === "rejected") setError(`카메라 또는 마이크를 켜지 못했어요. 설정에서 다시 선택해 주세요. ${friendlyError(failed.reason)}`)
-        accept(await api<MeetingSnapshot>(`/lessons/${lesson.id}/snapshot`))
+        accept(await call("getSnapshot", { params: { id: lesson.id } }))
       } catch (e) {
         if (cancelled) return
         if (e instanceof ApiError && ["KICKED", "NOT_INVITED", "ACCOUNT", "CANCELLED", "ENDED"].includes(e.code)) finish(e.code.toLowerCase())
@@ -159,7 +160,7 @@ export function useMeeting({ lesson, user, initialDevices, admission, onEnded, o
     }
     void start()
     const poll = window.setInterval(() => {
-      if (!closing.current) void api<MeetingSnapshot>(`/lessons/${lesson.id}/snapshot`).then(accept).catch(e => {
+      if (!closing.current) void call("getSnapshot", { params: { id: lesson.id } }).then(accept).catch(e => {
         if (e instanceof ApiError && e.code === "KICKED") finish("kicked")
       })
     }, 12000)
@@ -189,7 +190,7 @@ export function useMeeting({ lesson, user, initialDevices, admission, onEnded, o
     const isHost = (snapshotRef.current?.lesson || lesson).teacher.id === user.id
     intentionalLeave.current = true
     try {
-      await api(`/lessons/${lesson.id}/${isHost ? "end" : "leave"}`, { method: "POST" })
+      await (isHost ? call("endLesson", { params: { id: lesson.id } }) : call("leaveLesson", { params: { id: lesson.id } }))
       await room?.disconnect(true)
       finish(isHost ? "ended" : "left")
     } catch(e) { intentionalLeave.current = false; setError(friendlyError(e)) }
@@ -202,7 +203,7 @@ export function useMeeting({ lesson, user, initialDevices, admission, onEnded, o
     const socket = socketRef.current
     const current = snapshotRef.current
     const session = activeAssistance(current)
-    if (!socket?.connected || !session?.geometry || session.teacherId !== user.id || !isFeatureEnabled("meeting.remote-assistance")) return
+    if (!socket?.connected || !session?.geometry || session.teacherId !== user.id || !isFeatureEnabled(FEATURE_IDS.MeetingRemoteAssistance)) return
     const now = Date.now()
     if (now - remotePointerSentAt.current < REMOTE_POINTER_INTERVAL_MS) return
     const frame: AssistancePointer = { lessonId: lesson.id, sessionId: session.id, shareId: session.shareId!, geometryVersion: session.geometry.version, x, y, authorId: user.id }

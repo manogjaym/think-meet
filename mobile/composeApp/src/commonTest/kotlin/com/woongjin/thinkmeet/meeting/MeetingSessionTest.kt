@@ -7,6 +7,7 @@ import com.woongjin.thinkmeet.data.MeetingSnapshot
 import com.woongjin.thinkmeet.data.RealtimeError
 import com.woongjin.thinkmeet.data.User
 import com.woongjin.thinkmeet.platform.MediaController
+import com.woongjin.thinkmeet.platform.MediaFailure
 import com.woongjin.thinkmeet.platform.MediaState
 import com.woongjin.thinkmeet.platform.PictureInPictureController
 import com.woongjin.thinkmeet.platform.PictureInPictureState
@@ -116,6 +117,45 @@ class MeetingSessionTest {
         assertEquals(1, fixture.media.disconnects)
         assertEquals(1, fixture.link.closes)
         assertEquals(1, fixture.pip.closes)
+    }
+
+    @Test
+    fun onlyExactAccessCodesEndTheMeeting() = runTest {
+        for (code in listOf("STALE_SHARE", "NOTE_SHARE_CHANGED", "RATE_LIMIT", "kicked")) {
+            val fixture = Fixture(testScheduler)
+            runCurrent()
+            fixture.link.roomErrors.emit(RealtimeError(code, "non-fatal"))
+            runCurrent()
+            assertEquals(null, fixture.session.state.value.fatalError, code)
+            fixture.session.close(); runCurrent()
+        }
+        for (code in listOf("KICKED", "ACCOUNT", "FORBIDDEN", "UNAUTHENTICATED", "SESSION_REPLACED")) {
+            val fixture = Fixture(testScheduler)
+            runCurrent()
+            fixture.link.roomErrors.emit(RealtimeError(code, "access ended"))
+            runCurrent()
+            assertEquals("access ended", fixture.session.state.value.fatalError, code)
+            fixture.session.close(); runCurrent()
+        }
+    }
+
+    @Test
+    fun typedOrLegacyMediaFailuresEndTheMeetingButPlainMessagesAreOnlyReported() = runTest {
+        val plain = Fixture(testScheduler)
+        runCurrent()
+        plain.media.state.value = plain.media.state.value.copy(error = "카메라를 시작하지 못했어요: replaced lens")
+        runCurrent()
+        assertEquals(null, plain.session.state.value.fatalError)
+        assertEquals(listOf("카메라를 시작하지 못했어요: replaced lens"), plain.errors)
+        plain.session.close(); runCurrent()
+        for (state in listOf(MediaState(failure = MediaFailure.Removed, error = "선생님이 참여를 종료했어요."), MediaState(error = "REPLACED: 다른 기기에서 수업에 입장했어요."), MediaState(error = "KICKED: 선생님이 참여를 종료했어요."))) {
+            val fixture = Fixture(testScheduler)
+            runCurrent()
+            fixture.media.state.value = state
+            runCurrent()
+            assertTrue(fixture.session.state.value.fatalError != null, state.toString())
+            fixture.session.close(); runCurrent()
+        }
     }
 
     private class Fixture(scheduler: TestCoroutineScheduler) {

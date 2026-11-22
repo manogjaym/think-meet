@@ -12,6 +12,7 @@ import {
 import { readDevicePreferences, saveDevicePreferences } from "../lib/meeting"
 import { Avatar, Badge, Icon } from "../components/ui"
 import { useFeature } from "../lib/useFeature"
+import { FEATURE_IDS } from "../generated/feature-policy"
 
 export type JoinDevices = {
   mic: boolean
@@ -56,7 +57,7 @@ export function Prejoin({
   enhanced?: boolean
   onUnavailable?: (error: ApiError) => void
 }) {
-  const lessonModes = useFeature("classroom.lesson-modes")
+  const lessonModes = useFeature(FEATURE_IDS.ClassroomLessonModes)
   const [devices, setDevices] = useState<JoinDevices>(
     initialDevices || initialJoinDevices,
   )
@@ -710,7 +711,7 @@ export function Waiting({
   error?: string
   enhanced?: boolean
 }) {
-  const lessonModes = useFeature("classroom.lesson-modes")
+  const lessonModes = useFeature(FEATURE_IDS.ClassroomLessonModes)
   return (
     <main className="center-page join-waiting-page">
       <section className="waiting-card">

@@ -30,6 +30,7 @@ import { currentAssistance } from "../lib/remoteAssistance"
 import "../components/meeting/live-meeting.css"
 import "../components/meeting/chat-notifications.css"
 import "../components/meeting/chat-notification-badges.css"
+import { FEATURE_IDS } from "../generated/feature-policy"
 
 export function Meeting(props: { lesson: ApiLesson; user: User; initialDevices: JoinDevices; admission?: JoinResult; onEnded: (reason?: string) => void; onWaiting?: () => void }) {
   const { lesson, user } = props
@@ -54,7 +55,7 @@ export function Meeting(props: { lesson: ApiLesson; user: User; initialDevices: 
   const audioBlocked = useAudioPlaybackBlocked(room)
   const { unreadCount, notification, dismissNotification } = useChatNotifications({ lessonId: lesson.id, userId: user.id, messages: snapshot?.messages, chatOpen: panel === "chat" })
   const activeLesson = snapshot?.lesson || lesson
-  const subjectsEnabled = useFeature("classroom.subjects")
+  const subjectsEnabled = useFeature(FEATURE_IDS.ClassroomSubjects)
   const subjectName = subjectsEnabled ? activeLesson.subject?.name : undefined
   const meetingSubtitle = subjectName
     ? `${subjectName} · ${activeLesson.teacher.name} 선생님`
@@ -66,13 +67,13 @@ export function Meeting(props: { lesson: ApiLesson; user: User; initialDevices: 
   const activeAssistance = currentAssistance(assistance) ? assistance : null
   const instruction = snapshot?.instruction
   const phase = instruction?.phase
-  const lessonModes = useFeature("classroom.lesson-modes")
-  const assistanceSupported = useFeature("meeting.remote-assistance")
+  const lessonModes = useFeature(FEATURE_IDS.ClassroomLessonModes)
+  const assistanceSupported = useFeature(FEATURE_IDS.MeetingRemoteAssistance)
   const modeReady = live.appConnected && live.connection === ConnectionState.Connected &&
     snapshot?.participants.some(member => member.user.id === user.id && member.online)
   const canShare = !!snapshot && (phase === undefined || (isHost && phase === "classroom"))
   const showMaterials = isHost && canShare
-  const textbookSupported = useFeature("classroom.textbook-picker")
+  const textbookSupported = useFeature(FEATURE_IDS.ClassroomTextbookPicker)
   const textbookEnabled = showMaterials && textbookSupported
   const textbookLayout = textbookEnabled && share?.type === "document"
   const overlayQuery = `(max-width:${designLayout.meetingOverlayBreakpoint}px)`
@@ -111,7 +112,7 @@ export function Meeting(props: { lesson: ApiLesson; user: User; initialDevices: 
     captureUpload.current = request
     setCaptureBusy(true); setCaptureError("")
     try {
-      await uploadNote(`/lessons/${lesson.id}/captures`, capture.draft.file, capture.draft.requestId, {
+      await uploadNote("saveClassNoteCapture", lesson.id, capture.draft.file, capture.draft.requestId, {
         shareId: capture.shareId, page: String(capture.page), admissionId: live.admissionId,
       }, request.signal)
       setCapture(undefined); setCaptureNotice("화면을 저장했어요.")

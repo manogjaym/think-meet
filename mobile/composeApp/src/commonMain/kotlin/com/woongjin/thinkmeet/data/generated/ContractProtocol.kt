@@ -2,6 +2,7 @@
 package com.woongjin.thinkmeet.data
 
 data class ContractHttpOperation(val id: String, val method: String, val path: String, val feature: String?)
+class ContractCommand<P>(val type: String, val serializer: kotlinx.serialization.KSerializer<P>)
 data class ContractFeature(val id: String, val stage: String, val requiresRevision: Int, val defaultEnabled: Boolean, val platforms: Set<String>)
 
 object ContractProtocol {
@@ -30,6 +31,75 @@ object ContractProtocol {
         const val ClassroomPrejoin = "classroom.prejoin"
         const val ClassroomLessonModes = "classroom.lesson-modes"
         const val ClassroomTextbookPicker = "classroom.textbook-picker"
+    }
+    /** Server error codes from contracts/openapi.json ErrorCode; compare exact values, never substrings. */
+    object ErrorCodes {
+        const val Account = "ACCOUNT"
+        const val AssistanceBusy = "ASSISTANCE_BUSY"
+        const val AssistanceUnavailable = "ASSISTANCE_UNAVAILABLE"
+        const val Cancelled = "CANCELLED"
+        const val ClientUpdateRequired = "CLIENT_UPDATE_REQUIRED"
+        const val Conflict = "CONFLICT"
+        const val Connection = "CONNECTION"
+        const val ConsentRequired = "CONSENT_REQUIRED"
+        const val Ended = "ENDED"
+        const val FeatureUnavailable = "FEATURE_UNAVAILABLE"
+        const val FileTooLarge = "FILE_TOO_LARGE"
+        const val Forbidden = "FORBIDDEN"
+        const val Internal = "INTERNAL"
+        const val Invalid = "INVALID"
+        const val InvalidCredentials = "INVALID_CREDENTIALS"
+        const val InvalidFile = "INVALID_FILE"
+        const val InvalidMaterial = "INVALID_MATERIAL"
+        const val InvalidSignature = "INVALID_SIGNATURE"
+        const val Kicked = "KICKED"
+        const val LessonModeChanged = "LESSON_MODE_CHANGED"
+        const val LessonModeRequired = "LESSON_MODE_REQUIRED"
+        const val LessonNotStarted = "LESSON_NOT_STARTED"
+        const val Live = "LIVE"
+        const val MaterialInUse = "MATERIAL_IN_USE"
+        const val NoteShareChanged = "NOTE_SHARE_CHANGED"
+        const val NoteTargetChanged = "NOTE_TARGET_CHANGED"
+        const val NotConnected = "NOT_CONNECTED"
+        const val NotFound = "NOT_FOUND"
+        const val NotReady = "NOT_READY"
+        const val NoShare = "NO_SHARE"
+        const val RateLimit = "RATE_LIMIT"
+        const val RequestFailed = "REQUEST_FAILED"
+        const val ScreenNotPublished = "SCREEN_NOT_PUBLISHED"
+        const val ShareBusy = "SHARE_BUSY"
+        const val StaleAssistance = "STALE_ASSISTANCE"
+        const val StaleGeometry = "STALE_GEOMETRY"
+        const val StaleShare = "STALE_SHARE"
+        const val Unauthenticated = "UNAUTHENTICATED"
+        const val UnknownCommand = "UNKNOWN_COMMAND"
+        const val UnsupportedCodec = "UNSUPPORTED_CODEC"
+        const val UnsupportedFile = "UNSUPPORTED_FILE"
+        const val UploadCancelled = "UPLOAD_CANCELLED"
+        const val Validation = "VALIDATION"
+        const val Waiting = "WAITING"
+    }
+    /** Socket commands with their generated payload serializers. */
+    object Commands {
+        val LessonStart = ContractCommand("lesson.start", EmptyPayload.serializer())
+        val LessonModeSet = ContractCommand("lesson.mode.set", LessonModeSetPayload.serializer())
+        val ChatSend = ContractCommand("chat.send", ChatSendPayload.serializer())
+        val HandSet = ContractCommand("hand.set", HandSetPayload.serializer())
+        val ShareStart = ContractCommand("share.start", ShareStartPayload.serializer())
+        val ShareStop = ContractCommand("share.stop", EmptyPayload.serializer())
+        val MediaUpdate = ContractCommand("media.update", MediaUpdatePayload.serializer())
+        val DocumentPage = ContractCommand("document.page", DocumentPagePayload.serializer())
+        val DocumentOpen = ContractCommand("document.open", DocumentOpenPayload.serializer())
+        val StrokeAdd = ContractCommand("stroke.add", StrokeAddPayload.serializer())
+        val StrokeErase = ContractCommand("stroke.erase", StrokeErasePayload.serializer())
+        val AnnotationUndo = ContractCommand("annotation.undo", EmptyPayload.serializer())
+        val AnnotationRedo = ContractCommand("annotation.redo", EmptyPayload.serializer())
+        val AnnotationClear = ContractCommand("annotation.clear", EmptyPayload.serializer())
+        val AssistanceRequest = ContractCommand("assistance.request", AssistanceRequestPayload.serializer())
+        val AssistanceRespond = ContractCommand("assistance.respond", AssistanceRespondPayload.serializer())
+        val AssistanceStart = ContractCommand("assistance.start", AssistanceStartPayload.serializer())
+        val AssistanceGeometry = ContractCommand("assistance.geometry", AssistanceGeometryPayload.serializer())
+        val AssistanceStop = ContractCommand("assistance.stop", AssistanceStopPayload.serializer())
     }
     val HttpOperations = listOf(
         ContractHttpOperation("health", "GET", "/api/v1/health", null),

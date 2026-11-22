@@ -3,9 +3,10 @@ import { designContent } from "../../generated/design-content"
 import { currentAssistance } from "../../lib/remoteAssistance"
 import { useFeature } from "../../lib/useFeature"
 import { friendlyError, type Command, type MeetingSnapshot } from "../../lib/meeting"
+import { FEATURE_IDS } from "../../generated/feature-policy"
 
 export function RemoteAssistanceStatus({ snapshot, userId, command, onError, pointingReady = false }: { snapshot: MeetingSnapshot | null; userId: string; command: Command; onError: (message: string) => void; pointingReady?: boolean }) {
-  const enabled = useFeature("meeting.remote-assistance")
+  const enabled = useFeature(FEATURE_IDS.MeetingRemoteAssistance)
   const [pending, setPending] = useState(false)
   const session = snapshot?.assistance
   if (!currentAssistance(session) || ![session.teacherId, session.studentId].includes(userId)) return null

@@ -2513,6 +2513,56 @@
           "message"
         ]
       },
+      "ErrorCode": {
+        "type": "string",
+        "description": "서버가 ErrorResponse.code·RealtimeError.code에 보내는 값의 전체 목록입니다. 두 code 필드는 호환성을 위해 string으로 유지하며, 새 코드는 이 목록에 추가한 뒤 사용합니다.",
+        "enum": [
+          "ACCOUNT",
+          "ASSISTANCE_BUSY",
+          "ASSISTANCE_UNAVAILABLE",
+          "CANCELLED",
+          "CLIENT_UPDATE_REQUIRED",
+          "CONFLICT",
+          "CONNECTION",
+          "CONSENT_REQUIRED",
+          "ENDED",
+          "FEATURE_UNAVAILABLE",
+          "FILE_TOO_LARGE",
+          "FORBIDDEN",
+          "INTERNAL",
+          "INVALID",
+          "INVALID_CREDENTIALS",
+          "INVALID_FILE",
+          "INVALID_MATERIAL",
+          "INVALID_SIGNATURE",
+          "KICKED",
+          "LESSON_MODE_CHANGED",
+          "LESSON_MODE_REQUIRED",
+          "LESSON_NOT_STARTED",
+          "LIVE",
+          "MATERIAL_IN_USE",
+          "NOTE_SHARE_CHANGED",
+          "NOTE_TARGET_CHANGED",
+          "NOT_CONNECTED",
+          "NOT_FOUND",
+          "NOT_READY",
+          "NO_SHARE",
+          "RATE_LIMIT",
+          "REQUEST_FAILED",
+          "SCREEN_NOT_PUBLISHED",
+          "SHARE_BUSY",
+          "STALE_ASSISTANCE",
+          "STALE_GEOMETRY",
+          "STALE_SHARE",
+          "UNAUTHENTICATED",
+          "UNKNOWN_COMMAND",
+          "UNSUPPORTED_CODEC",
+          "UNSUPPORTED_FILE",
+          "UPLOAD_CANCELLED",
+          "VALIDATION",
+          "WAITING"
+        ]
+      },
       "LoginInput": {
         "type": "object",
         "properties": {
@@ -2749,7 +2799,10 @@
             "minimum": 1
           }
         },
-        "required": ["materialId", "page"]
+        "required": [
+          "materialId",
+          "page"
+        ]
       },
       "ShareStartPayload": {
         "type": "object",

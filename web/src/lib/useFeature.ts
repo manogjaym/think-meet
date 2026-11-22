@@ -1,8 +1,9 @@
 import { useEffect, useSyncExternalStore } from "react"
+import type { FeatureId } from "../generated/feature-policy"
 import { getCapabilityState, isFeatureEnabled, loadCapabilities, subscribeCapabilities } from "./features"
 
 /** Unknown, unimplemented and unsupported features stay off even if a server sends an extra flag. */
-export function useFeature(id: string): boolean {
+export function useFeature(id: FeatureId): boolean {
   useSyncExternalStore(subscribeCapabilities, getCapabilityState, getCapabilityState)
   useEffect(() => { void loadCapabilities().catch(() => undefined) }, [id])
   return isFeatureEnabled(id)

@@ -3,7 +3,10 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import type { Request } from 'express'
-import { ApiController } from '../src/controllers'
+import { Reflector } from '@nestjs/core'
+import { APP_GUARD } from '@nestjs/core'
+import { AuthGuard, CONTROLLERS, SystemController } from '../src/http'
+import { AppModule } from '../src/main'
 import { ApiError } from '../src/errors'
 import { FeaturePolicy, HttpFeatureGuard } from '../src/features'
 import { Gateway } from '../src/gateway'
@@ -22,7 +25,7 @@ const student = { id: randomUUID(), username: 'student', name: 'Student', role: 
 const lessonId = randomUUID()
 
 test('capabilities is public, contains only contract availability and respects platform support', () => {
-  const controller = new ApiController({ user: () => assert.fail('capabilities must not require a session') } as any, {} as any, {} as any, {} as any, policy())
+  const controller = new SystemController({} as any, {} as any, {} as any, policy())
   const legacy = controller.capabilities({ headers: {} } as Request)
   assert.deepEqual(Object.keys(legacy).sort(), ['contractRevision', 'features'])
   assert.equal(legacy.contractRevision, CONTRACT_REVISION)
@@ -120,4 +123,30 @@ test('disabled classroom keeps cleanup available without bypassing authenticatio
   assert.equal((await expired.command(socket, { lessonId, type: 'share.stop', payload: {} }) as any).error.code, 'UNAUTHENTICATED')
   const forbidden = new Gateway({ userFromCookie: async () => student } as any, { command: async () => { throw new ApiError('FORBIDDEN', 'not the sharer or owner', 403) } } as any, features)
   assert.equal((await forbidden.command(socket, { lessonId, type: 'share.stop', payload: {} }) as any).error.code, 'FORBIDDEN')
+})
+
+test('every HTTP route requires a session unless it is explicitly public, and 401 precedes the feature gate', async () => {
+  const user = { id: randomUUID(), username: 'teacher', name: 'Teacher', role: 'teacher' as const }
+  let lookups = 0
+  const guard = new AuthGuard({ user: async (req: any) => { lookups++; if (!req.headers.cookie) throw new ApiError('UNAUTHENTICATED', 'login', 401); return user } } as any, new Reflector())
+  const context = (controller: any, handler: string, headers: Record<string, string> = {}) => {
+    const req: any = { headers }
+    return { req, value: { getHandler: () => controller.prototype[handler], getClass: () => controller, switchToHttp: () => ({ getRequest: () => req }) } as any }
+  }
+  const publicRoutes = new Set(['SystemController.capabilities', 'SystemController.health', 'SystemController.webhook', 'InternalController.auth', 'AuthController.login', 'AuthController.logout'])
+  for (const controller of CONTROLLERS) for (const handler of Object.getOwnPropertyNames(controller.prototype).filter(name => name !== 'constructor')) {
+    const { value, req } = context(controller, handler)
+    const name = `${controller.name}.${handler}`
+    if (publicRoutes.has(name)) assert.equal(await guard.canActivate(value), true, name)
+    else {
+      await assert.rejects(guard.canActivate(value), errorCode('UNAUTHENTICATED'), name)
+      const signedIn = context(controller, handler, { cookie: 'think_meet_session=x' })
+      assert.equal(await guard.canActivate(signedIn.value), true, name)
+      assert.equal(signedIn.req.user, user, name)
+      assert.equal(req.user, undefined)
+    }
+  }
+  assert.ok(lookups > 0)
+  const guards = (Reflect.getMetadata('providers', AppModule) as any[]).filter(provider => provider?.provide === APP_GUARD).map(provider => provider.useClass)
+  assert.deepEqual(guards, [AuthGuard, HttpFeatureGuard])
 })

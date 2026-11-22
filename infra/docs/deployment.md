@@ -86,6 +86,6 @@ terraform -chdir=infra/terraform/workloads output
 | `gateway_target_group_arn` | 신호 Gateway HTTP 8080 대상 등록 |
 | `turn_target_group_arn` | TURN TCP 5349 대상 등록. PROXY protocol v2 사용, 상태 확인 포트 7880 |
 
-대상 그룹은 처음에 비어 있습니다. 서버 배포 시 Pod IP 등록이나 TargetGroupBinding 등을 구성합니다. 앱 네임스페이스·서비스 계정·이미지·DB 초기화·미디어 설정·웹 파일 업로드도 별도 작업입니다. DNS·CloudFront URL이 출력되어도 서버 응답을 보장하지 않습니다.
+대상 그룹은 처음에 비어 있습니다. 서버 배포 시 Pod IP 등록이나 TargetGroupBinding 등을 구성합니다. API 서버는 `replicas: 1`·`Recreate` 배포로 Pod 하나만 등록하고 HPA를 연결하지 않습니다. 이유와 확장 조건은 [서버 운영 전제](../../server/README.md#운영-전제-api-서버-1대)를 따릅니다. `redis_endpoints`의 `application` 그룹은 현재 서버가 사용하지 않습니다. 앱 네임스페이스·서비스 계정·이미지·DB 초기화·미디어 설정·웹 파일 업로드도 별도 작업입니다. DNS·CloudFront URL이 출력되어도 서버 응답을 보장하지 않습니다.
 
 기존 상태에서 앱까지 관리했다면 먼저 앱 소유권을 이전합니다. 새 계획의 Kubernetes 리소스 삭제와 로드밸런서 생성을 검토한 뒤 적용합니다. 이 구성 정리에서는 AWS에 적용하지 않았습니다.

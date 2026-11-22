@@ -4,7 +4,7 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { readSources, compileSources, generate } from '../scripts/generate.mjs'
-import { assertCompatible, assertRouteCoverage } from '../scripts/check.mjs'
+import { assertCompatible, assertRouteCoverage, serverSourceFiles } from '../scripts/check.mjs'
 import { validateCatalog, validateChange } from '../../features/check.mjs'
 
 const clone = value => structuredClone(value)
@@ -86,14 +86,24 @@ test('missing REST/Socket handlers and unknown body/query schema references fail
   const badQuery = clone(source)
   badQuery.api.paths['/lessons'].get.parameters = [{ name: 'search', in: 'query', required: false, schema: { $ref: '#/components/schemas/Missing' } }]
   assert.throws(() => compileSources(badQuery), /Unknown schema reference/)
-  assert.throws(() => assertRouteCoverage("@Controller('api/v1') class Api { @Get('missing') get() {} } @Controller('internal')", '', source.api, source.realtime), /missing from contracts/)
-  const [controller, gateway] = await Promise.all(['../../server/src/controllers.ts', '../../server/src/gateway.ts'].map(file => fs.readFile(new URL(file, import.meta.url), 'utf8')))
-  assert.doesNotThrow(() => assertRouteCoverage(controller, gateway, source.api, source.realtime))
+  assert.throws(() => assertRouteCoverage(["@Controller('api/v1') class Api { @Get('missing') get() {} }"], source.api, source.realtime), /missing from contracts/)
+  const sources = await serverSourceFiles()
+  assert.doesNotThrow(() => assertRouteCoverage(sources, source.api, source.realtime))
   const missingHandler = clone(source.realtime)
   missingHandler.events['reaction.send'] = { direction: 'client', schema: 'SuccessAck', feature: 'classroom.core' }
-  assert.throws(() => assertRouteCoverage(controller, gateway, source.api, missingHandler), /no server handler: reaction.send/)
+  assert.throws(() => assertRouteCoverage(sources, source.api, missingHandler), /no server handler: reaction.send/)
   missingHandler.events['reaction.send'].direction = 'server'
-  assert.doesNotThrow(() => assertRouteCoverage(controller, gateway, source.api, missingHandler))
+  assert.doesNotThrow(() => assertRouteCoverage(sources, source.api, missingHandler))
+})
+
+test('routes may be split across controller files and composed from a controller prefix', () => {
+  const api = { paths: { '/lessons/{id}': { get: {} }, '/health': { get: {} } } }
+  const realtime = { events: {} }
+  const split = ["@Controller('api/v1/lessons') class A { @Get(':id') get() {} }", "@Controller('api/v1') class B { @Get('health') h() {} } @Controller('internal') class C { @Get('livekit-auth') x() {} }"]
+  assert.doesNotThrow(() => assertRouteCoverage(split, api, realtime))
+  assert.throws(() => assertRouteCoverage([split[1]], api, realtime), /no server handler: get \/lessons\/\{id\}/)
+  assert.throws(() => assertRouteCoverage([...split, "@Controller('api/v2') class D {}"], api, realtime), /must start with api\/v1/)
+  assert.throws(() => assertRouteCoverage(["@Controller('api/v1') class E { @Get(PATH) g() {} }"], api, realtime), /single-quoted/)
 })
 
 test('capability header names have one source and optional query parameters are additive', () => {

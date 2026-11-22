@@ -199,6 +199,11 @@ class MeetingRealtime internal constructor(
         }
     }
 
+    /** Typed command: the name and payload shape come from the generated contract. */
+    suspend fun <P> send(command: ContractCommand<P>, payload: P, expectedShareId: String? = null): MeetingSnapshot =
+        command(command.type, command.encode(payload), expectedShareId)
+
+    /** Untyped escape hatch kept for smoke tests; app code uses [send]. */
     suspend fun command(type: String, payload: JsonObject = buildJsonObject {}, expectedShareId: String? = null): MeetingSnapshot {
         val id = lessonId ?: throw ApiException(400, "NO_LESSON", "수업을 먼저 선택해 주세요.")
         val ack = request(ContractProtocol.Events.Command, ThinkMeetJson.encodeToJsonElement(CommandEnvelope(id, type, payload, expectedShareId = expectedShareId)))

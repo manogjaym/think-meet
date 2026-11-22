@@ -34,7 +34,7 @@ async function main() {
     console.log(JSON.stringify(result))
   } else if (command === 'user:add') {
     const [username, role, name] = args
-    if (!username || !name || !['teacher','student'].includes(role)) throw new Error('Usage: USER_PASSWORD=... npm run cli -- user:add <username> <teacher|student> <name>; password 7 to 200 chars')
+    if (!username || !name || (role !== 'teacher' && role !== 'student')) throw new Error('Usage: USER_PASSWORD=... npm run cli -- user:add <username> <teacher|student> <name>; password 7 to 200 chars')
     const password = accountPassword(process.env.USER_PASSWORD, 'USER_PASSWORD')
     await db.user.create({ data: { username, role, name, passwordHash: await argon2.hash(password, { type: argon2.argon2id }) } })
     console.log('Account created.')

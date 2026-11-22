@@ -15,6 +15,7 @@ import { activeAssistance, assistancePoint, geometryMatchesVideo, matchesAssista
 import { useParticipantTrack, useRoomParticipants } from "../../lib/livekitMedia"
 
 import { captureSharedFrame } from "./captureSharedFrame"
+import { FEATURE_IDS } from "../../generated/feature-policy"
 
 export type SharedFrame = { capture: () => Promise<Blob> }
 
@@ -31,7 +32,7 @@ export function SharedStage({ user, snapshot, room, command, previews, sendPrevi
   const [natural, setNatural] = useState({ w: 1280, h: 720 })
   const [screenDimensions, setScreenDimensions] = useState({ w: 0, h: 0 })
   const [settledGeometryKey, setSettledGeometryKey] = useState("")
-  const assistanceEnabled = useFeature("meeting.remote-assistance")
+  const assistanceEnabled = useFeature(FEATURE_IDS.MeetingRemoteAssistance)
   const [available, setAvailable] = useState({ w: 800, h: 500 })
   const [loading, setLoading] = useState(false)
   const [renderedPage, setRenderedPage] = useState<number>()

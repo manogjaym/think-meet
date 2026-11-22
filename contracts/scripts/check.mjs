@@ -52,22 +52,57 @@ export function assertCompatible(previous, current) {
   if (issues.length) throw new Error('Backward compatibility failed:\n' + issues.map(i => '  ' + i).join('\n'))
 }
 
-export function assertRouteCoverage(controllerSource, gatewaySource, api, realtime) {
-  const apiController = controllerSource.split("@Controller('api/v1')")[1]?.split("@Controller('internal')")[0]
-  if (!apiController) throw new Error('Cannot identify ApiController for route coverage')
-  const actual = new Set([...apiController.matchAll(/@(Get|Post|Patch|Delete|Put|Head|Options)\('([^']+)'\)/g)].map(([, method, route]) => `${method.toLowerCase()} /${route.replace(/:([A-Za-z][A-Za-z0-9]*)/g, '{$1}')}`))
+const httpMethod = /@(Get|Post|Patch|Delete|Put|Head|Options)\(([^)]*)\)/g
+/** Public routes from every `@Controller('api/v1…')` class in the given sources; `internal` controllers are private. */
+export function serverRoutes(sources) {
+  const routes = new Set()
+  for (const source of sources) {
+    const blocks = source.split(/(?=@Controller\()/).filter(block => block.startsWith('@Controller('))
+    for (const block of blocks) {
+      const prefix = block.match(/^@Controller\(\s*'([^']*)'\s*\)/)?.[1]
+      if (prefix === undefined) throw new Error(`Controllers must use a single-quoted literal prefix: ${block.slice(0, 60)}`)
+      if (prefix === 'internal' || prefix.startsWith('internal/')) continue
+      if (prefix !== 'api/v1' && !prefix.startsWith('api/v1/')) throw new Error(`Public controller prefix must start with api/v1: ${prefix}`)
+      const base = prefix.slice('api/v1'.length)
+      for (const [, method, argument] of block.matchAll(httpMethod)) {
+        const route = argument.trim() === '' ? '' : argument.trim().match(/^'([^']*)'$/)?.[1]
+        if (route === undefined) throw new Error(`Route paths must be single-quoted literals: @${method}(${argument})`)
+        const full = [base, route].filter(Boolean).join('/').replace(/^\/+/, '')
+        routes.add(`${method.toLowerCase()} /${full.replace(/:([A-Za-z][A-Za-z0-9]*)/g, '{$1}')}`)
+      }
+    }
+  }
+  return routes
+}
+
+/** Every public REST route and client Socket event must be both specified and handled, in any server source file. */
+export function assertRouteCoverage(sources, api, realtime) {
+  const actual = serverRoutes(sources)
+  if (!actual.size) throw new Error('Cannot identify any public api/v1 controller for route coverage')
   const specified = new Set(Object.entries(api.paths).flatMap(([route, methods]) => Object.keys(methods).map(method => `${method} ${route}`)))
   for (const route of actual) if (!specified.has(route)) throw new Error(`Server route is missing from contracts/openapi.json: ${route}`)
   for (const route of specified) if (!actual.has(route)) throw new Error(`Contract route has no server handler: ${route}`)
   // @SubscribeMessage can use a generated event constant, so resolve names from realtime.json.
   const eventName = name => Object.keys(realtime.events).find(e => e.split(/[.:-]/).map(p => p[0].toUpperCase() + p.slice(1)).join('') === name)
   const handledEvents = new Set()
-  for (const [, literal, constant] of gatewaySource.matchAll(/@SubscribeMessage\((?:'([^']+)'|SOCKET_EVENTS\.([A-Za-z]+))\)/g)) {
+  for (const source of sources) for (const [, literal, constant] of source.matchAll(/@SubscribeMessage\((?:'([^']+)'|SOCKET_EVENTS\.([A-Za-z]+))\)/g)) {
     const event = literal ?? eventName(constant)
     if (!event || !['client', 'bidirectional'].includes(realtime.events[event]?.direction)) throw new Error(`Server Socket event missing from contract: ${literal ?? constant}`)
+    if (handledEvents.has(event)) throw new Error(`Socket event has more than one server handler: ${event}`)
     handledEvents.add(event)
   }
   for (const [event, spec] of Object.entries(realtime.events)) if (['client', 'bidirectional'].includes(spec.direction) && !handledEvents.has(event)) throw new Error(`Contract Socket event has no server handler: ${event}`)
+}
+
+/** All non-generated server TypeScript sources, from any folder depth. */
+export async function serverSourceFiles(directory = path.join(root, 'server/src')) {
+  const sources = []
+  for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
+    const full = path.join(directory, entry.name)
+    if (entry.isDirectory()) { if (entry.name !== 'generated') sources.push(...await serverSourceFiles(full)); continue }
+    if (entry.name.endsWith('.ts')) sources.push(await fs.readFile(full, 'utf8'))
+  }
+  return sources
 }
 
 export async function checkContracts() {
@@ -76,19 +111,7 @@ export async function checkContracts() {
   const baselines = (await fs.readdir(path.join(root, 'contracts/compatibility'))).filter(file => /^v\d+\.json$/.test(file))
   if (!baselines.length) throw new Error('At least one immutable compatibility baseline is required')
   for (const file of baselines) assertCompatible(JSON.parse(await fs.readFile(path.join(root, 'contracts/compatibility', file), 'utf8')), { openapi: sources.api, realtime: sources.realtime })
-  const [controllers, gateway] = await Promise.all(['server/src/controllers.ts', 'server/src/gateway.ts'].map(p => fs.readFile(path.join(root, p), 'utf8')))
-  assertRouteCoverage(controllers, gateway, sources.api, sources.realtime)
-  async function inspect(directory) {
-    for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
-      const full = path.join(directory, entry.name)
-      if (entry.isDirectory()) { if (entry.name !== 'generated') await inspect(full); continue }
-      if (!entry.name.endsWith('.ts')) continue
-      const source = await fs.readFile(full, 'utf8')
-      if (entry.name !== 'controllers.ts' && /@Controller\(\s*['"`]api\//.test(source)) throw new Error(`Additional public controller requires route coverage registration: ${full}`)
-      if (entry.name !== 'gateway.ts' && /@SubscribeMessage\(/.test(source)) throw new Error(`Additional gateway requires Socket contract/policy registration: ${full}`)
-    }
-  }
-  await inspect(path.join(root, 'server/src'))
+  assertRouteCoverage(await serverSourceFiles(), sources.api, sources.realtime)
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

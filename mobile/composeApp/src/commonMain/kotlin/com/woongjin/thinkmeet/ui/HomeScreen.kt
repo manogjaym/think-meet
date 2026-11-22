@@ -68,7 +68,7 @@ fun HomeScreen(state: AppUiState, controller: AppState, onWorksheetCamera: (Clas
     val student = state.user?.takeIf { it.role == "student" }
     if (student != null) {
         val noteLessons = remember(state.lessons) { state.lessons.map { Triple(it.id, it.status, it.startsAt) } }
-        ClassNotesHome(controller.api, noteLessons, capabilities.supports("classroom.notes"), controller::notes, onWorksheetCamera) { noteCard ->
+        ClassNotesHome(controller.api, noteLessons, capabilities.supports(ContractProtocol.FeatureIds.ClassroomNotes), controller::notes, onWorksheetCamera) { noteCard ->
             DashboardBody(state, controller, noteCard)
         }
     } else DashboardBody(state, controller)

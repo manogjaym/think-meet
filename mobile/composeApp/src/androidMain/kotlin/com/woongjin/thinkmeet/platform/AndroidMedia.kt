@@ -31,6 +31,7 @@ import io.livekit.android.LiveKit
 import io.livekit.android.RoomOptions
 import io.livekit.android.audio.MixerAudioBufferCallback
 import io.livekit.android.audio.ScreenAudioCapturer
+import io.livekit.android.events.DisconnectReason
 import io.livekit.android.events.RoomEvent
 import io.livekit.android.events.collect
 import io.livekit.android.renderer.TextureViewRenderer
@@ -96,7 +97,17 @@ internal class AndroidMediaController(private val context: Context) : MediaContr
                     endRegularCapture()
                     restoreMicrophoneAfterReconnect = false
                     disposeScreenAudio()
-                    mutable.value = mutable.value.copy(error = if (event.reason.toString().contains("DUPLICATE", true)) "REPLACED: 다른 기기에서 수업에 입장했어요." else event.error?.message)
+                    val failure = when (event.reason) {
+                        DisconnectReason.DUPLICATE_IDENTITY -> MediaFailure.Replaced
+                        DisconnectReason.PARTICIPANT_REMOVED -> MediaFailure.Removed
+                        else -> null
+                    }
+                    val message = when (failure) {
+                        MediaFailure.Replaced -> "다른 기기에서 수업에 입장했어요."
+                        MediaFailure.Removed -> "선생님이 참여를 종료했어요."
+                        null -> event.error?.message
+                    }
+                    mutable.value = mutable.value.copy(error = message, failure = failure)
                 }
                 if (event is RoomEvent.Reconnected && restoreMicrophoneAfterReconnect) {
                     restoreMicrophoneAfterReconnect = false
@@ -140,7 +151,7 @@ internal class AndroidMediaController(private val context: Context) : MediaContr
         }
         currentCoroutineContext().ensureActive()
         check(!disconnected) { "수업 연결이 종료되었어요." }
-        mutable.value = mutable.value.copy(error = null)
+        mutable.value = mutable.value.copy(error = null, failure = null)
         microphoneDesired = false
         room.connect(url, token)
         room.localParticipant.videoTrackCaptureDefaults = room.localParticipant.videoTrackCaptureDefaults.copy(position = cameraPosition())

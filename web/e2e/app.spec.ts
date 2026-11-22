@@ -1,6 +1,7 @@
 import { test, expect, type Page } from "@playwright/test"
 import { login, password } from "./helpers"
 import { createWaitingAdmission } from "../src/lib/waitingAdmission"
+import { designContent } from "../src/generated/design-content"
 async function createLesson(page: Page, title: string) {
   await page.getByRole("button", { name: "새 수업 예약", exact: true }).click()
   await page.getByLabel("학습 제목").fill(title)
@@ -76,8 +77,9 @@ test("invitation deep link retains destination through login and student waits",
     await student.getByLabel("비밀번호", { exact: true }).fill(password)
     await student.getByRole("button", { name: "로그인", exact: true }).click()
     await expect(student).toHaveURL(new RegExp(`/lessons/${id}/prejoin`))
+    // With the prejoin check, a student waits for a scheduled lesson instead of joining directly.
     await student
-      .getByRole("button", { name: "지금 참여하기", exact: true })
+      .getByRole("button", { name: designContent.prejoinWaitAction, exact: true })
       .click()
     await expect(student).toHaveURL(new RegExp(`/lessons/${id}/waiting`))
     await expect(

@@ -1,5 +1,6 @@
 package com.woongjin.thinkmeet
 
+import com.woongjin.thinkmeet.data.ContractProtocol
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -42,10 +43,10 @@ fun App() {
         val controller = remember(api) { AppState(api, scope) }
         val state = controller.state.collectAsState().value
         val capabilities = api.capabilities.collectAsState().value
-        val notesEnabled = capabilities.supports("classroom.notes")
-        val prejoinEnabled = capabilities.supports("classroom.prejoin")
+        val notesEnabled = capabilities.supports(ContractProtocol.FeatureIds.ClassroomNotes)
+        val prejoinEnabled = capabilities.supports(ContractProtocol.FeatureIds.ClassroomPrejoin)
         val user = state.user
-        val attendanceEnabled = user?.isTeacher == true && capabilities.supports("classroom.attendance")
+        val attendanceEnabled = user?.isTeacher == true && capabilities.supports(ContractProtocol.FeatureIds.ClassroomAttendance)
         val openStudents = (controller::attendanceStudents).takeIf { attendanceEnabled }
         val route = state.route
         var worksheetStudent by rememberSaveable { mutableStateOf<String?>(null) }

@@ -5,15 +5,18 @@ import { SwaggerModule, type OpenAPIObject } from '@nestjs/swagger'
 import express from 'express'
 import { Auth, Database } from './auth'
 import { Lessons } from './lessons'
+import { LiveKitAdapter } from './lesson/livekit'
+import { LessonRealtime } from './realtime-port'
 import { Materials } from './materials'
 import { Gateway } from './gateway'
-import { ApiController, ClassNoteUploadGuard, InternalController, TeacherUploadGuard } from './controllers'
+import { AuthGuard, CONTROLLERS, TeacherUploadGuard } from './http'
 import { Errors } from './errors'
 import { ClassNotes } from './class-notes'
 import { StudentAttendance } from './student-attendance'
 import { FeaturePolicy, HttpFeatureGuard } from './features'
 import { OPENAPI_DOCUMENT } from './generated/openapi-document'
-@Module({ controllers: [ApiController, InternalController], providers: [Database, Auth, Lessons, Materials, ClassNotes, StudentAttendance, Gateway, TeacherUploadGuard, ClassNoteUploadGuard, FeaturePolicy, { provide: APP_GUARD, useClass: HttpFeatureGuard }] })
+// Global guards run in this order: session first (401), then the contract feature gate.
+@Module({ controllers: CONTROLLERS, providers: [Database, Auth, LiveKitAdapter, LessonRealtime, Lessons, Materials, ClassNotes, StudentAttendance, Gateway, TeacherUploadGuard, FeaturePolicy, { provide: APP_GUARD, useClass: AuthGuard }, { provide: APP_GUARD, useClass: HttpFeatureGuard }] })
 export class AppModule {}
 async function bootstrap() {
   for (const key of ['DATABASE_URL','LIVEKIT_API_KEY','LIVEKIT_API_SECRET','S3_ENDPOINT','S3_ACCESS_KEY','S3_SECRET_KEY','PROXY_AUTH_SECRET','PUBLIC_ORIGIN']) if (!process.env[key]) throw new Error(`${key} is required`)

@@ -17,6 +17,24 @@ enum class PreviewDevice { Checking, Connected, Permission, Unavailable, Failed 
 
 class PreviewDeviceException(val status: PreviewDevice) : Exception()
 
+/** A media disconnect that ends this device's access to the lesson. */
+enum class MediaFailure {
+    /** The same account joined from another device (LiveKit duplicate identity). */
+    Replaced,
+    /** The server removed this participant, e.g. a teacher kick. */
+    Removed;
+
+    companion object {
+        /** The iOS bridge still reports these as `REPLACED:` / `KICKED:` message prefixes. */
+        fun fromLegacyMessage(message: String?): MediaFailure? = when {
+            message == null -> null
+            message.startsWith("REPLACED:") -> Replaced
+            message.startsWith("KICKED:") -> Removed
+            else -> null
+        }
+    }
+}
+
 data class MediaState(
     val connected: Boolean = false, val reconnecting: Boolean = false,
     val participants: List<MediaParticipant> = emptyList(), val error: String? = null,
@@ -26,6 +44,8 @@ data class MediaState(
     val screenCaptureId: Long = 0,
     val previewCamera: PreviewDevice = PreviewDevice.Checking,
     val canFlipPreview: Boolean = false,
+    /** Typed terminal failure; [error] stays a user-facing message only. */
+    val failure: MediaFailure? = null,
 
 )
 interface MediaController {

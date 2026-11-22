@@ -56,7 +56,7 @@
         "server": {
           "status": "done",
           "files": [
-            "server/src/controllers.ts",
+            "server/src/http/lessons.controller.ts",
             "server/src/gateway.ts",
             "server/src/lessons.ts"
           ]
@@ -264,7 +264,7 @@
           "status": "done",
           "files": [
             "server/src/lessons.ts",
-            "server/src/controllers.ts"
+            "server/src/http/lessons.controller.ts"
           ]
         },
         "web": {
@@ -320,7 +320,7 @@
           "status": "done",
           "files": [
             "server/src/class-notes.ts",
-            "server/src/controllers.ts"
+            "server/src/http/class-notes.controller.ts"
           ]
         },
         "web": {
@@ -431,7 +431,7 @@
           "status": "done",
           "files": [
             "server/src/student-attendance.ts",
-            "server/src/controllers.ts"
+            "server/src/http/attendance.controller.ts"
           ]
         },
         "web": {
@@ -560,7 +560,7 @@
           "status": "done",
           "files": [
             "server/src/lessons.ts",
-            "server/src/controllers.ts"
+            "server/src/http/lessons.controller.ts"
           ]
         },
         "web": {

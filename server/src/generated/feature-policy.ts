@@ -104,6 +104,17 @@ export const FEATURE_DEFINITIONS = [
   }
 ] as const satisfies readonly FeatureDefinition[];
 export type FeatureId = typeof FEATURE_DEFINITIONS[number]["id"];
+export const FEATURE_IDS = {
+  "ClassroomCore": "classroom.core",
+  "MeetingPip": "meeting.pip",
+  "MeetingRemoteAssistance": "meeting.remote-assistance",
+  "ClassroomSubjects": "classroom.subjects",
+  "ClassroomNotes": "classroom.notes",
+  "ClassroomAttendance": "classroom.attendance",
+  "ClassroomPrejoin": "classroom.prejoin",
+  "ClassroomLessonModes": "classroom.lesson-modes",
+  "ClassroomTextbookPicker": "classroom.textbook-picker"
+} as const satisfies Record<string, FeatureId>;
 export const HTTP_OPERATIONS: readonly { id: string; method: string; path: string; feature?: string; cleanup?: boolean }[] = [
   {
     "id": "health",

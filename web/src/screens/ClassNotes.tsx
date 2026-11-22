@@ -96,7 +96,7 @@ export function ClassNotesHome({ refreshKey, onOpen }: { refreshKey: string; onO
     upload.current = request
     setBusy(true); setError("")
     try {
-      await uploadNote(`/lessons/${confirmed.id}/worksheets`, draft.file, draft.requestId, {}, request.signal)
+      await uploadNote("submitClassNoteWorksheet", confirmed.id, draft.file, draft.requestId, {}, request.signal)
       close(); onOpen("worksheets")
     } catch (failure) {
       if (request.signal.aborted) return
@@ -261,7 +261,7 @@ function TeacherWorksheetList({ lessonId }: { lessonId: string }) {
     upload.current = request
     setBusy(true); setError("")
     try {
-      await uploadNote(`/worksheets/${selected.original.id}/correction`, draft.file, draft.requestId, {}, request.signal)
+      await uploadNote("submitClassNoteCorrection", selected.original.id, draft.file, draft.requestId, {}, request.signal)
       close(); list.reload()
     } catch (failure) { if (!request.signal.aborted) setError(message(failure)) }
     finally { upload.current = null; if (!request.signal.aborted) setBusy(false) }

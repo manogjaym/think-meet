@@ -3,13 +3,14 @@ import { Link } from "react-router-dom"
 import { Avatar, Icon } from "../components/ui"
 import type {
   StudentAttendanceInput, StudentAttendanceMonth, StudentAttendanceReason,
-  StudentAttendanceRow, StudentAttendanceStatus, User,
+  StudentAttendanceRow, StudentAttendanceStatus,
 } from "../generated/contracts"
 import { designContent as copy } from "../generated/design-content"
-import { api, ApiError, colorFor, koreaParts } from "../lib/api"
+import { call, colorFor, koreaParts } from "../lib/api"
 import "../student-attendance.css"
+import { FEATURE_IDS } from "../generated/feature-policy"
 
-export const attendanceFeature = "classroom.attendance"
+export const attendanceFeature = FEATURE_IDS.ClassroomAttendance
 const statusLabels: Record<StudentAttendanceStatus, string> = {
   PRESENT: copy.attendancePresent, LATE: copy.attendanceLate, ABSENT: copy.attendanceAbsent,
 }
@@ -28,7 +29,7 @@ function shiftMonth(month: string, offset: number) {
   return new Date(Date.UTC(year, number - 1 + offset, 1)).toISOString().slice(0, 7)
 }
 
-function useAttendanceRequest<T>(load: (signal: AbortSignal) => Promise<T>, unauthorized: () => void) {
+function useAttendanceRequest<T>(load: (signal: AbortSignal) => Promise<T>) {
   const [retry, setRetry] = useState(0)
   const [result, setResult] = useState<{ load: typeof load; value?: T; error?: string }>()
   useEffect(() => {
@@ -38,11 +39,10 @@ function useAttendanceRequest<T>(load: (signal: AbortSignal) => Promise<T>, unau
       if (!request.signal.aborted) setResult({ load, value })
     }).catch((error: unknown) => {
       if (request.signal.aborted) return
-      if (error instanceof ApiError && error.status === 401) unauthorized()
       setResult({ load, error: error instanceof Error ? error.message : copy.attendanceLoadError })
     })
     return () => request.abort()
-  }, [load, retry, unauthorized])
+  }, [load, retry])
   return {
     ...(result?.load === load ? result : undefined),
     retry: () => setRetry(value => value + 1),
@@ -57,9 +57,9 @@ function LoadStatus({ error, loading, retry }: { error?: string; loading: string
   </div>
 }
 
-export function AttendanceStudents({ unauthorized }: { unauthorized: () => void }) {
-  const load = useCallback((signal: AbortSignal) => api<User[]>("/students", { signal }), [])
-  const { value, error, retry } = useAttendanceRequest(load, unauthorized)
+export function AttendanceStudents() {
+  const load = useCallback((signal: AbortSignal) => call("listStudents", { signal }), [])
+  const { value, error, retry } = useAttendanceRequest(load)
   return <main className="attendance-page attendance-roster">
     <h1>{copy.attendanceStudents}</h1>
     {!value ? <LoadStatus error={error} retry={retry} loading={copy.attendanceLoadingStudents} />
@@ -76,7 +76,7 @@ export function AttendanceStudents({ unauthorized }: { unauthorized: () => void 
   </main>
 }
 
-export function StudentAttendance({ studentId, unauthorized }: { studentId: string; unauthorized: () => void }) {
+export function StudentAttendance({ studentId }: { studentId: string }) {
   const [month, setMonth] = useState(() => koreaParts(new Date().toISOString()).dateISO.slice(0, 7))
   const [name, setName] = useState("")
   return <div className="attendance-screen">
@@ -87,16 +87,15 @@ export function StudentAttendance({ studentId, unauthorized }: { studentId: stri
       </div>
       <h1>{copy.attendanceTitle}</h1>
     </header>
-    <AttendanceMonth studentId={studentId} month={month} onMonth={setMonth} onName={setName} unauthorized={unauthorized} />
+    <AttendanceMonth studentId={studentId} month={month} onMonth={setMonth} onName={setName} />
   </div>
 }
 
-function AttendanceMonth({ studentId, month, onMonth, onName, unauthorized }: {
-  studentId: string; month: string; onMonth: (value: string) => void; onName: (name: string) => void; unauthorized: () => void
+function AttendanceMonth({ studentId, month, onMonth, onName }: {
+  studentId: string; month: string; onMonth: (value: string) => void; onName: (name: string) => void
 }) {
-  const path = `/students/${encodeURIComponent(studentId)}/attendance`
-  const load = useCallback((signal: AbortSignal) => api<StudentAttendanceMonth>(`${path}?month=${encodeURIComponent(month)}`, { signal }), [path, month])
-  const { value, error, retry, update } = useAttendanceRequest(load, unauthorized)
+  const load = useCallback((signal: AbortSignal) => call("listStudentAttendance", { params: { studentId }, query: { month }, signal }), [studentId, month])
+  const { value, error, retry, update } = useAttendanceRequest(load)
   const [editing, setEditing] = useState<StudentAttendanceRow>()
   const studentName = value?.student.name
   useEffect(() => { if (studentName) onName(studentName) }, [onName, studentName])
@@ -132,13 +131,13 @@ function AttendanceMonth({ studentId, month, onMonth, onName, unauthorized }: {
           <button type="button" className="attendance-edit-button" aria-label={`${row.lessonTitle} ${copy.attendanceEdit}`} onClick={() => setEditing(row)}>{copy.attendanceEditAction}</button>
         </li>)}
       </ul>}
-    {editing && <AttendanceEdit row={editing} path={`${path}/${encodeURIComponent(editing.lessonId)}`} unauthorized={unauthorized}
+    {editing && <AttendanceEdit row={editing} studentId={studentId}
       onCancel={() => setEditing(undefined)} onSave={report => { update(report); setEditing(undefined) }} />}
   </main>
 }
 
-function AttendanceEdit({ row, path, unauthorized, onCancel, onSave }: {
-  row: StudentAttendanceRow; path: string; unauthorized: () => void; onCancel: () => void; onSave: (value: StudentAttendanceMonth) => void
+function AttendanceEdit({ row, studentId, onCancel, onSave }: {
+  row: StudentAttendanceRow; studentId: string; onCancel: () => void; onSave: (value: StudentAttendanceMonth) => void
 }) {
   const dialog = useRef<HTMLDialogElement>(null)
   const request = useRef<AbortController>(null)
@@ -168,13 +167,10 @@ function AttendanceEdit({ row, path, unauthorized, onCancel, onSave }: {
     setError("")
     const body: StudentAttendanceInput = { status, reason, memo }
     try {
-      const value = await api<StudentAttendanceMonth>(path, {
-        method: "PUT", body: JSON.stringify(body), signal: controller.signal,
-      })
+      const value = await call("saveStudentAttendance", { params: { studentId, lessonId: row.lessonId }, body, signal: controller.signal })
       if (!controller.signal.aborted) onSave(value)
     } catch (error) {
       if (controller.signal.aborted) return
-      if (error instanceof ApiError && error.status === 401) unauthorized()
       setError(error instanceof Error ? error.message : copy.attendanceSaveError)
     } finally {
       if (!controller.signal.aborted) {

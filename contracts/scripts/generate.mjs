@@ -138,6 +138,24 @@ function kotlinModels(schemas) {
   return lines.join('\n')
 }
 
+/** Typed REST operation map: method, path template, params, JSON body and 2xx response per operationId. */
+function tsOperations(api) {
+  const entries = [], runtime = {}
+  for (const [route, methods] of Object.entries(api.paths)) for (const [method, operation] of Object.entries(methods)) {
+    const parameters = operation.parameters ?? []
+    const fields = where => parameters.filter(p => p.in === where).map(p => `${p.name}${p.required || where === 'path' ? '' : '?'}: ${tsType(p.schema)}`)
+    const path = fields('path'), query = fields('query')
+    const content = operation.requestBody?.content ?? {}
+    const body = content['application/json'] ? tsType(content['application/json'].schema) : content['multipart/form-data'] ? 'FormData' : Object.keys(content).length ? 'string' : 'undefined'
+    const success = Object.entries(operation.responses ?? {}).filter(([status]) => /^2\d\d$/.test(status)).sort(([a], [b]) => a.localeCompare(b))
+    const json = success.find(([, response]) => response.content?.['application/json'])
+    const response = json ? tsType(json[1].content['application/json'].schema) : success.some(([, r]) => Object.keys(r.content ?? {}).length) ? 'Response' : 'void'
+    entries.push(`  ${operation.operationId}: { method: ${quote(method.toUpperCase())}; path: ${quote(route)}; params: ${path.length ? `{ ${path.join('; ')} }` : 'undefined'}; query: ${query.length ? `{ ${query.join('; ')} }` : 'undefined'}; body: ${body}; response: ${response} };`)
+    runtime[operation.operationId] = { method: method.toUpperCase(), path: route }
+  }
+  return [`export type ApiOperations = {`, ...entries, '};', 'export type ApiOperationId = keyof ApiOperations;', `export const API_OPERATIONS = ${JSON.stringify(runtime, null, 2)} as const satisfies Record<ApiOperationId, { method: string; path: string }>;`]
+}
+
 const jsHelpers = `
 function matchingOperation(method: string, input: string) {
   const route = input.split("?")[0].replace(/\\/$/, "");
@@ -160,11 +178,15 @@ export function baselineFeatures(platform: string): Record<string, boolean> {
 }
 `
 
-function kotlinProtocol(revision, operations, definitions, realtime) {
-  const lines = ['// Generated from contracts/ and features/catalog.json. Do not edit.', 'package com.woongjin.thinkmeet.data', '', 'data class ContractHttpOperation(val id: String, val method: String, val path: String, val feature: String?)', 'data class ContractFeature(val id: String, val stage: String, val requiresRevision: Int, val defaultEnabled: Boolean, val platforms: Set<String>)', '', 'object ContractProtocol {', `    const val Revision = ${revision}`, '    const val ApiBasePath = "/api/v1"', `    const val SocketPath = ${ktQuote(realtime.path)}`, `    const val PlatformHeader = ${ktQuote(realtime.handshake.headers.platform)}`, `    const val RevisionHeader = ${ktQuote(realtime.handshake.headers.revision)}`, '    object Events {']
+function kotlinProtocol(revision, operations, definitions, realtime, errorCodes) {
+  const lines = ['// Generated from contracts/ and features/catalog.json. Do not edit.', 'package com.woongjin.thinkmeet.data', '', 'data class ContractHttpOperation(val id: String, val method: String, val path: String, val feature: String?)', 'class ContractCommand<P>(val type: String, val serializer: kotlinx.serialization.KSerializer<P>)', 'data class ContractFeature(val id: String, val stage: String, val requiresRevision: Int, val defaultEnabled: Boolean, val platforms: Set<String>)', '', 'object ContractProtocol {', `    const val Revision = ${revision}`, '    const val ApiBasePath = "/api/v1"', `    const val SocketPath = ${ktQuote(realtime.path)}`, `    const val PlatformHeader = ${ktQuote(realtime.handshake.headers.platform)}`, `    const val RevisionHeader = ${ktQuote(realtime.handshake.headers.revision)}`, '    object Events {']
   for (const name of Object.keys(realtime.events)) lines.push(`        const val ${pascal(name)} = ${ktQuote(name)}`)
   lines.push('    }', '    object FeatureIds {')
   for (const f of definitions) lines.push(`        const val ${pascal(f.id)} = ${ktQuote(f.id)}`)
+  lines.push('    }', '    /** Server error codes from contracts/openapi.json ErrorCode; compare exact values, never substrings. */', '    object ErrorCodes {')
+  for (const code of errorCodes) lines.push(`        const val ${pascal(code.toLowerCase().replaceAll('_', '-'))} = ${ktQuote(code)}`)
+  lines.push('    }', '    /** Socket commands with their generated payload serializers. */', '    object Commands {')
+  for (const [name, spec] of Object.entries(realtime.commands)) lines.push(`        val ${pascal(name)} = ContractCommand(${ktQuote(name)}, ${spec.payload}.serializer())`)
   lines.push('    }', '    val HttpOperations = listOf(')
   for (const op of operations) lines.push(`        ContractHttpOperation(${ktQuote(op.id)}, ${ktQuote(op.method)}, ${ktQuote(op.path)}, ${op.feature ? ktQuote(op.feature) : 'null'}),`)
   lines.push('    )', '    val Features = listOf(')
@@ -196,13 +218,15 @@ export function compileSources(sources) {
   const revision = api['x-contract-revision'], schemas = api.components.schemas
   const definitions = catalog.features.map(({ id, stage, requiresRevision, defaultEnabled, platforms }) => ({ id, stage, requiresRevision, defaultEnabled, platforms }))
   const events = Object.fromEntries(Object.keys(realtime.events).map(name => [pascal(name), name]))
-  const types = ['// Generated from contracts/openapi.json and realtime.json. Do not edit.', `export const CONTRACT_REVISION = ${revision} as const;`, 'export const API_BASE_PATH = "/api/v1" as const;', `export const SOCKET_PATH = ${quote(realtime.path)} as const;`, `export const SOCKET_EVENTS = ${JSON.stringify(events, null, 2)} as const;`, 'export const REALTIME_EVENTS = SOCKET_EVENTS;', ...Object.entries(schemas).map(([name, s]) => `export type ${name} = ${tsType(s)};`), 'export type ApiLesson = Lesson;', `export type CommandType = ${Object.keys(realtime.commands).map(quote).join(' | ')};`, `export type CommandPayloads = { ${Object.entries(realtime.commands).map(([name, spec]) => `${quote(name)}: ${spec.payload}`).join('; ')} };`, '']
-  const policy = ['// Generated from features/catalog.json and contracts/. Do not edit.', `export const CONTRACT_REVISION = ${revision} as const;`, `export const CAPABILITY_HEADERS = ${JSON.stringify(realtime.handshake.headers)} as const;`, 'export type ClientPlatform = "web" | "android" | "ios";', 'export type FeatureDefinition = { readonly id: string; readonly stage: "baseline" | "planned" | "in-progress" | "ready"; readonly requiresRevision: number; readonly defaultEnabled: boolean; readonly platforms: readonly ClientPlatform[] };', `export const FEATURE_DEFINITIONS = ${JSON.stringify(definitions, null, 2)} as const satisfies readonly FeatureDefinition[];`, 'export type FeatureId = typeof FEATURE_DEFINITIONS[number]["id"];', `export const HTTP_OPERATIONS: readonly { id: string; method: string; path: string; feature?: string; cleanup?: boolean }[] = ${JSON.stringify(operations, null, 2)};`, `const COMMAND_FEATURES: Record<string, string | undefined> = ${JSON.stringify(Object.fromEntries(Object.entries(realtime.commands).map(([k, v]) => [k, v.cleanup ? null : v.feature]))).replaceAll(':null', ':undefined')};`, `const EVENT_FEATURES: Record<string, string | undefined> = ${JSON.stringify(Object.fromEntries(Object.entries(realtime.events).map(([k, v]) => [k, v.feature ?? null]))).replaceAll(':null', ':undefined')};`, jsHelpers]
+  const errorCodes = schemas.ErrorCode?.enum ?? fail('contracts/openapi.json requires the ErrorCode enum')
+  const featureIds = Object.fromEntries(definitions.map(f => [pascal(f.id), f.id]))
+  const types = ['// Generated from contracts/openapi.json and realtime.json. Do not edit.', `export const CONTRACT_REVISION = ${revision} as const;`, 'export const API_BASE_PATH = "/api/v1" as const;', `export const SOCKET_PATH = ${quote(realtime.path)} as const;`, `export const SOCKET_EVENTS = ${JSON.stringify(events, null, 2)} as const;`, 'export const REALTIME_EVENTS = SOCKET_EVENTS;', ...Object.entries(schemas).map(([name, s]) => `export type ${name} = ${tsType(s)};`), 'export type ApiLesson = Lesson;', `export const ERROR_CODES = ${JSON.stringify(errorCodes)} as const;`, ...tsOperations(api), `export type CommandType = ${Object.keys(realtime.commands).map(quote).join(' | ')};`, `export type CommandPayloads = { ${Object.entries(realtime.commands).map(([name, spec]) => `${quote(name)}: ${spec.payload}`).join('; ')} };`, '']
+  const policy = ['// Generated from features/catalog.json and contracts/. Do not edit.', `export const CONTRACT_REVISION = ${revision} as const;`, `export const CAPABILITY_HEADERS = ${JSON.stringify(realtime.handshake.headers)} as const;`, 'export type ClientPlatform = "web" | "android" | "ios";', 'export type FeatureDefinition = { readonly id: string; readonly stage: "baseline" | "planned" | "in-progress" | "ready"; readonly requiresRevision: number; readonly defaultEnabled: boolean; readonly platforms: readonly ClientPlatform[] };', `export const FEATURE_DEFINITIONS = ${JSON.stringify(definitions, null, 2)} as const satisfies readonly FeatureDefinition[];`, 'export type FeatureId = typeof FEATURE_DEFINITIONS[number]["id"];', `export const FEATURE_IDS = ${JSON.stringify(featureIds, null, 2)} as const satisfies Record<string, FeatureId>;`, `export const HTTP_OPERATIONS: readonly { id: string; method: string; path: string; feature?: string; cleanup?: boolean }[] = ${JSON.stringify(operations, null, 2)};`, `const COMMAND_FEATURES: Record<string, string | undefined> = ${JSON.stringify(Object.fromEntries(Object.entries(realtime.commands).map(([k, v]) => [k, v.cleanup ? null : v.feature]))).replaceAll(':null', ':undefined')};`, `const EVENT_FEATURES: Record<string, string | undefined> = ${JSON.stringify(Object.fromEntries(Object.entries(realtime.events).map(([k, v]) => [k, v.feature ?? null]))).replaceAll(':null', ':undefined')};`, jsHelpers]
   const outputs = new Map()
   for (const target of targets) { outputs.set(target + 'contracts.ts', types.join('\n')); outputs.set(target + 'feature-policy.ts', policy.join('\n')) }
   outputs.set('server/src/generated/openapi-document.ts', '// Generated from contracts/openapi.json. Do not edit.\nexport const OPENAPI_DOCUMENT = ' + JSON.stringify(api, null, 2) + ' as const;\n')
   outputs.set(ktBase + 'ContractModels.kt', kotlinModels(schemas))
-  outputs.set(ktBase + 'ContractProtocol.kt', kotlinProtocol(revision, operations, definitions, realtime))
+  outputs.set(ktBase + 'ContractProtocol.kt', kotlinProtocol(revision, operations, definitions, realtime, errorCodes))
   return outputs
 }
 

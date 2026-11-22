@@ -162,7 +162,9 @@ export class ClassNotes {
         throw new ApiError('NOT_CONNECTED', '수업에 연결한 뒤 다시 시도해 주세요.', 409)
       }
       const share = readShare(lesson.share)
-      if (!share || share.assistanceId || share.id !== input.shareId || share.page !== input.page) throw changedShare()
+      // A mirrored student screen may be saved only by that student, and stays private to them.
+      const mirrored = Boolean(share?.assistanceId)
+      if (!share || (mirrored && (user.role !== 'student' || share.ownerId !== user.id)) || share.id !== input.shareId || share.page !== input.page) throw changedShare()
       return { lessonId, studentId: lesson.teacherId === user.id ? null : user.id, kind: 'capture' }
     })
   }

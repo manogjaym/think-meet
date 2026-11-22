@@ -71,7 +71,8 @@
     "meetingPeopleControl": "참가자",
     "meetingChatPanel": "수업 채팅",
     "meetingPeoplePanel": "참석자",
-    "pipRestoreFullscreen": "전체 화면으로 돌아가기",
+    "mirroringStop": "미러링 끄기",
+    "mirroringCaptureFailed": "화면을 저장하지 못했어요. 잠시 후 다시 시도해 주세요.",
     "textbookPicker": "교재 불러오기",
     "textbookTab": "교재",
     "textbookSelect": "PDF 교재 선택",
@@ -112,6 +113,7 @@
     "notesTeacherList": "제출 학습지",
     "notesCorrection": "첨삭 이미지 첨부",
     "notesCapture": "화면 저장",
+    "notesCaptureSaved": "화면을 저장했어요.",
     "notesOwnCapture": "내가 저장한 화면",
     "notesTeacherCapture": "선생님이 저장한 화면",
     "notesShareNotice": "이 수업에 실제 참여한 학생 모두에게 보여요.",
@@ -294,7 +296,8 @@
         "interaction": "모든 공유 화면은 쪽 이동 또는 영상 재생과 판서 도구를 공유 화면 아래에 둡니다. 판서 도구는 아이콘으로 표시하고 공간이 부족하면 다음 줄 오른쪽으로 내려갑니다. 수업방·미러링 모드는 판서를 항상 켜고 판서 시작·종료 버튼을 숨깁니다."
       },
       "systemPip": {
-        "interaction": "작은 영상 창을 탭해 메뉴를 엽니다. Android는 전체 화면으로 돌아가기, iOS는 시스템 전체 화면 복귀 버튼으로 기존 수업에 돌아갑니다."
+        "interaction": "작은 영상 창에는 영상 한 명만 표시합니다. 창을 탭해 메뉴를 열고 Android·iOS 모두 시스템의 크게 보기 버튼으로 기존 수업에 돌아갑니다. 앱은 같은 기능의 버튼을 따로 추가하지 않습니다.",
+        "mirroringActions": "Android 학생이 미러링 중이면 PiP 메뉴에 화면 저장과 미러링 끄기를 추가합니다. 화면 저장은 학생 자신의 화면 한 장을 본인 기록함에 저장하고 결과를 시스템 알림으로 표시합니다. 미러링 끄기는 화면 공유만 중지하고 수업과 PiP는 유지합니다."
       },
       "textbookPicker": {
         "wide": ["shared-document", "participant-strip-above-textbook-panel"],

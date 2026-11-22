@@ -1,0 +1,33 @@
+{
+  "id": "mirroring-pip-actions",
+  "summary": "Android 학생이 미러링 중이면 시스템 PiP 메뉴에 화면 저장과 미러링 끄기를 넣습니다. PiP에는 영상 한 명만 표시하고, 시스템 크게 보기와 겹치던 앱의 전체 화면 복귀 버튼을 제거합니다. 미러링 화면은 공유 중인 학생 본인만 기록함에 저장할 수 있습니다.",
+  "scope": "platform-only",
+  "featureIds": [
+    "meeting.remote-assistance",
+    "meeting.pip",
+    "classroom.notes"
+  ],
+  "platforms": {
+    "server": {
+      "status": "implemented"
+    },
+    "web": {
+      "status": "not-applicable",
+      "reason": "웹에는 시스템 PiP가 없고 미러링 학생 수신은 Android 앱만 지원합니다. 웹 변경은 공통 문구 생성물뿐입니다."
+    },
+    "android": {
+      "status": "implemented"
+    },
+    "ios": {
+      "status": "implemented"
+    }
+  },
+  "verification": [
+    "npm run shared:check (변경 파일 목록 포함), npm run verify",
+    "server/에서 npx tsx --test test/class-note-capture.test.ts",
+    "mobile/에서 ./gradlew :composeApp:testDebugUnitTest :composeApp:assembleDebug :composeApp:assembleDebugAndroidTest",
+    "API 35 임시 AVD에서 MirroringPipActionsTest 2개",
+    "features/evidence/mirroring-pip-actions.md",
+    "iOS는 공통 Compose 변경을 컴파일하지만 미러링 학생 수신은 Android만 지원하고 iOS PiP는 시스템 복귀 버튼만 사용합니다. Linux 환경이라 iOS 빌드·실행은 미실시"
+  ]
+}

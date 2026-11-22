@@ -5,10 +5,11 @@ import android.app.KeyguardManager
 import android.app.PendingIntent
 import android.app.PictureInPictureParams
 import android.app.RemoteAction
-import android.content.ComponentName
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.graphics.Rect
 import android.graphics.drawable.Icon
@@ -16,6 +17,7 @@ import android.os.Build
 import android.os.Process
 import android.os.PowerManager
 import android.util.Rational
+import android.widget.Toast
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -25,7 +27,11 @@ import com.woongjin.thinkmeet.MainActivity
 import com.woongjin.thinkmeet.R
 import com.woongjin.thinkmeet.design.generated.DesignContent
 import io.livekit.android.room.Room
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
@@ -51,17 +57,48 @@ internal class AndroidPictureInPictureController(
     private var lastParameters: ParametersKey? = null
     private var fullscreenSourceTarget: Pair<String, Boolean>? = null
     private var fullscreenSourceBounds: Rect? = null
-    private val restoreAction by lazy {
+    // The OS PiP menu already has an expand button, so the app adds only lesson actions.
+    private var pipActions: List<PipAction> = emptyList()
+    private val actionEvents = MutableSharedFlow<PipAction>(extraBufferCapacity = 4, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    override val actions: Flow<PipAction> = actionEvents.asSharedFlow()
+    private val actionReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            val name = intent.getStringExtra(EXTRA_PIP_ACTION) ?: return
+            PipAction.entries.firstOrNull { it.name == name }?.let { actionEvents.tryEmit(it) }
+        }
+    }
+    private var receiverRegistered = false
+
+    init {
+        activity?.attachPictureInPictureController(this)
         activity?.let { host ->
-            // MainActivity is singleTask, so the launcher intent brings the same call forward.
-            val intent = Intent.makeMainActivity(ComponentName(host, MainActivity::class.java))
-            val pendingIntent = PendingIntent.getActivity(host, 0, intent, PendingIntent.FLAG_IMMUTABLE)
-            val label = DesignContent.PipRestoreFullscreen
-            RemoteAction(Icon.createWithResource(host, R.drawable.ic_pip_fullscreen), label, label, pendingIntent)
+            // Only this app's own PendingIntents can reach the receiver.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) host.registerReceiver(actionReceiver, IntentFilter(ACTION_PIP), Context.RECEIVER_NOT_EXPORTED)
+            else @Suppress("UnspecifiedRegisterReceiverFlag") host.registerReceiver(actionReceiver, IntentFilter(ACTION_PIP))
+            receiverRegistered = true
         }
     }
 
-    init { activity?.attachPictureInPictureController(this) }
+    override fun setActions(actions: List<PipAction>) {
+        if (closed || pipActions == actions) return
+        pipActions = actions
+        applyParameters()
+    }
+
+    override fun showNotice(message: String) {
+        val host = activity ?: return
+        if (message.isNotBlank()) Toast.makeText(host.applicationContext, message, Toast.LENGTH_SHORT).show()
+    }
+
+    private fun remoteAction(host: MainActivity, action: PipAction): RemoteAction {
+        val (icon, label) = when (action) {
+            PipAction.CaptureScreen -> R.drawable.ic_pip_capture to DesignContent.NotesCapture
+            PipAction.StopMirroring -> R.drawable.ic_pip_stop_mirroring to DesignContent.MirroringStop
+        }
+        val intent = Intent(ACTION_PIP).setPackage(host.packageName).putExtra(EXTRA_PIP_ACTION, action.name)
+        val pending = PendingIntent.getBroadcast(host, action.ordinal + 1, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        return RemoteAction(Icon.createWithResource(host, icon), label, label, pending)
+    }
 
     override fun update(enabled: Boolean, target: PipVideoTarget?) {
         if (closed) return
@@ -177,10 +214,13 @@ internal class AndroidPictureInPictureController(
         return Rational((ratio * 10_000).roundToInt().coerceIn(4_185, 23_900), 10_000)
     }
 
-    private fun parameters(automatic: Boolean, source: Rect?): PictureInPictureParams {
+    @androidx.annotation.VisibleForTesting
+    internal fun parameters(automatic: Boolean, source: Rect?): PictureInPictureParams {
         return PictureInPictureParams.Builder().apply {
             setAspectRatio(aspectRatio())
-            setActions(listOfNotNull(restoreAction.takeIf { target != null }))
+            val host = activity
+            val allowed = host?.maxNumPictureInPictureActions ?: 0
+            setActions(if (host == null || target == null) emptyList() else pipActions.take(allowed).map { remoteAction(host, it) })
             if (source != null && !source.isEmpty) setSourceRectHint(source)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 setAutoEnterEnabled(automatic)
@@ -210,7 +250,7 @@ internal class AndroidPictureInPictureController(
         val automatic = canEnter()
         val selected = target
         val source = sourceBounds()
-        val key = ParametersKey(automatic, selected, source?.let(::Rect))
+        val key = ParametersKey(automatic, selected, source?.let(::Rect), pipActions)
         if (lastParameters == key) return
         try {
             host.setPictureInPictureParams(parameters(automatic, source))
@@ -255,11 +295,17 @@ internal class AndroidPictureInPictureController(
         applyParameters()
         closed = true
         mutable.update { it.copy(active = false, transitioning = false) }
+        if (receiverRegistered) { runCatching { activity?.unregisterReceiver(actionReceiver) }; receiverRegistered = false }
         activity?.detachPictureInPictureController(this)
         activity?.dismissTerminalPictureInPicture(entering)
     }
 
-    private data class ParametersKey(val automatic: Boolean, val target: PipVideoTarget?, val source: Rect?)
+    private data class ParametersKey(val automatic: Boolean, val target: PipVideoTarget?, val source: Rect?, val actions: List<PipAction>)
+
+    private companion object {
+        const val ACTION_PIP = "com.woongjin.thinkmeet.action.PIP"
+        const val EXTRA_PIP_ACTION = "action"
+    }
 }
 
 internal fun Context.findMainActivity(): MainActivity? {

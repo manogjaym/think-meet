@@ -187,6 +187,41 @@ fun MeetingScreen(
     }
     LaunchedEffect(pipState.error) { pipState.error?.let { snackbar.showSnackbar(it) } }
 
+    // A mirroring student gets lesson actions in the system PiP menu; the OS supplies expand/close.
+    val ownMirror = snapshot?.share?.takeIf { share ->
+        assistance?.let { it.studentId == user.id && it.status == "active" && share.assistanceId == it.id } == true &&
+            share.type == "screen" && share.ownerId == user.id
+    }
+    val pipActions = if (ownMirror == null) emptyList() else listOfNotNull(
+        PipAction.CaptureScreen.takeIf { notesEnabled && admission.admissionId != null }, PipAction.StopMirroring)
+    SideEffect { pip.setActions(pipActions) }
+    val latestMirror by rememberUpdatedState(ownMirror)
+    val latestCompactPip by rememberUpdatedState(compactSystemPip)
+    var mirrorCaptureBusy by remember { mutableStateOf(false) }
+    LaunchedEffect(pip) {
+        // The app's own UI is hidden in PiP, so results there use a system notice.
+        fun notice(message: String) { if (latestCompactPip) pip.showNotice(message) else showMessage(message) }
+        pip.actions.collect { action ->
+            val share = latestMirror ?: return@collect
+            when (action) {
+                PipAction.StopMirroring -> share.assistanceId?.let { id -> execute { assistanceSession.stop(id) } }
+                PipAction.CaptureScreen -> if (!mirrorCaptureBusy) {
+                    mirrorCaptureBusy = true
+                    scope.launch {
+                        try {
+                            val admissionId = admission.admissionId ?: error(DesignContent.MirroringCaptureFailed)
+                            val image = remote.captureScreenFrame() ?: error(DesignContent.MirroringCaptureFailed)
+                            api.saveNoteCapture(lesson.id, image, uniqueId(), share.id, share.page, admissionId)
+                            notice(DesignContent.NotesCaptureSaved)
+                        } catch (error: CancellationException) { throw error }
+                        catch (error: Throwable) { notice(error.message ?: DesignContent.MirroringCaptureFailed) }
+                        finally { mirrorCaptureBusy = false }
+                    }
+                }
+            }
+        }
+    }
+
     BackHandler { confirmLeave = true }
     LaunchedEffect(realtime) {
         realtime.errors.collectLatest { snackbar.showSnackbar(it) }
@@ -369,7 +404,7 @@ fun MeetingScreen(
                 (if (changed) DesignContent.NotesShareChanged else capture.error)?.let { Text(it, color = Palette.DangerText) }
                 DesignButton(if (capture.busy) "저장 중…" else "저장하기", {
                     val id = admission.admissionId ?: return@DesignButton
-                    if (!changed) capture.save(id) { showMessage("화면을 저장했어요.") }
+                    if (!changed) capture.save(id) { showMessage(DesignContent.NotesCaptureSaved) }
                 }, enabled = !changed && !capture.busy && socketConnected && mediaState.connected)
             }
         }

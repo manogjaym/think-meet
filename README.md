@@ -23,7 +23,7 @@ Node 22.22 이상과 각 프로젝트의 의존성이 필요합니다. 루트 �
 ```sh
 npm run shared:check      # 생성·빌드 전에 저장된 생성물, 호환성, 플랫폼 상태 검사
 npm run shared:generate   # 공통 원본을 수정한 뒤 생성물 갱신
-npm run verify            # 공통·정책 테스트, 웹/서버 타입 검사, 웹 빌드
+npm run verify            # 공통 테스트, 서버·웹 단위 테스트, 웹/서버 타입 검사, 웹 빌드
 ```
 
 새 기능은 `features/`, 계약은 `contracts/`, 디자인은 `design/` 안내를 따릅니다. 화면 변경은 웹·앱에 함께 반영하고 휴대폰·태블릿에서 비교합니다. 실제 검사·빌드·실행 기록은 [features/VERIFICATION.md](features/VERIFICATION.md)를 확인하세요.

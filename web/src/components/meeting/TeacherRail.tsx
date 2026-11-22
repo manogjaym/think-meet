@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { designContent } from "../../generated/design-content"
-import type { MeetingSnapshot } from "../../lib/meeting"
+import { friendlyError, type Command, type MeetingSnapshot } from "../../lib/meeting"
 import { currentAssistance } from "../../lib/remoteAssistance"
 import { Icon } from "../ui"
 
@@ -23,21 +23,30 @@ export function MaterialsCard({ textbookDisabled, onTextbook }: { textbookDisabl
   </section>
 }
 
-/** Main stage guidance for the lesson owner while nothing is shared. */
-export function TeacherStageGuide({ snapshot, disabled, onShare, onPickStudent }: {
+/** Main stage guidance for the lesson owner while nothing is shared, including a mirroring request awaiting the student. */
+export function TeacherStageGuide({ snapshot, disabled, onShare, onPickStudent, command, onError }: {
   snapshot: MeetingSnapshot | null
   disabled: boolean
   onShare: () => void
   onPickStudent: () => void
+  command: Command
+  onError: (message: string) => void
 }) {
+  const [stopping, setStopping] = useState(false)
   const phase = snapshot?.instruction?.phase
   const session = currentAssistance(snapshot?.assistance) ? snapshot?.assistance : null
   const student = session && snapshot?.participants.find(entry => entry.user.id === session.studentId)?.user.name
   const waiting = phase === "mirroring" && session
-  return <div className="teacher-stage-guide" role="status">
+  const stop = () => {
+    if (!session || stopping) return
+    setStopping(true)
+    void command("assistance.stop", { sessionId: session.id }).catch(error => onError(friendlyError(error))).finally(() => setStopping(false))
+  }
+  return <div className={`teacher-stage-guide ${waiting ? "is-waiting" : ""}`} role="status">
     <span className="teacher-stage-icon"><Icon name="screen" size={34} /></span>
-    {waiting ? <p>{student && <strong>{student} </strong>}{session.status === "pending" ? designContent.remoteAssistWaiting : designContent.remoteAssistPreparing}</p>
+    {waiting ? <p>{session.status === "pending" ? `${student ? `${student} ` : ""}${designContent.meetingMirroringWaiting}` : designContent.remoteAssistPreparing}</p>
       : <p>{phase === "classroom" ? designContent.meetingStageClassroom : phase === "mirroring" ? designContent.meetingStageMirroring : designContent.meetingStagePreparing}</p>}
+    {waiting && <button className="teacher-stage-cancel" disabled={stopping} onClick={stop}>{session.status === "pending" ? designContent.meetingLessonCancelRequest : designContent.remoteAssistStop}</button>}
     {phase === "classroom" && <button disabled={disabled} onClick={onShare}>{designContent.meetingStageClassroomAction}</button>}
     {phase === "mirroring" && !session && <button disabled={disabled} onClick={onPickStudent}>{designContent.meetingStageMirroringAction}</button>}
   </div>

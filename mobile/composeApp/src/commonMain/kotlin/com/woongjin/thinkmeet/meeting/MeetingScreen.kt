@@ -266,7 +266,8 @@ fun MeetingScreen(
                 if (owner && lessonModes && phase != null && !compactSystemPip) {
                     MeetingLessonModes(activeLessonMode(phase, snapshot?.share, assistance), modeReady && !modeBusy && !busy, assistanceEnabled, onMode = ::selectMode)
                 }
-                if (assistanceEnabled && assistance != null && (owner || assistance.studentId == user.id)) {
+                // The owner rail's stage guide shows a pending/preparing request and its cancel button itself.
+                if (assistanceEnabled && assistance != null && (owner || assistance.studentId == user.id) && !(teacherRail && snapshot?.share == null)) {
                     RemoteAssistanceControls(assistance, user, remoteState.supported && pipState.supported, assistanceBusy,
                         Modifier.fillMaxWidth().padding(horizontal = bodyPadding, vertical = Space.S4),
                         onApprove = { assistanceSession.approve(assistance.id) },
@@ -289,7 +290,9 @@ fun MeetingScreen(
                                 onCapture = capture::capture,
                                 textbookLayout = textbookLayout, dockedParticipants = dockedTextbook || teacherRail)
                             else if (teacherRail) TeacherStageGuide(current, enabled = modeReady && !modeBusy && !busy,
-                                onShare = { selectMode("classroom") }, onPickStudent = { selectMode("mirroring") }, modifier = Modifier.fillMaxSize())
+                                onShare = { selectMode("classroom") }, onPickStudent = { selectMode("mirroring") },
+                                onCancelRequest = { assistance?.let { current -> execute { assistanceSession.stop(current.id) } } }, cancelEnabled = !assistanceBusy,
+                                modifier = Modifier.fillMaxSize())
                             else ParticipantGallery(current, currentLesson, user, media, mediaState, grid, Modifier.fillMaxSize())
                             if (miniVisible && miniTarget != null && !pipState.active && !pipState.transitioning && fatalError == null && !exited && !busy) {
                                 FloatingMiniVideo(media, mediaState, miniTarget, videoName(miniTarget), !compact, miniPosition,

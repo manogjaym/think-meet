@@ -12,7 +12,7 @@ export function RemoteAssistanceStatus({ snapshot, userId, command, onError, poi
   if (!currentAssistance(session) || ![session.teacherId, session.studentId].includes(userId)) return null
   const teacher = session.teacherId === userId
   // Existing sessions keep cleanup available even if a refresh disables new requests.
-  const message = !teacher || !enabled ? designContent.remoteAssistUnsupported : session.status === "pending" ? designContent.remoteAssistWaiting : session.status === "approved" ? designContent.remoteAssistPreparing : pointingReady ? designContent.remoteAssistActive : designContent.remoteAssistGeometryWaiting
+  const message = !teacher || !enabled ? designContent.remoteAssistUnsupported : session.status === "pending" ? (teacher ? designContent.meetingMirroringWaiting : designContent.remoteAssistWaiting) : session.status === "approved" ? designContent.remoteAssistPreparing : pointingReady ? designContent.remoteAssistActive : designContent.remoteAssistGeometryWaiting
   const student = snapshot?.participants.find(entry => entry.user.id === session.studentId)?.user.name
   return <div className="remote-assistance-status" role="status">
     <span>{student && teacher && <strong>{student}</strong>}{message}</span>

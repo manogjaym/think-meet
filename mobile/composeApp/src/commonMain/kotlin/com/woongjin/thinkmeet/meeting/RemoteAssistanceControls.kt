@@ -24,12 +24,14 @@ internal fun RemoteAssistanceControls(
         Row(Modifier.padding(horizontal = Space.S12, vertical = Space.S8), verticalAlignment = Alignment.CenterVertically) {
             val status = when {
                 student && !supported -> DesignContent.RemoteAssistUnsupported
+                // The teacher's wording matches the stage guide ("{name} 학생의 수락을 기다리고 있어요").
+                session.status == "pending" && !student -> DesignContent.MeetingMirroringWaiting
                 session.status == "pending" -> DesignContent.RemoteAssistWaiting
                 session.status == "approved" -> DesignContent.RemoteAssistPreparing
                 student -> DesignContent.RemoteAssistActiveStudent
                 else -> DesignContent.RemoteAssistActive
             }
-            Text(if (!student && studentName != null) "$studentName · $status" else status,
+            Text(if (!student && studentName != null) (if (session.status == "pending") "$studentName $status" else "$studentName · $status") else status,
                 Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = Palette.MeetingText)
             TextButton(onClick = onStop, enabled = !busy || student) {
                 Text(if (requestCancel) DesignContent.MeetingLessonCancelRequest else DesignContent.RemoteAssistStop, color = Palette.PrimaryOnDark)

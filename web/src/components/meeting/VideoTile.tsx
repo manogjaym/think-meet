@@ -2,8 +2,10 @@ import { useEffect, useRef } from "react"
 import { Track, type Participant, type VideoTrack } from "livekit-client"
 import { useParticipantSpeaking, useParticipantTrack } from "../../lib/livekitMedia"
 import { Icon } from "../ui"
+import { ParticipantControls, participantControlsVisible, useParticipantControlState } from "./ParticipantControls"
 
-export function VideoTile({ person, small = false, hand = false, self = false, participant, teacher = false }: {
+export function VideoTile({ person, small = false, hand = false, self = false, participant, teacher = false, userId = participant?.identity }: {
+  userId?: string
   person: string
   small?: boolean
   hand?: boolean
@@ -12,6 +14,7 @@ export function VideoTile({ person, small = false, hand = false, self = false, p
   teacher?: boolean
 }) {
   const videoRef = useRef<HTMLVideoElement>(null)
+  const controlState = useParticipantControlState()
   const camera = useParticipantTrack(participant, Track.Source.Camera)
   const muted = !useParticipantTrack(participant, Track.Source.Microphone).enabled
   const speaking = useParticipantSpeaking(participant)
@@ -24,7 +27,7 @@ export function VideoTile({ person, small = false, hand = false, self = false, p
   }, [track])
   const displayName = person.replace(" 선생님", "")
   const initial = displayName.length > 1 ? displayName.slice(-2) : displayName
-  return (
+  const tile = (
     <div className={`video-tile tile-${teacher ? "blue" : "sage"} ${small ? "small" : ""} ${speaking ? "is-speaking" : ""}`} aria-label={`${person}${self ? ", 나" : ""}${muted ? ", 음소거" : ""}`} data-participant={participant?.identity}>
       {track ? <video ref={videoRef} autoPlay playsInline muted className={`live-camera ${self ? "is-self" : ""}`} /> : <>
         <div className="tile-avatar" aria-hidden="true">{initial}</div>
@@ -35,4 +38,7 @@ export function VideoTile({ person, small = false, hand = false, self = false, p
       <span className={`mic-state ${muted ? "off" : ""}`} title={muted ? "음소거" : "마이크 켜짐"}><Icon name={muted ? "micOff" : "mic"} size={16} /></span>
     </div>
   )
+  if (!participantControlsVisible(controlState, userId, self)) return tile
+  // Controls sit below the tile; the cell takes the tile's place in grids and strips.
+  return <div className="participant-cell">{tile}<ParticipantControls participant={participant} userId={userId!} name={displayName} self={self} /></div>
 }

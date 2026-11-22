@@ -1,0 +1,30 @@
+{
+  "id": "meeting-participant-controls",
+  "summary": "영상 아래에 마이크·카메라·판서 허용 버튼을 추가합니다. 다른 사람의 장치와 판서 권한은 수업 선생님만 바꿀 수 있고, 수업 모드 학생은 허용을 받아야 판서합니다.",
+  "scope": "shared",
+  "featureIds": [
+    "meeting.participant-controls"
+  ],
+  "platforms": {
+    "server": {
+      "status": "implemented"
+    },
+    "web": {
+      "status": "implemented"
+    },
+    "android": {
+      "status": "implemented"
+    },
+    "ios": {
+      "status": "implemented"
+    }
+  },
+  "verification": [
+    "npm run shared:check (변경 파일 목록 포함), npm run verify",
+    "server/에서 npx tsx --test test/remote-assistance.test.ts",
+    "web/에서 BASE_URL=<검증 주소> npx playwright test e2e/participant-controls.spec.ts e2e/meeting-pagination.spec.ts",
+    "mobile/에서 ./gradlew :composeApp:assembleDebug :composeApp:assembleDebugAndroidTest 후 임시 AVD에서 ParticipantControlsTest 휴대폰·태블릿 실행",
+    "iOS 빌드·실행은 Linux 환경이라 미실시",
+    "features/evidence/meeting-participant-controls.md"
+  ]
+}

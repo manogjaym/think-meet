@@ -81,6 +81,8 @@ internal fun SharedStage(
 ) {
     val share = snapshot.share ?: return
     val owner = snapshot.lesson.teacher.id == user.id
+    // A missing value comes from an older server, which lets everyone annotate.
+    val canAnnotate = owner || snapshot.participants.firstOrNull { it.user.id == user.id }?.annotationAllowed != false
     val noteFrame = remember(share.id, share.page) { NoteFrameSource() }
     val captureSource = noteFrame.takeIf { captureEnabled && share.assistanceId == null }
     var captureSize by remember(share.id) { mutableStateOf(IntSize.Zero) }
@@ -115,6 +117,7 @@ internal fun SharedStage(
         }
     }
     LaunchedEffect(assistance?.id) { if (assistance != null) { annotating = false; draft = null } }
+    LaunchedEffect(canAnnotate) { if (!canAnnotate) { annotating = false; draft = null } }
     LaunchedEffect(pulse) { if (pulse != null) { delay(1_500); pulse = null } }
     LaunchedEffect(share.id, screenAspect) { if (share.type == "screen" && screenAspect != null && screenAspect in .05f..20f) aspect = screenAspect }
     // Remote stroke previews are transient and never treated as persisted annotations.
@@ -195,7 +198,8 @@ internal fun SharedStage(
         }
     }
     val annotationControls: @Composable (Modifier) -> Unit = { controlsModifier ->
-        if (!annotating) Surface(onClick = { annotating = true }, modifier = controlsModifier, color = Palette.Selection,
+        if (!canAnnotate) Unit
+        else if (!annotating) Surface(onClick = { annotating = true }, modifier = controlsModifier, color = Palette.Selection,
             contentColor = Palette.PrimaryPressed, shape = RoundedCornerShape(Corner.R8)) {
             Row(Modifier.heightIn(min = Space.S44).padding(horizontal = Space.S12), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.S7)) {
                 DesignIcon("pen", Modifier.size(Space.S20), Palette.PrimaryPressed)
@@ -254,7 +258,7 @@ internal fun SharedStage(
                         scope.launch { realtime.assistancePointer(point) }
                     }
                 }
-                val drawModifier = if (!annotating || assistance != null) Modifier else Modifier.pointerInput(share.id, share.page, tool, color) {
+                val drawModifier = if (!annotating || !canAnnotate || assistance != null) Modifier else Modifier.pointerInput(share.id, share.page, tool, color) {
                     fun pointAt(offset: Offset): Point = Point((offset.x / size.width).toDouble().coerceIn(0.0, 1.0), (offset.y / size.height).toDouble().coerceIn(0.0, 1.0))
                     fun erase(point: Point) {
                         val ids = currentStrokes.filter { stroke ->
@@ -394,13 +398,18 @@ internal fun SharedParticipants(snapshot: MeetingSnapshot, user: User, media: Me
         val pages = ((people.size + size - 1) / size).coerceAtLeast(1)
         val safePage = page.coerceIn(0, pages - 1)
         val visible = people.drop(safePage * size).take(size)
+        // Tiles keep their size; a controls row below them adds its own height.
+        val controls = LocalParticipantControls.current
+        val compact = LocalMeetingCompact.current
+        fun extra(id: String) = if (controls?.visibleFor(id, id == user.id) == true) participantControlsHeight(compact) + (if (compact) Space.S4 else Space.S8) else 0.dp
+        val stripExtra = visible.maxOfOrNull { extra(it.user.id) } ?: 0.dp
         Column(if (docked) Modifier.fillMaxWidth() else Modifier.fillMaxSize()) {
             if (!horizontal) Row(Modifier.padding(bottom = Space.S12), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.S6)) { DesignIcon("users", Modifier.size(Space.S14), Palette.MeetingDim); Text(if (owner) "참여자 ${people.size}명" else "선생님", style = MaterialTheme.typography.bodySmall.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f), color = Palette.MeetingDim) }
             if (people.isEmpty()) Box(Modifier.fillMaxWidth().height(Space.S96), contentAlignment = Alignment.Center) { Text("입장 대기 중", color = Palette.MeetingDim, style = MaterialTheme.typography.bodySmall.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f)) }
-            else if (horizontal) Row(Modifier.fillMaxWidth().height(stripHeight), horizontalArrangement = Arrangement.spacedBy(Space.S8)) {
+            else if (horizontal) Row(Modifier.fillMaxWidth().height(stripHeight + stripExtra), horizontalArrangement = Arrangement.spacedBy(Space.S8)) {
                 visible.forEach { entry -> ParticipantTile(entry.user, entry.user.id == snapshot.lesson.teacher.id, entry.raised, media, state, Modifier.weight(1f).fillMaxHeight(), small = true) }
             } else Column(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Space.S12)) {
-                visible.forEach { entry -> ParticipantTile(entry.user, entry.user.id == snapshot.lesson.teacher.id, entry.raised, media, state, Modifier.fillMaxWidth().height(tileHeight), small = true) }
+                visible.forEach { entry -> ParticipantTile(entry.user, entry.user.id == snapshot.lesson.teacher.id, entry.raised, media, state, Modifier.fillMaxWidth().height(tileHeight + extra(entry.user.id)), small = true) }
             }
             if (pages > 1) MeetingPagination(safePage, pages, safePage * size + 1, kotlin.math.min((safePage + 1) * size, people.size), people.size,
                 onPrevious = { page = (safePage - 1).coerceAtLeast(0) }, onNext = { page = (safePage + 1).coerceAtMost(pages - 1) })

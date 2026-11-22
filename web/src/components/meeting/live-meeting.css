@@ -63,6 +63,8 @@
 .textbook-participants { flex: none; }
 .textbook-participants .shared-participants { flex-direction: row; gap: var(--space-2); }
 .textbook-participants .video-tile { flex: 1; min-width: 0; }
+.textbook-participants .participant-cell { flex: 1; min-width: 0; }
+.textbook-participants .participant-cell > .video-tile { flex: none; }
 .textbook-participants .shared-participants-empty { width: 100%; }
 
 .side-panel.textbook-panel > header {
@@ -182,3 +184,27 @@
   color: var(--tm-color-meeting-canvas);
 }
 .meeting-lesson-modes button:disabled { opacity: .55; }
+
+/* Participant controls: a row below each controllable video tile. */
+.participant-cell { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; min-height: 0; }
+.participant-cell > .video-tile { flex: 1 1 auto; }
+.shared-participants .participant-cell > .video-tile { flex: none; }
+.participant-controls { display: flex; flex: none; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-width: 0; }
+.participant-control { display: inline-flex; flex: none; align-items: center; justify-content: center; gap: var(--space-1); min-width: var(--tm-spacing-s36); height: var(--tm-spacing-s36); padding: 0 var(--space-2); border: 1px solid var(--meeting-border); border-radius: var(--tm-radius-r8); background: var(--meeting-control); color: var(--meeting-text); font-size: var(--type-caption); font-weight: var(--weight-semibold); line-height: 1.5; white-space: nowrap; cursor: pointer; transition: background 160ms ease, color 160ms ease; }
+.participant-control:not(.off):not(.selected):hover:not(:disabled) { background: #4b5055; }
+.participant-control.off { background: var(--mic-muted); border-color: transparent; color: var(--tm-color-meeting-muted-ink); }
+.participant-control.selected { background: var(--accent-subdued); border-color: transparent; color: var(--accent-ink); }
+.participant-control:disabled { opacity: .45; cursor: default; }
+.participant-control:focus-visible { outline: 2px solid var(--accent-on-dark); outline-offset: 2px; }
+/* In a narrow column the labelled button moves to its own line instead of being clipped. */
+.participant-control.annotation { flex: 1 0 auto; max-width: 100%; }
+.video-grid .participant-control.annotation { flex-grow: 0; }
+.live-notice { position: fixed; top: calc(var(--tm-layout-meeting-header) + var(--space-3)); left: 50%; z-index: 45; transform: translateX(-50%); max-width: calc(100% - 32px); padding: var(--space-2) var(--space-4); border-radius: var(--tm-radius-r8); background: var(--meeting-control); color: var(--meeting-text); font-size: var(--type-support); font-weight: var(--weight-medium); line-height: 1.5; box-shadow: 0 8px 24px #0006; }
+@media (max-width: design(layout.meetingCompactBreakpoint)) {
+  .live-notice { top: calc(var(--tm-layout-meeting-header-compact) + var(--space-2)); }
+  .participant-cell { gap: var(--space-1); }
+  .participant-controls { gap: var(--space-1); }
+  .participant-control { min-width: var(--tm-spacing-s28); height: var(--tm-spacing-s28); padding: 0 var(--space-1); }
+  .participant-control svg { width: 15px; height: 15px; }
+  .shared-participants .participant-control.annotation span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+}

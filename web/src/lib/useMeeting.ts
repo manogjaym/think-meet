@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { Room, RoomEvent, ConnectionState, DisconnectReason } from "livekit-client"
 import type { Socket } from "socket.io-client"
 import { createAppSocket, emitVolatile, requestSocket } from "./socket"
-import type { CommandAck as Ack, StrokePreview, RealtimeError, AssistancePointer } from "../generated/contracts"
+import type { CommandAck as Ack, StrokePreview, RealtimeError, AssistancePointer, ParticipantMediaRequest } from "../generated/contracts"
 import { SOCKET_EVENTS as Events } from "../generated/contracts"
 import { call, ApiError, type ApiLesson, type JoinResult, type User } from "./api"
 import type { JoinDevices } from "../screens/Join"
@@ -12,6 +12,7 @@ import { getCapabilityState, isFeatureEnabled } from "./features"
 import { activeAssistance, matchesAssistancePointer, REMOTE_POINTER_INTERVAL_MS, REMOTE_POINTER_TTL_MS, type RemotePointer } from "./remoteAssistance"
 import { ScreenShareSession } from "./screenShare"
 import { FEATURE_IDS } from "../generated/feature-policy"
+import { designContent } from "../generated/design-content"
 
 export function useMeeting({ lesson, user, initialDevices, admission, onEnded, onWaiting }: { lesson: ApiLesson; user: User; initialDevices: JoinDevices; admission?: JoinResult; onEnded: (reason?: string) => void; onWaiting?: () => void }) {
   const [room, setRoom] = useState<Room | null>(null)
@@ -22,6 +23,8 @@ export function useMeeting({ lesson, user, initialDevices, admission, onEnded, o
   const [admissionId, setAdmissionId] = useState<string>()
   const [previews, setPreviews] = useState<Record<string, PreviewStroke>>({})
   const [remotePointer, setRemotePointer] = useState<RemotePointer | null>(null)
+  const [notice, setNotice] = useState("")
+  const noticeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const assistanceEnabled = useFeature(FEATURE_IDS.MeetingRemoteAssistance)
   const remotePointerTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const remotePointerSentAt = useRef(0)
@@ -40,6 +43,11 @@ export function useMeeting({ lesson, user, initialDevices, admission, onEnded, o
     clearTimeout(remotePointerTimer.current)
     setRemotePointer(null)
     remotePointerSentAt.current = 0
+  }, [])
+  const showNotice = useCallback((message: string) => {
+    clearTimeout(noticeTimer.current)
+    setNotice(message)
+    if (message) noticeTimer.current = setTimeout(() => setNotice(""), 4000)
   }, [])
   const finish = useCallback((reason?: string) => {
     if (closing.current) return
@@ -92,6 +100,28 @@ export function useMeeting({ lesson, user, initialDevices, admission, onEnded, o
     socket.on(Events.RoomError, (event: RealtimeError) => {
       if (["KICKED", "ENDED", "CANCELLED", "SESSION_REPLACED", "REPLACED"].includes(event.code)) finish(event.code.toLowerCase())
       else setError(event.message)
+    })
+    // The server sends this only to the target student's current lesson socket after checking the teacher.
+    socket.on(Events.ParticipantMedia, (request: ParticipantMediaRequest) => {
+      if (cancelled || request.lessonId !== lesson.id || request.userId !== user.id || !isFeatureEnabled(FEATURE_IDS.MeetingParticipantControls)) return
+      const target = connectedRoom?.localParticipant
+      if (!target) return
+      const preferences = readDevicePreferences()
+      const messages: string[] = []
+      const changes: Promise<unknown>[] = []
+      if (request.microphone !== undefined) {
+        changes.push(target.setMicrophoneEnabled(request.microphone, { deviceId: preferences.microphoneId || undefined, noiseSuppression: preferences.noise ?? true, echoCancellation: true }))
+        messages.push(request.microphone ? designContent.participantNoticeMicOn : designContent.participantNoticeMicOff)
+      }
+      if (request.camera !== undefined) {
+        changes.push(target.setCameraEnabled(request.camera, { deviceId: preferences.cameraId || undefined }))
+        messages.push(request.camera ? designContent.participantNoticeCameraOn : designContent.participantNoticeCameraOff)
+      }
+      showNotice(messages.join(" "))
+      void Promise.allSettled(changes).then(results => {
+        const failed = results.find(result => result.status === "rejected")
+        if (!cancelled && failed?.status === "rejected") setError(`카메라 또는 마이크를 켜지 못했어요. ${friendlyError(failed.reason)}`)
+      })
     })
     socket.on(Events.StrokePreview, (value: StrokePreview) => {
       if (value.lessonId !== lesson.id || value.authorId === user.id || !value.authorId) return
@@ -166,20 +196,20 @@ export function useMeeting({ lesson, user, initialDevices, admission, onEnded, o
     }, 12000)
     return () => {
       cancelled = true; mounted.current = false; socket.disconnect(); socketRef.current = null; window.clearInterval(poll)
-      clearTimeout(remotePointerTimer.current)
+      clearTimeout(remotePointerTimer.current); clearTimeout(noticeTimer.current)
       screen?.close(); screenRef.current = null
       if (connectedRoom) { connectedRoom.removeAllListeners(); void connectedRoom.disconnect(true) }
     }
-  }, [lesson.id, user.id, accept, finish, clearRemotePointer, command])
+  }, [lesson.id, user.id, accept, finish, clearRemotePointer, command, showNotice])
 
   useEffect(() => { if (!assistanceEnabled) clearRemotePointer() }, [assistanceEnabled, clearRemotePointer])
 
-  const setMic = async (enabled: boolean) => {
+  const setMic = useCallback(async (enabled: boolean) => {
     try { await room?.localParticipant.setMicrophoneEnabled(enabled, { deviceId: readDevicePreferences().microphoneId || undefined, noiseSuppression: readDevicePreferences().noise ?? true, echoCancellation: true }) } catch(e) { setError(friendlyError(e)) }
-  }
-  const setCam = async (enabled: boolean) => {
+  }, [room])
+  const setCam = useCallback(async (enabled: boolean) => {
     try { await room?.localParticipant.setCameraEnabled(enabled, { deviceId: readDevicePreferences().cameraId || undefined }) } catch(e) { setError(friendlyError(e)) }
-  }
+  }, [room])
   const startScreen = async (target: "browser" | "screen") => {
     if (!room || room.state !== ConnectionState.Connected) { setError("수업 연결 후 화면을 공유해 주세요."); return }
     if (!navigator.mediaDevices?.getDisplayMedia) { setError("이 브라우저는 화면 공유를 지원하지 않아요. PC의 Chrome 또는 Edge에서 공유해 주세요."); return }
@@ -215,5 +245,5 @@ export function useMeeting({ lesson, user, initialDevices, admission, onEnded, o
     setRemotePointer({ ...frame, receivedAt: now })
     remotePointerTimer.current = setTimeout(() => setRemotePointer(null), REMOTE_POINTER_TTL_MS)
   }, [lesson.id, user.id])
-  return { room, snapshot, connection, error, setError, appConnected, admissionId, previews, remotePointer, sendAssistancePointer, serverOffset, command, setMic, setCam, startScreen, stopShare, leave, sendPreview }
+  return { room, snapshot, connection, error, setError, notice, showNotice, appConnected, admissionId, previews, remotePointer, sendAssistancePointer, serverOffset, command, setMic, setCam, startScreen, stopShare, leave, sendPreview }
 }

@@ -29,6 +29,11 @@ export type CommandContext = {
 /** `undefined` means "state changed, broadcast"; a snapshot is returned unchanged (a no-op). */
 type CommandHandler = (ctx: CommandContext) => Promise<MeetingSnapshotDto | undefined | void>
 
+const participantControl = z.object({ userId: z.uuid(), microphone: z.boolean().optional(), camera: z.boolean().optional(), annotation: z.boolean().optional() })
+  .refine(body => body.microphone !== undefined || body.camera !== undefined || body.annotation !== undefined, '바꿀 항목을 선택해 주세요.')
+export type ParticipantControl = z.infer<typeof participantControl>
+export function parseParticipantControl(payload: unknown) { return participantControl.parse(payload) }
+
 const lessonModeSchema = z.enum(['classroom', 'mirroring'])
 const lessonModeChange = z.object({ mode: lessonModeSchema, expectedMode: lessonModeSchema, expectedShareId: z.uuid().nullable(), expectedAssistanceId: z.uuid().nullable() })
 
@@ -141,6 +146,17 @@ export const COMMAND_HANDLERS = {
     const { page } = z.object({ page: z.number().int().min(1) }).parse(payload)
     if (active.type !== 'document' || page > (active.material?.pages || 1)) throw new ApiError('VALIDATION', '문서 페이지를 확인해 주세요.')
     await writeShare({ ...active, page, updatedAt: new Date().toISOString() })
+  },
+  /** Teacher-only. Annotation permission is stored here; the gateway delivers microphone/camera requests afterwards. */
+  'participant.control': async ctx => {
+    requireConnectedTeacher(ctx)
+    const body = participantControl.parse(ctx.payload)
+    const target = ctx.lesson.members.find((member: any) => member.userId === body.userId)
+    if (!target || body.userId === ctx.lesson.teacherId || target.banned || !target.online) throw new ApiError('PARTICIPANT_UNAVAILABLE', '수업에 연결된 학생을 선택해 주세요.', 409)
+    if (body.annotation === undefined) return ctx.lessons.snapshotUnlocked(ctx.lesson.id)
+    if (!ctx.lesson.instructionPhase) throw new ApiError('LESSON_MODE_REQUIRED', '수업 모드를 사용하는 수업에서 판서 허용을 바꿀 수 있어요.', 409)
+    if (target.annotationAllowed === body.annotation) return ctx.lessons.snapshotUnlocked(ctx.lesson.id)
+    await ctx.db.lessonMember.update({ where: { lessonId_userId: { lessonId: ctx.lesson.id, userId: body.userId } }, data: { annotationAllowed: body.annotation } })
   },
   'stroke.add': strokeAdd,
   'stroke.erase': strokeErase,

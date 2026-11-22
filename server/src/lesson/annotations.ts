@@ -1,12 +1,19 @@
 import { z } from 'zod'
 import { ApiError } from '../errors'
 import type { CommandContext } from './commands'
+import { annotationAllowed } from './dto'
+
+/** Lesson-mode students annotate only while the teacher allows it; checked before every annotation change. */
+export function requireAnnotator({ lesson, user }: Pick<CommandContext, 'lesson' | 'user'>) {
+  if (!annotationAllowed(lesson, user.id)) throw new ApiError('ANNOTATION_NOT_ALLOWED', '선생님이 판서를 허용하면 그릴 수 있어요.', 403)
+}
 
 type Patch = { id: string; before: boolean; after: boolean }
 const strokeInput = z.object({ id: z.string().uuid(), shareId: z.string().uuid(), page: z.number().int().min(1), tool: z.enum(['pen','highlighter']), color: z.string().regex(/^#[0-9a-fA-F]{6}$/), points: z.array(z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) })).min(1).max(20000) })
 
 /** A new stroke clears this author's redo stack on the current share page. */
 export async function strokeAdd({ db, lesson, user, payload, requireShare }: CommandContext) {
+  requireAnnotator({ lesson, user })
   const active = requireShare()
   const body = strokeInput.parse(payload)
   if (body.shareId !== active.id || body.page !== active.page) throw new ApiError('STALE_SHARE', '공유 화면이 변경되었습니다.', 409)
@@ -22,6 +29,7 @@ export async function strokeAdd({ db, lesson, user, payload, requireShare }: Com
 
 /** Students erase only their own strokes; the lesson teacher may erase any. */
 export async function strokeErase({ db, lesson, user, payload, requireShare }: CommandContext) {
+  requireAnnotator({ lesson, user })
   const active = requireShare()
   const { ids } = z.object({ ids: z.array(z.string().uuid()).max(500) }).parse(payload)
   const where = { id: { in: ids }, lessonId: lesson.id, shareId: active.id, page: active.page, ...(user.id === lesson.teacherId ? {} : { authorId: user.id }) }
@@ -36,6 +44,7 @@ export async function strokeErase({ db, lesson, user, payload, requireShare }: C
 
 /** Undo/redo are per author and per share page. */
 export const annotationHistory = (redo: boolean) => async ({ db, lesson, user, requireShare }: CommandContext) => {
+  requireAnnotator({ lesson, user })
   const active = requireShare()
   const operation = await db.annotationOperation.findFirst({
     where: { lessonId: lesson.id, actorId: user.id, shareId: active.id, page: active.page, undone: redo },
@@ -50,6 +59,7 @@ export const annotationHistory = (redo: boolean) => async ({ db, lesson, user, r
 
 /** Clears strokes and drops them from every undo history so they cannot be restored. */
 export async function annotationClear({ db, lesson, user, requireShare }: CommandContext) {
+  requireAnnotator({ lesson, user })
   const active = requireShare()
   const where = { lessonId: lesson.id, shareId: active.id, page: active.page, ...(user.id === lesson.teacherId ? {} : { authorId: user.id }) }
   const targets = await db.stroke.findMany({ where, select: { id: true } })

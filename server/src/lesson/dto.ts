@@ -30,6 +30,12 @@ export function materialDto(material: any): Material {
   return { id: material.id, name: material.name, type: material.kind, size: material.size, duration: material.duration ?? undefined, pages: material.pages ?? undefined, createdAt: material.createdAt.toISOString() }
 }
 
+/** Teachers and lessons without lesson modes keep free annotation; lesson-mode students need the teacher's permission. */
+export function annotationAllowed(lesson: any, userId: string) {
+  if (userId === lesson.teacherId || !lesson.instructionPhase) return true
+  return Boolean(lesson.members?.find((member: any) => member.userId === userId)?.annotationAllowed)
+}
+
 /** Meeting snapshot: lesson view plus chat, participants, the active share and its strokes. */
 export async function meetingSnapshot(db: Database, lesson: any, share: Share | null, details: LessonDto, assistance: unknown) {
   const users = await db.user.findMany({ where: { id: { in: lesson.members.map((member: any) => member.userId) } } })
@@ -38,7 +44,7 @@ export async function meetingSnapshot(db: Database, lesson: any, share: Share | 
   return {
     lessonId: lesson.id, lesson: details, seq: lesson.seq, serverTime: new Date().toISOString(),
     ...(details.instruction && { instruction: details.instruction }),
-    participants: lesson.members.filter((member: any) => !member.banned).map((member: any) => ({ user: publicUser(users.find(user => user.id === member.userId)!), online: member.online, raised: member.raised })),
+    participants: lesson.members.filter((member: any) => !member.banned).map((member: any) => ({ user: publicUser(users.find(user => user.id === member.userId)!), online: member.online, raised: member.raised, annotationAllowed: annotationAllowed(lesson, member.userId) })),
     messages: messages.reverse().map(({ lessonId, ...message }) => message), share, assistance,
     strokes: strokes.map(({ id, authorId, shareId, page, tool, color, points, deleted }) => ({ id, authorId, shareId, page, tool, color, points, deleted })),
   }

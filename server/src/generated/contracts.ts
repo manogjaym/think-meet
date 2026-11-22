@@ -1,5 +1,5 @@
 // Generated from contracts/openapi.json and realtime.json. Do not edit.
-export const CONTRACT_REVISION = 12 as const;
+export const CONTRACT_REVISION = 13 as const;
 export const API_BASE_PATH = "/api/v1" as const;
 export const SOCKET_PATH = "/socket.io" as const;
 export const SOCKET_EVENTS = {
@@ -10,7 +10,8 @@ export const SOCKET_EVENTS = {
   "LessonsChanged": "lessons:changed",
   "RoomError": "room:error",
   "SessionReplaced": "session:replaced",
-  "AssistancePointer": "assistance.pointer"
+  "AssistancePointer": "assistance.pointer",
+  "ParticipantMedia": "participant.media"
 } as const;
 export const REALTIME_EVENTS = SOCKET_EVENTS;
 export type Role = "teacher" | "student";
@@ -28,13 +29,13 @@ export type Point = { x: number; y: number };
 export type Stroke = { id: string; authorId: string; shareId: string; page: number; tool: "pen" | "highlighter"; color: string; points: Array<Point>; deleted: boolean };
 export type PreviewStroke = { shareId: string; page: number; tool: "pen" | "highlighter"; color: string; points: Array<Point>; authorId?: string };
 export type StrokePreview = { lessonId: string; shareId: string; page: number; tool: "pen" | "highlighter"; color: string; points: Array<Point>; authorId?: string };
-export type MeetingParticipant = { user: User; online: boolean; raised: boolean };
+export type MeetingParticipant = { user: User; online: boolean; raised: boolean; annotationAllowed?: boolean };
 export type ChatMessage = { id: string; clientId: string; userId: string; userName: string; text: string; createdAt: string };
 export type LessonInstruction = { phase: "preparing" | "classroom" | "mirroring"; startedAt: (string) | null };
 export type MeetingSnapshot = { lessonId: string; lesson: Lesson; instruction?: LessonInstruction; participants: Array<MeetingParticipant>; messages: Array<ChatMessage>; share: (Share) | null; strokes: Array<Stroke>; seq: number; serverTime: string; assistance?: (AssistanceSession) | null };
 export type RealtimeError = { code: string; message: string };
 export type ErrorResponse = { code: string; message: string };
-export type ErrorCode = "ACCOUNT" | "ASSISTANCE_BUSY" | "ASSISTANCE_UNAVAILABLE" | "CANCELLED" | "CLIENT_UPDATE_REQUIRED" | "CONFLICT" | "CONNECTION" | "CONSENT_REQUIRED" | "ENDED" | "FEATURE_UNAVAILABLE" | "FILE_TOO_LARGE" | "FORBIDDEN" | "INTERNAL" | "INVALID" | "INVALID_CREDENTIALS" | "INVALID_FILE" | "INVALID_MATERIAL" | "INVALID_SIGNATURE" | "KICKED" | "LESSON_MODE_CHANGED" | "LESSON_MODE_REQUIRED" | "LESSON_NOT_STARTED" | "LIVE" | "MATERIAL_IN_USE" | "NOTE_SHARE_CHANGED" | "NOTE_TARGET_CHANGED" | "NOT_CONNECTED" | "NOT_FOUND" | "NOT_READY" | "NO_SHARE" | "RATE_LIMIT" | "REQUEST_FAILED" | "SCREEN_NOT_PUBLISHED" | "SHARE_BUSY" | "STALE_ASSISTANCE" | "STALE_GEOMETRY" | "STALE_SHARE" | "UNAUTHENTICATED" | "UNKNOWN_COMMAND" | "UNSUPPORTED_CODEC" | "UNSUPPORTED_FILE" | "UPLOAD_CANCELLED" | "VALIDATION" | "WAITING";
+export type ErrorCode = "ACCOUNT" | "ANNOTATION_NOT_ALLOWED" | "ASSISTANCE_BUSY" | "ASSISTANCE_UNAVAILABLE" | "CANCELLED" | "CLIENT_UPDATE_REQUIRED" | "CONFLICT" | "CONNECTION" | "CONSENT_REQUIRED" | "ENDED" | "FEATURE_UNAVAILABLE" | "FILE_TOO_LARGE" | "FORBIDDEN" | "INTERNAL" | "INVALID" | "INVALID_CREDENTIALS" | "INVALID_FILE" | "INVALID_MATERIAL" | "INVALID_SIGNATURE" | "KICKED" | "LESSON_MODE_CHANGED" | "LESSON_MODE_REQUIRED" | "LESSON_NOT_STARTED" | "LIVE" | "MATERIAL_IN_USE" | "NOTE_SHARE_CHANGED" | "NOTE_TARGET_CHANGED" | "NOT_CONNECTED" | "NOT_FOUND" | "NOT_READY" | "NO_SHARE" | "PARTICIPANT_UNAVAILABLE" | "RATE_LIMIT" | "REQUEST_FAILED" | "SCREEN_NOT_PUBLISHED" | "SHARE_BUSY" | "STALE_ASSISTANCE" | "STALE_GEOMETRY" | "STALE_SHARE" | "UNAUTHENTICATED" | "UNKNOWN_COMMAND" | "UNSUPPORTED_CODEC" | "UNSUPPORTED_FILE" | "UPLOAD_CANCELLED" | "VALIDATION" | "WAITING";
 export type LoginInput = { username: string; password: string };
 export type KickInput = { userId: string };
 export type InviteInput = { studentIds: Array<string> };
@@ -54,6 +55,8 @@ export type MediaUpdatePayload = { playing: boolean; position: number };
 export type DocumentPagePayload = { page: number };
 export type StrokeAddPayload = { id: string; shareId: string; page: number; tool: "pen" | "highlighter"; color: string; points: Array<Point> };
 export type StrokeErasePayload = { ids: Array<string> };
+export type ParticipantControlPayload = { userId: string; microphone?: boolean; camera?: boolean; annotation?: boolean };
+export type ParticipantMediaRequest = { lessonId: string; userId: string; requestedBy: string; microphone?: boolean; camera?: boolean };
 export type AssistanceGeometry = { width: number; height: number; rotation: 0 | 90 | 180 | 270; version: number };
 export type AssistanceSession = { id: string; teacherId: string; studentId: string; status: "pending" | "approved" | "active"; expiresAt: (string) | null; shareId?: string; geometry?: AssistanceGeometry };
 export type AssistancePointer = { lessonId: string; sessionId: string; shareId: string; geometryVersion: number; x: number; y: number; authorId?: string };
@@ -77,7 +80,7 @@ export type StudentAttendanceInput = { status: StudentAttendanceStatus; reason?:
 export type PrejoinStudent = { id: string; name: string };
 export type PrejoinStatus = { status: "SCHEDULED" | "LIVE" | "ENDED" | "CANCELLED"; waitingStudents?: Array<PrejoinStudent> };
 export type ApiLesson = Lesson;
-export const ERROR_CODES = ["ACCOUNT","ASSISTANCE_BUSY","ASSISTANCE_UNAVAILABLE","CANCELLED","CLIENT_UPDATE_REQUIRED","CONFLICT","CONNECTION","CONSENT_REQUIRED","ENDED","FEATURE_UNAVAILABLE","FILE_TOO_LARGE","FORBIDDEN","INTERNAL","INVALID","INVALID_CREDENTIALS","INVALID_FILE","INVALID_MATERIAL","INVALID_SIGNATURE","KICKED","LESSON_MODE_CHANGED","LESSON_MODE_REQUIRED","LESSON_NOT_STARTED","LIVE","MATERIAL_IN_USE","NOTE_SHARE_CHANGED","NOTE_TARGET_CHANGED","NOT_CONNECTED","NOT_FOUND","NOT_READY","NO_SHARE","RATE_LIMIT","REQUEST_FAILED","SCREEN_NOT_PUBLISHED","SHARE_BUSY","STALE_ASSISTANCE","STALE_GEOMETRY","STALE_SHARE","UNAUTHENTICATED","UNKNOWN_COMMAND","UNSUPPORTED_CODEC","UNSUPPORTED_FILE","UPLOAD_CANCELLED","VALIDATION","WAITING"] as const;
+export const ERROR_CODES = ["ACCOUNT","ANNOTATION_NOT_ALLOWED","ASSISTANCE_BUSY","ASSISTANCE_UNAVAILABLE","CANCELLED","CLIENT_UPDATE_REQUIRED","CONFLICT","CONNECTION","CONSENT_REQUIRED","ENDED","FEATURE_UNAVAILABLE","FILE_TOO_LARGE","FORBIDDEN","INTERNAL","INVALID","INVALID_CREDENTIALS","INVALID_FILE","INVALID_MATERIAL","INVALID_SIGNATURE","KICKED","LESSON_MODE_CHANGED","LESSON_MODE_REQUIRED","LESSON_NOT_STARTED","LIVE","MATERIAL_IN_USE","NOTE_SHARE_CHANGED","NOTE_TARGET_CHANGED","NOT_CONNECTED","NOT_FOUND","NOT_READY","NO_SHARE","PARTICIPANT_UNAVAILABLE","RATE_LIMIT","REQUEST_FAILED","SCREEN_NOT_PUBLISHED","SHARE_BUSY","STALE_ASSISTANCE","STALE_GEOMETRY","STALE_SHARE","UNAUTHENTICATED","UNKNOWN_COMMAND","UNSUPPORTED_CODEC","UNSUPPORTED_FILE","UPLOAD_CANCELLED","VALIDATION","WAITING"] as const;
 export type ApiOperations = {
   health: { method: "GET"; path: "/health"; params: undefined; query: undefined; body: undefined; response: Record<string, unknown> };
   capabilities: { method: "GET"; path: "/capabilities"; params: undefined; query: undefined; body: undefined; response: CapabilitiesResponse };
@@ -268,5 +271,5 @@ export const API_OPERATIONS = {
     "path": "/lessons/{id}/waiting/{clientId}"
   }
 } as const satisfies Record<ApiOperationId, { method: string; path: string }>;
-export type CommandType = "lesson.start" | "lesson.mode.set" | "chat.send" | "hand.set" | "share.start" | "share.stop" | "media.update" | "document.page" | "document.open" | "stroke.add" | "stroke.erase" | "annotation.undo" | "annotation.redo" | "annotation.clear" | "assistance.request" | "assistance.respond" | "assistance.start" | "assistance.geometry" | "assistance.stop";
-export type CommandPayloads = { "lesson.start": EmptyPayload; "lesson.mode.set": LessonModeSetPayload; "chat.send": ChatSendPayload; "hand.set": HandSetPayload; "share.start": ShareStartPayload; "share.stop": EmptyPayload; "media.update": MediaUpdatePayload; "document.page": DocumentPagePayload; "document.open": DocumentOpenPayload; "stroke.add": StrokeAddPayload; "stroke.erase": StrokeErasePayload; "annotation.undo": EmptyPayload; "annotation.redo": EmptyPayload; "annotation.clear": EmptyPayload; "assistance.request": AssistanceRequestPayload; "assistance.respond": AssistanceRespondPayload; "assistance.start": AssistanceStartPayload; "assistance.geometry": AssistanceGeometryPayload; "assistance.stop": AssistanceStopPayload };
+export type CommandType = "lesson.start" | "lesson.mode.set" | "chat.send" | "hand.set" | "share.start" | "share.stop" | "media.update" | "document.page" | "document.open" | "stroke.add" | "stroke.erase" | "annotation.undo" | "annotation.redo" | "annotation.clear" | "assistance.request" | "assistance.respond" | "assistance.start" | "assistance.geometry" | "assistance.stop" | "participant.control";
+export type CommandPayloads = { "lesson.start": EmptyPayload; "lesson.mode.set": LessonModeSetPayload; "chat.send": ChatSendPayload; "hand.set": HandSetPayload; "share.start": ShareStartPayload; "share.stop": EmptyPayload; "media.update": MediaUpdatePayload; "document.page": DocumentPagePayload; "document.open": DocumentOpenPayload; "stroke.add": StrokeAddPayload; "stroke.erase": StrokeErasePayload; "annotation.undo": EmptyPayload; "annotation.redo": EmptyPayload; "annotation.clear": EmptyPayload; "assistance.request": AssistanceRequestPayload; "assistance.respond": AssistanceRespondPayload; "assistance.start": AssistanceStartPayload; "assistance.geometry": AssistanceGeometryPayload; "assistance.stop": AssistanceStopPayload; "participant.control": ParticipantControlPayload };

@@ -12,7 +12,10 @@ import { FeaturePolicy } from './features'
 import { socketFeatureClient } from './feature-policy'
 import type { AssistanceBinding, AssistanceCommandContext } from './assistance'
 import { SOCKET_EVENTS } from './generated/contracts'
-import type { CommandEnvelope, SubscribeInput, StrokePreview, AssistancePointer } from './generated/contracts'
+import type { CommandEnvelope, SubscribeInput, StrokePreview, AssistancePointer, ParticipantMediaRequest } from './generated/contracts'
+import { parseParticipantControl } from './lesson/commands'
+import { annotationAllowed } from './lesson/dto'
+import type { PublicUser } from './types'
 const commandSchema = z.object({ lessonId: z.string().uuid(), type: z.string().min(1).max(100), payload: z.any().default({}), requestId: z.string().max(100).optional(), expectedShareId: z.string().uuid().optional() })
 /** Socket acks use the same code/message mapping as HTTP responses. */
 export function socketError(error: unknown) { return toErrorBody(error).body }
@@ -135,7 +138,8 @@ export class Gateway implements OnGatewayConnection, OnGatewayDisconnect, OnModu
       const command: CommandEnvelope = commandSchema.parse(input)
       const user = command.type.startsWith('assistance.') ? await this.assistanceUser(socket) : await this.auth.userFromCookie(socket.handshake.headers.cookie)
       this.features.assertEvent(SOCKET_EVENTS.Command, command, socket.handshake.headers, socket.handshake.auth)
-      if (command.type === 'lesson.start' || command.type === 'lesson.mode.set' || command.type === 'document.open') this.assertLessonSocket(socket, command.lessonId, user.id)
+      if (command.type === 'lesson.start' || command.type === 'lesson.mode.set' || command.type === 'document.open' || command.type === 'participant.control') this.assertLessonSocket(socket, command.lessonId, user.id)
+      if (command.type === 'participant.control') return await this.participantControl(user, command)
       let context: AssistanceCommandContext | undefined
       if (command.type.startsWith('assistance.')) {
         this.assertLessonSocket(socket, command.lessonId, user.id)
@@ -155,6 +159,29 @@ export class Gateway implements OnGatewayConnection, OnGatewayDisconnect, OnModu
       return { ok: true, snapshot }
     } catch (error) { return { ok: false, error: socketError(error) } }
   }
+  /**
+   * Microphone/camera requests go only to the student's current lesson socket, and only when that client
+   * understands them; the lesson service checks teacher permission and stores annotation permission.
+   */
+  private async participantControl(user: PublicUser, command: CommandEnvelope) {
+    const body = parseParticipantControl(command.payload)
+    const media = body.microphone !== undefined || body.camera !== undefined
+    let target: Socket | undefined
+    if (media) {
+      const targetId = this.subscriptions.get(`${command.lessonId}:${body.userId}`)
+      target = targetId ? this.server?.sockets.sockets.get(targetId) : undefined
+      if (!target?.rooms.has(`lesson:${command.lessonId}`) || target.data.user?.id !== body.userId) throw new ApiError('PARTICIPANT_UNAVAILABLE', '수업에 연결된 학생을 선택해 주세요.', 409)
+      try { this.features.assertEvent(SOCKET_EVENTS.ParticipantMedia, {}, target.handshake.headers, target.handshake.auth) }
+      catch { throw new ApiError('PARTICIPANT_UNAVAILABLE', '학생의 앱이 이 기능을 지원하지 않아요. 학생에게 앱 업데이트를 요청해 주세요.', 409) }
+    }
+    const snapshot = await this.lessons.command(user, { ...command, payload: body })
+    if (target && media) {
+      const request: ParticipantMediaRequest = { lessonId: command.lessonId, userId: body.userId, requestedBy: user.id,
+        ...(body.microphone !== undefined && { microphone: body.microphone }), ...(body.camera !== undefined && { camera: body.camera }) }
+      target.emit(SOCKET_EVENTS.ParticipantMedia, request)
+    }
+    return { ok: true, snapshot }
+  }
   @SubscribeMessage(SOCKET_EVENTS.StrokePreview)
   async preview(@ConnectedSocket() socket: Socket, @MessageBody() input: any) {
     try {
@@ -164,7 +191,7 @@ export class Gateway implements OnGatewayConnection, OnGatewayDisconnect, OnModu
       this.features.assertEvent(SOCKET_EVENTS.StrokePreview, body, socket.handshake.headers, socket.handshake.auth)
       const lesson = await this.lessons.access(body.lessonId, user, true)
       const share = readShare(lesson.share)
-      if (!share || share.id !== body.shareId || share.page !== body.page) return
+      if (!share || share.id !== body.shareId || share.page !== body.page || !annotationAllowed(lesson, user.id)) return
       await this.emitAuthorized(body.lessonId, SOCKET_EVENTS.StrokePreview, { ...body, authorId: user.id }, undefined, socket.id)
     } catch (error) {
       if (error instanceof ApiError && ['FEATURE_UNAVAILABLE', 'CLIENT_UPDATE_REQUIRED'].includes((error.getResponse() as { code: string }).code)) socket.emit(SOCKET_EVENTS.RoomError, socketError(error))

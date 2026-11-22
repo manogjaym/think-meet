@@ -46,9 +46,9 @@ body.meeting-viewport .topbar { display:none; }
 .mic-state.off { color:var(--mic-muted); background:var(--tm-color-meeting-mic-off-background); }
 .hand-badge { position:absolute; top:12px; left:12px; display:flex; align-items:center; gap:6px; background:var(--tm-color-meeting-hand-background); color:var(--tm-color-meeting-hand-text); padding:7px 10px; border-radius:var(--tm-radius-r7); font-size:var(--type-caption);  line-height:1.5; font-weight:var(--weight-semibold);}
 .video-grid.layout-speaker { grid-template-columns:minmax(0,3fr) minmax(0,1fr); grid-template-rows:repeat(var(--speaker-thumbnails,3),minmax(0,1fr)); }
-.layout-speaker .video-tile:first-child { grid-row:1/-1; }
+.layout-speaker > :first-child { grid-row:1/-1; }
 .video-grid.layout-speaker.is-stacked { grid-template-columns:repeat(var(--speaker-thumbnails,3),minmax(0,1fr)); grid-template-rows:minmax(0,3fr) minmax(0,1fr); }
-.layout-speaker.is-stacked .video-tile:first-child { grid-row:auto; grid-column:1/-1; }
+.layout-speaker.is-stacked > :first-child { grid-row:auto; grid-column:1/-1; }
 .layout-speaker .video-tile:not(:first-child) .tile-avatar { width:64px; height:64px; font-size:24px; }
 .layout-speaker .video-tile:not(:first-child) .tile-camera-status { display:none;  font-size:var(--type-caption); line-height:1.5;}
 .meeting-stage-caption { display:flex; align-items:center; gap:7px; flex:0 0 36px; color:var(--meeting-dim); font-size:var(--type-caption); padding:0 3px;  line-height:1.5;}
@@ -262,7 +262,7 @@ body.meeting-viewport .topbar { display:none; }
   .participant-page-status { flex-direction:column; gap:0; }
   .participant-pagination.is-compact { justify-content:center; gap:var(--space-4); }
   .layout-speaker .video-tile:not(:first-child) .tile-avatar { width:40px; height:40px; font-size:18px; }.layout-speaker .video-tile:not(:first-child) .mic-state { display:none; }.layout-speaker .video-tile:not(:first-child) .name-tag { font-size:var(--type-support); bottom:7px;  line-height:1.5; font-weight:var(--weight-semibold);}
-  .shared-stage { grid-template-columns:1fr; grid-template-rows:minmax(0,1fr) 142px; gap:var(--space-2); }.shared-participants { flex-direction:row; gap:var(--space-2); }.shared-participants-title { display:none; }.shared-participants .video-tile { min-height:90px; height:90px; min-width:100px; flex:1; }.shared-participants .tile-avatar { width:38px; height:38px; font-size:17px; }.shared-participants .mic-state { display:none; }.document-controls,.media-controls { bottom:157px; right:12px; }.annotation-bar { right:12px; }.annotation-history { display:none; }.paper { padding:18px; min-height:260px; }.fraction-row { gap:10px; font-size:20px; margin:25px 0; }.fraction-row b { min-width:48px; height:48px; }.screen-demo { padding:var(--space-2); }.screen-window { padding:var(--space-3); }.screen-window strong { font-size:15px; }
+  .shared-stage { grid-template-columns:1fr; grid-template-rows:minmax(0,1fr) 142px; gap:var(--space-2); }.shared-participants { flex-direction:row; gap:var(--space-2); }.shared-participants-title { display:none; }.shared-participants .video-tile { min-height:90px; height:90px; min-width:100px; flex:1; }.shared-participants > .participant-cell { min-width:100px; flex:1; }.shared-participants > .participant-cell > .video-tile { min-width:0; }.shared-participants .tile-avatar { width:38px; height:38px; font-size:17px; }.shared-participants .mic-state { display:none; }.document-controls,.media-controls { bottom:157px; right:12px; }.annotation-bar { right:12px; }.annotation-history { display:none; }.paper { padding:18px; min-height:260px; }.fraction-row { gap:10px; font-size:20px; margin:25px 0; }.fraction-row b { min-width:48px; height:48px; }.screen-demo { padding:var(--space-2); }.screen-window { padding:var(--space-3); }.screen-window strong { font-size:15px; }
   .share-status-bar { font-size:var(--type-caption); padding-inline:var(--space-2); gap:6px;  line-height:1.5;}.share-status-bar button { padding-inline:var(--space-2); white-space:nowrap; }
 }
 @media (max-height:design(layout.meetingShortHeight)) and (min-width:design(layout.meetingCompactBreakpoint + 1)) {
@@ -283,4 +283,4 @@ body.meeting-viewport .topbar { display:none; }
 @keyframes meeting-dialog-out { from { opacity:1; transform:none; } to { opacity:0; transform:translateY(6px) scale(.99); } }
 @media (prefers-reduced-motion:reduce) { .meeting *,.meeting-dialog-presence * { transition:none!important; animation:none!important; } }
 .video-grid.count-1 { grid-template-columns:1fr; grid-template-rows:1fr; }
-.video-grid.count-1.layout-speaker .video-tile:first-child { grid-row:auto; grid-column:auto; }
+.video-grid.count-1.layout-speaker > :first-child { grid-row:auto; grid-column:auto; }

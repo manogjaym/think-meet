@@ -70,6 +70,9 @@ class MeetingRealtime internal constructor(
     val previews: SharedFlow<StrokePreview> = previewEvents.asSharedFlow()
     private val assistanceEvents = MutableSharedFlow<AssistancePointer>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     val assistancePointers: SharedFlow<AssistancePointer> = assistanceEvents.asSharedFlow()
+    private val mediaRequestEvents = MutableSharedFlow<ParticipantMediaRequest>(extraBufferCapacity = 4, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    /** Teacher requests for this device's microphone/camera; the server sends them only to the target student. */
+    val mediaRequests: SharedFlow<ParticipantMediaRequest> = mediaRequestEvents.asSharedFlow()
     private val lessonEvents = MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     val lessonsChanged: SharedFlow<Unit> = lessonEvents.asSharedFlow()
     private val transportLock = Mutex()
@@ -183,6 +186,10 @@ class MeetingRealtime internal constructor(
                 ContractProtocol.Events.Snapshot -> if (payload != null) accept(ThinkMeetJson.decodeFromString(payload.toString()))
                 ContractProtocol.Events.StrokePreview -> if (payload != null) previewEvents.tryEmit(ThinkMeetJson.decodeFromString(payload.toString()))
                 ContractProtocol.Events.AssistancePointer -> if (payload != null && api.supportsFeature(ContractProtocol.FeatureIds.MeetingRemoteAssistance)) assistanceEvents.tryEmit(ThinkMeetJson.decodeFromString(payload.toString()))
+                ContractProtocol.Events.ParticipantMedia -> if (payload != null && api.supportsFeature(ContractProtocol.FeatureIds.MeetingParticipantControls)) {
+                    val request = ThinkMeetJson.decodeFromString<ParticipantMediaRequest>(payload.toString())
+                    if (request.lessonId == lessonId) mediaRequestEvents.tryEmit(request)
+                }
                 ContractProtocol.Events.LessonsChanged -> lessonEvents.tryEmit(Unit)
                 ContractProtocol.Events.SessionReplaced -> if (payload?.jsonObject?.get("lessonId")?.jsonPrimitive?.content == lessonId) {
                     roomErrorEvents.tryEmit(RealtimeError("SESSION_REPLACED", "다른 기기에서 같은 수업에 입장했어요."))

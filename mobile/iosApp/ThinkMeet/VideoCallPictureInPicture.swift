@@ -13,6 +13,10 @@ final class VideoCallPictureInPicture: NSObject, @MainActor AVPictureInPictureCo
     private var contentController: AVPictureInPictureVideoCallViewController?
     private var renderer: VideoView?
     private var placeholder: UILabel?
+    /// The teacher's mirroring pointer, drawn on the student's own shared screen (iOS cannot draw over other apps).
+    private var pointer: UIView?
+    private var pointerPosition: CGPoint?
+    private var pointerHide: Task<Void, Never>?
     private var possibleObservation: NSKeyValueObservation?
     private var entryTimeout: Task<Void, Never>?
     private var pendingEntry: ((String?) -> Void)?
@@ -87,6 +91,7 @@ final class VideoCallPictureInPicture: NSObject, @MainActor AVPictureInPictureCo
         let track = videoTrack(target)
         if renderer?.track !== track { renderer?.track = track }
         renderer?.layoutMode = target?.screen == true ? .fit : .fill
+        if target?.screen != true { clearPointer() } else { placePointer() }
         renderer?.isHidden = track == nil
         placeholder?.isHidden = track != nil
         let requestedRatio = Double(target?.aspectRatio ?? 16 / 9)
@@ -159,6 +164,15 @@ final class VideoCallPictureInPicture: NSObject, @MainActor AVPictureInPictureCo
             label.leadingAnchor.constraint(greaterThanOrEqualTo: content.view.leadingAnchor, constant: 12),
             label.trailingAnchor.constraint(lessThanOrEqualTo: content.view.trailingAnchor, constant: -12),
         ])
+        let dot = UIView(frame: CGRect(x: 0, y: 0, width: 18, height: 18))
+        dot.isHidden = true
+        dot.isUserInteractionEnabled = false
+        dot.backgroundColor = UIColor(red: 1, green: 0.27, blue: 0.23, alpha: 0.95)
+        dot.layer.cornerRadius = 9
+        dot.layer.borderColor = UIColor.white.cgColor
+        dot.layer.borderWidth = 2.5
+        dot.isAccessibilityElement = false
+        content.view.addSubview(dot)
         let contentSource = AVPictureInPictureController.ContentSource(activeVideoCallSourceView: source, contentViewController: content)
         let pip = AVPictureInPictureController(contentSource: contentSource)
         pip.delegate = self
@@ -167,6 +181,7 @@ final class VideoCallPictureInPicture: NSObject, @MainActor AVPictureInPictureCo
         contentController = content
         renderer = video
         placeholder = label
+        pointer = dot
         possibleObservation = pip.observe(\.isPictureInPicturePossible, options: [.new]) { [weak self] _, _ in
             Task { @MainActor in self?.startWhenPossible() }
         }
@@ -192,7 +207,44 @@ final class VideoCallPictureInPicture: NSObject, @MainActor AVPictureInPictureCo
                 closedByUser: resetClosedByUser ? false : state.closedByUser)
     }
 
+    /// Matches the Android marker: hidden 1.5 s after the last coordinate, never sends touches.
+    func showPointer(x: Double, y: Double) {
+        guard target?.screen == true, x.isFinite, y.isFinite else { return }
+        pointerPosition = CGPoint(x: min(max(x, 0), 1), y: min(max(y, 0), 1))
+        placePointer()
+        pointerHide?.cancel()
+        pointerHide = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            guard !Task.isCancelled else { return }
+            self?.clearPointer()
+        }
+    }
+
+    func clearPointer() {
+        pointerHide?.cancel()
+        pointerHide = nil
+        pointerPosition = nil
+        pointer?.isHidden = true
+    }
+
+    /// The screen renderer uses aspect fit, so map 0..1 onto the letterboxed video area of the PiP view.
+    private func placePointer() {
+        guard let pointer, let view = contentController?.view, let position = pointerPosition else { return }
+        let bounds = view.bounds
+        let requested = CGFloat(target?.aspectRatio ?? 16 / 9)
+        let ratio = requested.isFinite && requested > 0 ? requested : 16 / 9
+        guard bounds.width > 0, bounds.height > 0 else { return }
+        var width = bounds.width, height = width / ratio
+        if height > bounds.height { height = bounds.height; width = height * ratio }
+        let origin = CGPoint(x: bounds.midX - width / 2, y: bounds.midY - height / 2)
+        pointer.center = CGPoint(x: origin.x + width * position.x, y: origin.y + height * position.y)
+        pointer.isHidden = false
+        view.bringSubviewToFront(pointer)
+    }
+
     private func releasePresentation() {
+        clearPointer()
+        pointer = nil
         possibleObservation = nil
         // Apple requires clearing the content source once the call ends, preventing later auto-entry.
         controller?.canStartPictureInPictureAutomaticallyFromInline = false

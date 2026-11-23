@@ -1,0 +1,30 @@
+{
+  "id": "ios-mirroring-receiver",
+  "summary": "선생님의 미러링(학생 화면 보기) 요청을 iOS 앱 학생도 받습니다. 학생이 승인하면 기존 ReplayKit 방송으로 전체 화면을 공유합니다. iOS는 다른 앱 위에 그리는 공개 API가 없어, 선생님 포인터를 화면 속 화면(PiP) 창 안의 내 화면 사본 위에 표시합니다.",
+  "scope": "shared",
+  "featureIds": [
+    "meeting.remote-assistance"
+  ],
+  "platforms": {
+    "server": {
+      "status": "implemented"
+    },
+    "web": {
+      "status": "implemented"
+    },
+    "android": {
+      "status": "implemented"
+    },
+    "ios": {
+      "status": "implemented"
+    }
+  },
+  "verification": [
+    "2026-11-23 Asia/Seoul. 서버: 수신 학생 플랫폼 검사를 Android 전용에서 Android·iOS 앱으로 넓혔습니다. 웹 학생은 계속 ASSISTANCE_UNAVAILABLE입니다. 계약 명령·revision은 바꾸지 않았습니다.",
+    "웹: 미러링 요청 도움말과 미지원 안내 문구만 공통 디자인 문구로 갱신했습니다. 웹 학생은 수신 대상이 아닙니다.",
+    "Android: 동작 변경 없음. 공통 승인 흐름은 showsPointerOverOtherApps 기본값(true)으로 기존처럼 PiP와 오버레이 권한을 요구합니다.",
+    "iOS: 브리지에 미러링 전용 assistanceScreen 동작을 추가했습니다. 일반 공유 번호(screenCaptureId)를 쓰지 않아 ScreenShareSession이 개입하지 않습니다. PiP 대상을 학생 자신의 공유 화면으로 바꾸고, 포인터를 PiP 창 안에 그립니다(showAssistancePointer/clearAssistancePointer). PiP는 선택 사항입니다.",
+    "검사 명령과 결과는 이 브랜치 커밋 메시지와 features/meeting-laser-pointer.md에 기록합니다.",
+    "미실행: 실제 iPhone·iPad에서 ReplayKit 방송 시작·중지, PiP, 회전, 선생님 화면 수신. 사용자 요청으로 실기기 검증은 하지 않았고, 시뮬레이터는 방송·PiP를 지원하지 않습니다. Android 실기기·원격 CI도 미실행입니다."
+  ]
+}

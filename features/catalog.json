@@ -125,7 +125,7 @@
     },
     {
       "id": "meeting.remote-assistance",
-      "title": "Android 학생 원격 화면 안내",
+      "title": "학생 원격 화면 보기·안내",
       "stage": "in-progress",
       "requiresRevision": 4,
       "defaultEnabled": true,
@@ -178,7 +178,10 @@
           "files": [
             "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/meeting/MeetingScreen.kt",
             "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/meeting/SharedStage.kt",
-            "mobile/composeApp/src/iosMain/kotlin/com/woongjin/thinkmeet/platform/IosRemoteAssistance.kt"
+            "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/meeting/RemoteAssistanceSession.kt",
+            "mobile/composeApp/src/iosMain/kotlin/com/woongjin/thinkmeet/platform/IosRemoteAssistance.kt",
+            "mobile/iosApp/ThinkMeet/NativeBridge.swift",
+            "mobile/iosApp/ThinkMeet/VideoCallPictureInPicture.swift"
           ]
         }
       },

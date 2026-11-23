@@ -111,8 +111,9 @@ fun MeetingScreen(
     var miniPreference by remember(lesson.id) { mutableStateOf<Boolean?>(null) }
     val miniPosition = remember(lesson.id) { MiniVideoPosition() }
     val chatDraft = remember(lesson.id) { MeetingChatDraft() }
-    val pipTarget = remember(mediaState.participants, currentLesson.teacher.id, snapshot?.share, assistance) {
-        if (assistance?.let { it.studentId == user.id && it.status == "active" } == true) PipVideoTarget(currentLesson.teacher.id)
+    val pipTarget = remember(mediaState.participants, currentLesson.teacher.id, snapshot?.share, assistance, remote) {
+        if (assistance?.let { it.studentId == user.id && it.status == "active" } == true)
+            assistancePipTarget(remote, user.id, currentLesson.teacher.id, assistance.geometry)
         else selectPipTarget(mediaState.participants, user.id, currentLesson.teacher.id,
             sharedScreenOwner = snapshot?.share?.takeIf { it.type == "screen" }?.ownerId)
     }
@@ -307,13 +308,13 @@ fun MeetingScreen(
                 }
                 // The owner rail's stage guide shows a pending/preparing request and its cancel button itself.
                 if (assistanceEnabled && assistance != null && (owner || assistance.studentId == user.id) && !(teacherRail && snapshot?.share == null)) {
-                    RemoteAssistanceControls(assistance, user, remoteState.supported && pipState.supported, assistanceBusy,
+                    RemoteAssistanceControls(assistance, user, remoteState.supported && (pipState.supported || !remote.showsPointerOverOtherApps), assistanceBusy,
                         Modifier.fillMaxWidth().padding(horizontal = bodyPadding, vertical = Space.S4),
                         onApprove = { assistanceSession.approve(assistance.id) },
                         onDecline = { execute { realtime.send(ContractProtocol.Commands.AssistanceRespond, AssistanceRespondPayload(assistance.id, false)) } },
                         onStop = { execute { assistanceSession.stop(assistance.id) } },
                         requestCancel = owner && phase != null && assistance.status == "pending",
-                        studentName = people.firstOrNull { it.id == assistance.studentId }?.name)
+                        studentName = people.firstOrNull { it.id == assistance.studentId }?.name, pointer = remote.showsPointerOverOtherApps)
                 }
                 if (!socketConnected && snapshot != null) {
                     Text("실시간 상태를 다시 연결하고 있어요. 연결 후 자동으로 복원됩니다.",

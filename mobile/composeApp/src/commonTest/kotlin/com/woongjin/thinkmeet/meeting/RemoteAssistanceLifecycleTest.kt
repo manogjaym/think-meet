@@ -37,6 +37,31 @@ class RemoteAssistanceLifecycleTest {
     }
 
     @Test
+    fun iosShareWithoutOverlayPointerDoesNotRequirePip() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        // iOS shares through ReplayKit; a device without PiP must still be able to approve.
+        val fixture = Fixture(backgroundScope, overlayPointer = false, pipSupported = false)
+        try {
+            runCurrent()
+            fixture.controller.approve(SessionId)
+            runCurrent()
+
+            assertEquals(listOf("pip:disable", "permission", "assistance.respond", "capture", "assistance.start"), fixture.events)
+            assertEquals("active", fixture.link.snapshot.value?.assistance?.status)
+            assertTrue(fixture.remote.state.value.capturing)
+            assertTrue(fixture.errors.isEmpty())
+            // With PiP, iOS shows the student's own screen so the teacher's pointer can be drawn on it.
+            assertEquals(PipVideoTarget("student", screen = true, aspectRatio = 1080f / 2400f),
+                assistancePipTarget(fixture.remote, "student", Teacher.id, Geometry))
+            assertEquals(PipVideoTarget(Teacher.id), assistancePipTarget(FakeRemote(mutableListOf(), null), "student", Teacher.id, Geometry))
+        } finally {
+            fixture.releaseAndClose()
+            runCurrent()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
     fun blockedGeometryAckDoesNotDelayFeatureOffOrTeacherStopCleanup() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         try {
@@ -112,12 +137,12 @@ class RemoteAssistanceLifecycleTest {
         }
     }
 
-    private class Fixture(scope: CoroutineScope, permission: CompletableDeferred<Unit>? = null) {
+    private class Fixture(scope: CoroutineScope, permission: CompletableDeferred<Unit>? = null, overlayPointer: Boolean = true, pipSupported: Boolean = true) {
         val events = mutableListOf<String>()
         val errors = mutableListOf<Throwable>()
         val link = FakeLink(events)
-        val remote = FakeRemote(events, permission)
-        val pip = FakePip(events)
+        val remote = FakeRemote(events, permission, overlayPointer)
+        val pip = FakePip(events, pipSupported)
         val controller = RemoteAssistanceSession(link, remote, pip, "student", scope) { errors += it }
 
         fun releaseAndClose() {
@@ -167,7 +192,9 @@ class RemoteAssistanceLifecycleTest {
         }
     }
 
-    private class FakeRemote(private val events: MutableList<String>, val permission: CompletableDeferred<Unit>?) : RemoteAssistanceController {
+    private class FakeRemote(private val events: MutableList<String>, val permission: CompletableDeferred<Unit>?,
+        override val showsPointerOverOtherApps: Boolean = true) : RemoteAssistanceController {
+        override val showsPointerInPictureInPicture = !showsPointerOverOtherApps
         val mutable = MutableStateFlow(RemoteAssistanceState(supported = true))
         override val state = mutable.asStateFlow()
         val permissionStarted = CompletableDeferred<Unit>()
@@ -197,8 +224,8 @@ class RemoteAssistanceLifecycleTest {
         override fun close() { mutable.value = mutable.value.copy(capturing = false, geometry = null) }
     }
 
-    private class FakePip(private val events: MutableList<String>) : PictureInPictureController {
-        private val mutable = MutableStateFlow(PictureInPictureState(supported = true))
+    private class FakePip(private val events: MutableList<String>, supported: Boolean = true) : PictureInPictureController {
+        private val mutable = MutableStateFlow(PictureInPictureState(supported = supported))
         override val state = mutable.asStateFlow()
         override fun update(enabled: Boolean, target: PipVideoTarget?) {
             events += if (enabled) "pip:enable:${target?.identity}" else "pip:disable"

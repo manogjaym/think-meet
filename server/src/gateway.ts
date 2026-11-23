@@ -99,9 +99,10 @@ export class Gateway implements OnGatewayConnection, OnGatewayDisconnect, OnModu
   private assertLessonSocket(socket: Socket, lessonId: string, userId: string) {
     if (!socket.rooms.has(`lesson:${lessonId}`) || this.subscriptions.get(`${lessonId}:${userId}`) !== socket.id) throw new ApiError('FORBIDDEN', '현재 수업에 연결된 기기에서 요청해 주세요.', 403)
   }
-  private assertAndroidRecipient(socket: Socket) {
+  /** Android shows the pointer over other apps; iOS shares the screen through ReplayKit without that overlay. */
+  private assertAppRecipient(socket: Socket) {
     const client = socketFeatureClient(socket.handshake.headers, socket.handshake.auth)
-    if (client.platform !== 'android') throw new ApiError('ASSISTANCE_UNAVAILABLE', '학생의 Android 앱에서 화면 보기를 사용할 수 있어요.', 409)
+    if (client.platform !== 'android' && client.platform !== 'ios') throw new ApiError('ASSISTANCE_UNAVAILABLE', '학생의 Android·iOS 앱에서 화면 보기를 사용할 수 있어요.', 409)
     this.features.assertEvent(SOCKET_EVENTS.AssistancePointer, {}, socket.handshake.headers, socket.handshake.auth)
   }
   allowedOrigin(origin: string) { return [process.env.PUBLIC_ORIGIN, 'https://localhost', 'https://127.0.0.1', ...(process.env.DEV_ORIGINS || 'http://localhost:8443,http://127.0.0.1:8443').split(',')].includes(origin) }
@@ -148,10 +149,10 @@ export class Gateway implements OnGatewayConnection, OnGatewayDisconnect, OnModu
           const { studentId } = z.object({ studentId: z.string().uuid() }).parse(command.payload)
           const targetId = this.subscriptions.get(`${command.lessonId}:${studentId}`)
           const target = targetId ? this.server?.sockets.sockets.get(targetId) : undefined
-          if (!target?.rooms.has(`lesson:${command.lessonId}`)) throw new ApiError('ASSISTANCE_UNAVAILABLE', '현재 수업에 연결된 Android 학생에게 요청해 주세요.', 409)
+          if (!target?.rooms.has(`lesson:${command.lessonId}`)) throw new ApiError('ASSISTANCE_UNAVAILABLE', '현재 수업에 앱으로 연결된 학생에게 요청해 주세요.', 409)
           const targetUser = await this.assistanceUser(target)
           if (targetUser.id !== studentId || targetUser.role !== 'student') throw new ApiError('FORBIDDEN', '수업에 참여한 학생에게 요청해 주세요.', 403)
-          this.assertAndroidRecipient(target)
+          this.assertAppRecipient(target)
           context.studentSocketId = target.id
         }
       }
@@ -224,7 +225,7 @@ export class Gateway implements OnGatewayConnection, OnGatewayDisconnect, OnModu
         const student = await this.auth.userFromCookie(target.handshake.headers.cookie)
         await this.lessons.access(body.lessonId, student, true)
         if (student.id !== session.studentId) throw new ApiError('FORBIDDEN', '학생 연결이 변경되었어요.', 403)
-        this.assertAndroidRecipient(target)
+        this.assertAppRecipient(target)
       } catch (error) {
         target.emit(SOCKET_EVENTS.RoomError, socketError(error)); target.leave(`lesson:${body.lessonId}`)
         await this.lessons.disconnectAssistance(target.id)

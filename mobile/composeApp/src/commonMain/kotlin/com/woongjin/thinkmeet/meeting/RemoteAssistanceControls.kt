@@ -18,6 +18,8 @@ internal fun RemoteAssistanceControls(
     session: AssistanceSession, user: User, supported: Boolean, busy: Boolean, modifier: Modifier = Modifier,
     onApprove: () -> Unit, onDecline: () -> Unit, onStop: () -> Unit,
     requestCancel: Boolean = false, studentName: String? = null,
+    /** False on iOS: the screen is shared without the over-other-apps pointer. */
+    pointer: Boolean = true,
 ) {
     val student = session.studentId == user.id
     Surface(modifier, color = Palette.MeetingTile, shape = RoundedCornerShape(Corner.R8)) {
@@ -28,7 +30,7 @@ internal fun RemoteAssistanceControls(
                 session.status == "pending" && !student -> DesignContent.MeetingMirroringWaiting
                 session.status == "pending" -> DesignContent.RemoteAssistWaiting
                 session.status == "approved" -> DesignContent.RemoteAssistPreparing
-                student -> DesignContent.RemoteAssistActiveStudent
+                student -> if (pointer) DesignContent.RemoteAssistActiveStudent else DesignContent.RemoteAssistActiveStudentIos
                 else -> DesignContent.RemoteAssistActive
             }
             Text(if (!student && studentName != null) (if (session.status == "pending") "$studentName $status" else "$studentName · $status") else status,
@@ -41,7 +43,7 @@ internal fun RemoteAssistanceControls(
     if (student && session.status == "pending") MeetingLightTheme {
         AlertDialog(onDismissRequest = { if (!busy) onDecline() },
             title = { Text(DesignContent.RemoteAssistTitle) },
-            text = { Text(if (supported) DesignContent.RemoteAssistConsent else DesignContent.RemoteAssistUnsupported) },
+            text = { Text(if (!supported) DesignContent.RemoteAssistUnsupported else if (pointer) DesignContent.RemoteAssistConsent else DesignContent.RemoteAssistConsentIos) },
             confirmButton = { if (supported) TextButton(onClick = onApprove, enabled = !busy) { Text(DesignContent.RemoteAssistApprove) } },
             dismissButton = { TextButton(onClick = onDecline, enabled = !busy) { Text(DesignContent.RemoteAssistDecline) } })
     }

@@ -76,7 +76,7 @@ class AppState(val api: ThinkMeetApi, private val scope: CoroutineScope) {
         }
     }
     private val capabilityJob = scope.launch {
-        while (isActive) { api.refreshCapabilities(); delay(CapabilityRefreshMillis) }
+        while (isActive) { api.refreshCapabilities(); delay(CapabilityRefreshIntervalMillis) }
     }
 
     init { restore() }

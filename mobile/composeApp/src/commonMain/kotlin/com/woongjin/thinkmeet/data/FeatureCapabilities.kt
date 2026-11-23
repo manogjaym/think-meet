@@ -5,6 +5,11 @@ import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 
 internal const val CapabilityRefreshMillis = 120_000L
+/**
+ * Refresh well before the cached answer expires. Refreshing exactly at expiry briefly dropped to the baseline
+ * features while the request was in flight, which ended an active or pending mirroring session every 2 minutes.
+ */
+internal const val CapabilityRefreshIntervalMillis = CapabilityRefreshMillis / 2
 
 /** Server capability data is advisory; every mutation still relies on server authorization. */
 enum class CapabilitySource { Baseline, Server, Unavailable }

@@ -189,14 +189,19 @@ internal fun SharedStage(
     }
     val documentControls: @Composable (Modifier) -> Unit = { controlsModifier ->
         Surface(controlsModifier, shape = RoundedCornerShape(Corner.R8), color = Palette.MeetingTile) {
+            // Zoom and page controls wrap as groups, so 이전·쪽·다음 never split across lines (same as web).
             FlowRow(Modifier.padding(Space.S5), horizontalArrangement = Arrangement.spacedBy(Space.S4, Alignment.CenterHorizontally), verticalArrangement = Arrangement.spacedBy(Space.S4)) {
-                StageButton("− 축소", enabled = zoom > .5f, description = "PDF 축소") { zoom = (zoom - .25f).coerceAtLeast(.5f) }
-                Text("${(zoom * 100).toInt()}%", Modifier.padding(horizontal = Space.S6, vertical = Space.S10), style = MaterialTheme.typography.bodySmall.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f), color = Palette.MeetingMuted)
-                StageButton("＋ 확대", enabled = zoom < 4f, description = "PDF 확대") { zoom = (zoom + .25f).coerceAtMost(4f) }
-                StageButton("화면에 맞추기") { zoom = 1f }
-                StageButton("이전", enabled = owner && !pending && share.page > 1, description = "PDF 이전 페이지") { command(ContractProtocol.Commands.DocumentPage, DocumentPagePayload(share.page - 1)) }
-                Text("${share.page} / ${share.material?.pages ?: 1}쪽", Modifier.padding(horizontal = Space.S6, vertical = Space.S10), style = MaterialTheme.typography.bodySmall.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f), color = Palette.MeetingMuted)
-                StageButton("다음", enabled = owner && !pending && share.page < (share.material?.pages ?: 1), description = "PDF 다음 페이지") { command(ContractProtocol.Commands.DocumentPage, DocumentPagePayload(share.page + 1)) }
+                Row(horizontalArrangement = Arrangement.spacedBy(Space.S4), verticalAlignment = Alignment.CenterVertically) {
+                    StageButton("− 축소", enabled = zoom > .5f, description = "PDF 축소") { zoom = (zoom - .25f).coerceAtLeast(.5f) }
+                    Text("${(zoom * 100).toInt()}%", Modifier.padding(horizontal = Space.S6), style = MaterialTheme.typography.bodySmall.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f), color = Palette.MeetingMuted)
+                    StageButton("＋ 확대", enabled = zoom < 4f, description = "PDF 확대") { zoom = (zoom + .25f).coerceAtMost(4f) }
+                    StageButton("화면에 맞추기") { zoom = 1f }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(Space.S4), verticalAlignment = Alignment.CenterVertically) {
+                    StageButton("이전", enabled = owner && !pending && share.page > 1, description = "PDF 이전 페이지") { command(ContractProtocol.Commands.DocumentPage, DocumentPagePayload(share.page - 1)) }
+                    Text("${share.page} / ${share.material?.pages ?: 1}쪽", Modifier.padding(horizontal = Space.S6), style = MaterialTheme.typography.bodySmall.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f), color = Palette.MeetingMuted)
+                    StageButton("다음", enabled = owner && !pending && share.page < (share.material?.pages ?: 1), description = "PDF 다음 페이지") { command(ContractProtocol.Commands.DocumentPage, DocumentPagePayload(share.page + 1)) }
+                }
                 if (textbookLayout) captureControl()
             }
         }
@@ -347,12 +352,13 @@ internal fun SharedStage(
             Column(stageModifier, verticalArrangement = Arrangement.spacedBy(Space.S8)) {
                 renderContent(Modifier.weight(1f).fillMaxWidth())
                 FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Space.S4), verticalArrangement = Arrangement.spacedBy(Space.S4)) {
-                    if (share.type == "document") documentControls(Modifier.align(Alignment.CenterVertically))
+                    // Without annotation tools (e.g. a student) the page controls take the whole line instead of leaving a gap.
+                    if (share.type == "document") documentControls(Modifier.align(Alignment.CenterVertically).then(if (canAnnotate) Modifier else Modifier.weight(1f)))
                     if (share.type == "media") Surface(Modifier.align(Alignment.CenterVertically), shape = RoundedCornerShape(Corner.R8), color = Palette.MeetingTile) {
                         MediaTransport(share, snapshot.serverTime, owner, pending) { command(ContractProtocol.Commands.MediaUpdate, it) }
                     }
                     // Fills the rest of its line so the tools stay right-aligned even after wrapping (web: margin-inline-start:auto).
-                    if (assistance == null) Box(Modifier.weight(1f).align(Alignment.CenterVertically), contentAlignment = Alignment.CenterEnd) {
+                    if (assistance == null && canAnnotate) Box(Modifier.weight(1f).align(Alignment.CenterVertically), contentAlignment = Alignment.CenterEnd) {
                         annotationControls(Modifier)
                     }
                 }

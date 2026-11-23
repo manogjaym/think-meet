@@ -228,6 +228,8 @@ fun MeetingScreen(
     }
 
     BackHandler { confirmLeave = true }
+    // Registered after the leave handler so system Back closes an open panel (chat, participants, more) first.
+    BackHandler(enabled = panel != null) { panel = null }
     LaunchedEffect(realtime) {
         realtime.errors.collectLatest { snackbar.showSnackbar(it) }
     }

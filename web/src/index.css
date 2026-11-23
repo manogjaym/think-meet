@@ -136,7 +136,7 @@ input::placeholder,textarea::placeholder { color:var(--muted); }
 .confirm p { font-size:var(--type-body); line-height:1.5; color:var(--muted);  margin:var(--space-3) 0 0;}
 .confirm-actions { display:flex; justify-content:flex-end; gap:var(--space-2); margin-top:var(--tm-spacing-s20); padding-top:var(--space-3); border-top:1px solid var(--line); }
 .confirm-actions button { min-height:48px; padding:0 18px; font-size:var(--type-label); font-weight:var(--weight-semibold);  line-height:1.5;}
-.center-page { min-height:calc(100dvh - 72px - env(safe-area-inset-top)); display:grid; place-items:center; padding:var(--tm-spacing-s40) var(--space-6); }
+.center-page { min-height:calc(100dvh - 72px - env(safe-area-inset-top)); display:grid; grid-template-columns:minmax(0, 1fr); place-items:center; padding:var(--tm-spacing-s40) var(--space-6); }
 .success-card,.ended-card,.waiting-card,.exception-card { width:min(540px,100%); background:var(--tm-color-white); padding:var(--tm-spacing-s40) var(--space-8) var(--space-8); border:1px solid var(--line); border-radius:var(--status-card-radius); text-align:center; }
 .success-check,.ended-icon { display:grid; place-items:center; margin:0 auto var(--space-6); width:48px; height:48px; border-radius:50%; color:var(--green); background:var(--success-background); }
 .ended-icon { color:var(--muted); background:var(--surface-3); }

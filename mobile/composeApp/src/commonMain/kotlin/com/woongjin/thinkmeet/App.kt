@@ -189,7 +189,8 @@ private fun AppHeader(state: AppUiState, mobile: Boolean, compact: Boolean, widt
                     is Route.Edit -> "수업 일정 수정"
                     is Route.Waiting -> "입장 대기"
                     is Route.Created -> "예약 완료"
-                    is Route.Ended -> "수업 종료"
+                    // A student who only left sees the lesson continuing; match the end card badge (web: TopBar).
+                    is Route.Ended -> if (route.lesson.status == "ENDED") "수업 종료" else "수업에서 나감"
                     else -> "안내"
                 }
                 Row(Modifier.fillMaxWidth().height(height).padding(horizontal = if (mobile) 8.dp else 24.dp), verticalAlignment = Alignment.CenterVertically) {

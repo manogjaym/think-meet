@@ -177,6 +177,13 @@ body.meeting-viewport .topbar { display:none; }
 .shared-participants-title { color:var(--meeting-dim); font-size:var(--type-caption); display:flex; align-items:center; gap:6px; padding:0 0 var(--space-1);  line-height:1.5;}
 .shared-participants .video-tile { height:var(--shared-tile-height,132px); min-height:var(--shared-tile-height,132px); border-radius:var(--tm-radius-r8); }
 .shared-participants .tile-avatar { width:52px; height:52px; font-size:21px; }
+/* Docked tiles (teacher rail, textbook dock) shrink with the available height; keep the avatar clear of the bottom name tag. */
+.textbook-participants .video-tile { container-type:size; }
+@container (max-height: 140px) {
+  .textbook-participants .video-tile .tile-camera-status { display:none; }
+  .textbook-participants .video-tile .tile-avatar { width:36px; height:36px; font-size:14px; transform:translateY(-10px); }
+}
+@container (max-height: 72px) { .textbook-participants .video-tile .tile-avatar { display:none; } }
 .shared-participants .name-tag { left:var(--space-2); bottom:var(--space-2); font-size:var(--type-caption); gap:var(--space-1);  line-height:1.5; font-weight:var(--weight-medium);}
 .shared-participants .host-label { font-size:12px; padding:1px 3px;  line-height:1.5; font-weight:var(--weight-medium);}
 .shared-participants .mic-state { width:24px; height:24px; right:7px; top:7px; }
@@ -199,6 +206,8 @@ body.meeting-viewport .topbar { display:none; }
 .annotate-entry { position:absolute; top:12px; left:12px; display:flex; align-items:center; gap:7px; min-height:44px; border:0; border-radius:var(--tm-radius-r8); background:var(--accent-subdued); color:var(--accent-ink); padding:0 var(--space-3); font-size:var(--type-caption);  line-height:1.5; font-weight:var(--weight-medium);}
 .document-controls, .media-controls { position:absolute; bottom:12px; left:12px; right:184px; display:flex; align-items:center; justify-content:center; flex-wrap:wrap; gap:var(--space-1); padding:5px; border-radius:var(--tm-radius-r8); background:var(--tile-bg); }
 .document-controls button,.media-controls button { min-height:40px; border:0; padding:0 10px; display:flex; align-items:center; gap:5px; border-radius:6px; background:var(--meeting-control); color:var(--meeting-text); font-size:var(--type-caption);  line-height:1.5; font-weight:var(--weight-medium);}
+/* Zoom and page controls wrap as groups, so 이전·쪽·다음 never split across lines. */
+.document-controls > .control-group { display:flex; align-items:center; gap:var(--space-1); }
 .document-controls span,.media-controls span { padding:0 6px; color:var(--meeting-muted); font-size:var(--type-caption);  line-height:1.5;}
 .media-controls button.active { color:var(--accent-on-dark); background:var(--tm-color-meeting-media-active); }
 .annotation-bar { position:absolute; left:12px; top:12px; right:184px; display:flex; align-items:center; flex-wrap:wrap; gap:var(--space-2); background:var(--tile-bg); padding:var(--space-2); border-radius:9px; z-index:4; }

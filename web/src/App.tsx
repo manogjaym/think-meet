@@ -92,6 +92,7 @@ function Application() {
         setScreen={setScreen}
         prejoinEnabled={features.prejoin}
         notesEnabled={features.notes}
+        lessonEnded={detail.selected?.status === "ENDED"}
         onBack={() => {
           const from = (location.state as { from?: string } | null)?.from
           if (screen === "prejoin" && from?.startsWith("/") && !from.startsWith("//")) navigate(from)

@@ -14,6 +14,7 @@ export function TopBar({
   attendanceEnabled = false,
   isEditing = false,
   prejoinEnabled = false,
+  notesEnabled = false,
   onBack,
   backLabel = "이전 화면으로 돌아가기",
 }: {
@@ -24,6 +25,7 @@ export function TopBar({
   isEditing?: boolean
   attendanceEnabled?: boolean
   prejoinEnabled?: boolean
+  notesEnabled?: boolean
   onBack?: () => void
   backLabel?: string
   setScreen: (s: Screen) => void
@@ -46,7 +48,8 @@ export function TopBar({
     }
   }, [])
   if (screen === "meeting") return null
-  const isRoot = screen === "home" || (screen === "form" && !isEditing) || (screen === "students" && attendanceEnabled)
+  const isRoot = screen === "home" || (screen === "form" && !isEditing) || (screen === "students" && attendanceEnabled) || (screen === "class-notes" && notesEnabled)
+  const tabCount = 1 + (role === "teacher" ? 1 : 0) + (role === "teacher" && attendanceEnabled ? 1 : 0) + (notesEnabled ? 1 : 0)
   if (!isRoot) {
     const canGoBack =
       screen === "detail" ||
@@ -103,7 +106,7 @@ export function TopBar({
         <span className="brand-product">{designContent.brandProduct}</span>
       </button>
       <nav
-        className={`topbar-nav ${role === "student" ? "single-tab" : ""}`}
+        className={`topbar-nav ${tabCount === 1 ? "single-tab" : ""}`}
         aria-label="주요 화면"
       >
         <button
@@ -133,6 +136,13 @@ export function TopBar({
             onClick={() => setScreen("students")} aria-current={screen === "students" ? "page" : undefined}>
             <span className="root-tab-icon"><Icon name="users" size={22} /></span>
             <span>{designContent.attendanceStudents}</span>
+          </button>
+        )}
+        {notesEnabled && (
+          <button className={screen === "class-notes" ? "active" : ""}
+            onClick={() => setScreen("class-notes")} aria-current={screen === "class-notes" ? "page" : undefined}>
+            <span className="root-tab-icon"><Icon name="file" size={22} /></span>
+            <span>{designContent.notesTitle}</span>
           </button>
         )}
       </nav>

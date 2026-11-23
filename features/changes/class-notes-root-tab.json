@@ -1,0 +1,33 @@
+{
+  "id": "class-notes-root-tab",
+  "summary": "학생·선생님의 상단 루트 탭(휴대폰 폭은 하단 탭)에 수업 노트를 추가하고, 수업 노트 화면을 분할 탭·수업명 칩·월 이동·날짜별 카드·개수 타일 구성으로 다시 디자인합니다. 학생은 학습지 탭에서 바로 제출하고(웹은 이미지 올리기, 앱은 전체 화면 카메라), 선생님은 담당 수업의 월별 제출 학습지를 보고 첨삭을 붙이며 본인이 저장한 수업 화면을 봅니다. 공통 아이콘 camera·user·checkSquare와 문구를 추가합니다.",
+  "scope": "shared",
+  "featureIds": [
+    "classroom.notes"
+  ],
+  "platforms": {
+    "server": {
+      "status": "implemented",
+      "reason": "기존 listClassNoteWorksheets·listClassNoteCaptures 계약은 그대로 두고, 선생님의 month 조회(담당 수업 한정)와 본인 저장 화면 목록을 허용합니다. 학생 권한과 이미지 접근 범위는 바뀌지 않습니다."
+    },
+    "web": {
+      "status": "implemented"
+    },
+    "android": {
+      "status": "implemented"
+    },
+    "ios": {
+      "status": "implemented",
+      "reason": "Android와 같은 공통 Compose 코드(App.kt·ClassNotes.kt)를 사용합니다. Kotlin 프레임워크와 서명 없는 Xcode 호스트 빌드만 확인했고 시뮬레이터 실행은 하지 않았습니다."
+    }
+  },
+  "verification": [
+    "2026-11-23 Asia/Seoul, 저장소 루트: node design/scripts/generate.mjs 후 npm run shared:check, npm run verify 통과(공통 13개, 서버 69개, 웹 19개, 타입 검사, 웹 빌드). 서버 타입 검사는 로컬 node_modules의 Prisma 클라이언트가 오래되어 server/에서 npx prisma generate 후 통과했습니다.",
+    "server/에서 npx tsx --test test/class-note-capture.test.ts 2개 통과. 선생님 월별 학습지 조회가 담당 수업 조건을 갖고, 기록 목록이 authorId 본인 조건만 갖는지 확인합니다.",
+    "mobile/에서 JDK 17로 ./gradlew :composeApp:checkDesignTokens :composeApp:checkContracts :composeApp:testDebugUnitTest :composeApp:assembleDebug :composeApp:linkDebugFrameworkIosSimulatorArm64 통과(단위 테스트 47개). iosApp/README.md의 서명 없는 시뮬레이터 xcodebuild 통과.",
+    "웹: Vite 개발 서버(로컬 API 프록시)에서 student1·teacher1 실제 데이터로 390×844·1024×800의 상단·하단 탭, 학습지·기록 카드, 학습지·첨삭 대화상자, 제출 대상 없음 안내를 확인했습니다. 카드가 여러 개인 배치와 학생별 첨삭 선택은 브라우저에서 수업 노트 목록·이미지 응답만 가짜 데이터로 바꿔 확인했습니다. 수정 전 API에서는 선생님 목록이 오류 문구와 다시 시도 버튼으로 표시됨을 확인했습니다.",
+    "Android: 기존 Android 35 에뮬레이터(1080×2400, 420dpi)에 Debug APK를 설치해 웹과 같은 student1·teacher1 데이터로 하단 탭, 학습지·기록 카드, 학습지·첨삭 대화상자, 제출 대상 없음 안내를 확인했습니다. 임시 1536×1350·240dpi(1024dp)에서 상단 탭과 2열 카드를 확인한 뒤 wm size/density reset으로 복원했습니다.",
+    "배포·데이터: 사용자 요청으로 infra/local에서 docker compose build api 후 docker compose up -d --no-deps --no-build api로 API만 재배포했습니다(Docker 자격 증명 도우미가 응답하지 않아 자격 증명 저장소 없는 임시 DOCKER_CONFIG 사용). /api/v1/health 200, 대기 마이그레이션 없음, 진행 중 수업 123123은 LIVE와 두 참여자 online 상태를 유지했습니다. 웹 컨테이너는 재배포하지 않았습니다. 새 수업·제출·캡처는 만들지 않았고 웹 확인용 로그인 세션은 로그아웃했습니다.",
+    "미검증: 수업 노트 화면에서의 실제 첨삭 업로드와 앱 학습지 촬영(데이터를 만들지 않기 위해 실행하지 않음), iOS 시뮬레이터·실기기 실행, Android 실기기, 원격 CI. 기능은 in-progress를 유지합니다."
+  ]
+}

@@ -93,12 +93,17 @@ export class ClassNotes {
     return { lesson: lesson ? this.lessonDto(lesson, await this.names([lesson.teacherId])) : null }
   }
 
+  /** Teachers list one of their lessons, or every submission to their lessons in a Seoul month. Students list their own month. */
   async worksheets(user: PublicUser, month: unknown, lessonId: unknown): Promise<ClassNoteWorksheet[]> {
-    const filter: Prisma.ClassNoteImageWhereInput = user.role === 'teacher'
-      ? { lessonId: uuid.parse(lessonId), lesson: { teacherId: user.id } }
-      : { studentId: user.id, createdAt: worksheetMonth(month) }
-    if (user.role !== 'teacher') this.requireStudent(user)
-    else if (!(await this.db.lesson.findFirst({ where: { id: filter.lessonId as string, teacherId: user.id } }))) throw unavailable()
+    let filter: Prisma.ClassNoteImageWhereInput
+    if (user.role !== 'teacher') {
+      this.requireStudent(user)
+      filter = { studentId: user.id, createdAt: worksheetMonth(month) }
+    } else if (lessonId !== undefined) {
+      const id = uuid.parse(lessonId)
+      if (!(await this.db.lesson.findFirst({ where: { id, teacherId: user.id } }))) throw unavailable()
+      filter = { lessonId: id, lesson: { teacherId: user.id } }
+    } else filter = { lesson: { teacherId: user.id }, createdAt: worksheetMonth(month) }
     const rows = await this.db.classNoteImage.findMany({ where: { kind: 'worksheet', ...filter }, include: { lesson: true, correction: true }, orderBy: ordered })
     const names = await this.names(rows.flatMap(row => [row.authorId, row.lesson.teacherId]))
     return rows.map(row => ({
@@ -114,8 +119,9 @@ export class ClassNotes {
     ] }
   }
 
+  /** Students see their own and their attended teachers' captures; teachers see only the captures they saved. */
   async captures(user: PublicUser): Promise<ClassNoteCapture[]> {
-    this.requireStudent(user)
+    if (user.role !== 'teacher') this.requireStudent(user)
     const rows = await this.db.classNoteImage.findMany({ where: this.capturesVisibleTo(user), include: { lesson: true }, orderBy: ordered })
     const names = await this.names(rows.map(row => row.lesson.teacherId))
     return rows.map(row => ({ lesson: this.lessonDto(row.lesson, names), image: image(row), source: row.authorId === user.id ? 'self' : 'teacher' }))

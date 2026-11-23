@@ -35,3 +35,18 @@ test('a mirrored screen is saved only by its own student and stays private', asy
   assert.deepEqual(await classroom.capture(classroom.teacher), { lessonId: classroom.lesson.id, studentId: null, kind: 'capture' })
   assert.deepEqual(await classroom.capture(classroom.other), { lessonId: classroom.lesson.id, studentId: classroom.other.id, kind: 'capture' })
 })
+
+test('teachers list worksheets of their own lessons and only the captures they saved', async () => {
+  const teacher: User = { id: randomUUID(), role: 'teacher', name: 'Teacher', username: 'teacher' }
+  const queries: any[] = []
+  const db: any = {
+    classNoteImage: { findMany: async (query: any) => { queries.push(query.where); return [] } },
+    user: { findMany: async () => [] },
+  }
+  const notes = new ClassNotes(db, {} as any, {} as any)
+  await notes.worksheets(teacher, '2026-11', undefined)
+  assert.deepEqual(queries[0].lesson, { teacherId: teacher.id })
+  assert.ok(queries[0].createdAt.gte instanceof Date)
+  await notes.captures(teacher)
+  assert.deepEqual(queries[1], { kind: 'capture', OR: [{ authorId: teacher.id }] })
+})

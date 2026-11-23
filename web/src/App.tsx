@@ -78,9 +78,10 @@ function Application() {
   if (auth.error) return <Status error={auth.error} retry={auth.retry} />
   if (!user) return <Login />
   if (route.page === "login") return <Status />
-  const teacherTabs = (screen === "home" || (screen === "students" && features.attendance) || (screen === "form" && !lessonId)) && user.role === "teacher"
+  const rootScreen = screen === "home" || (screen === "students" && features.attendance) || (screen === "form" && !lessonId && user.role === "teacher") || (screen === "class-notes" && features.notes)
+  const rootTabs = rootScreen && (user.role === "teacher" || features.notes)
   return (
-    <div className={`app ${screen === "meeting" ? "app-meeting" : screen === "home" ? "app-home" : ""} ${teacherTabs ? "app-with-tabs" : ""}`}>
+    <div className={`app ${screen === "meeting" ? "app-meeting" : screen === "home" ? "app-home" : ""} ${rootTabs ? "app-with-tabs" : ""}`}>
       {!(screen === "attendance" && features.attendance) && <TopBar
         user={user}
         role={user.role}
@@ -90,6 +91,7 @@ function Application() {
         isEditing={screen === "form" && !!lessonId}
         setScreen={setScreen}
         prejoinEnabled={features.prejoin}
+        notesEnabled={features.notes}
         onBack={() => {
           const from = (location.state as { from?: string } | null)?.from
           if (screen === "prejoin" && from?.startsWith("/") && !from.startsWith("//")) navigate(from)

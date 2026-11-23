@@ -13,7 +13,9 @@ export function useScreenTransition(screen: Screen, pathname: string) {
     document.body.classList.toggle("meeting-viewport", lock)
     if (previousLocation.current !== pathname) {
       const from = previousScreen.current
-      setMotion(lock ? "none" : from === "meeting" ? "fade" : screen === "home" ? "back" : from === "home" && screen === "form" ? "tab-forward" : "forward")
+      const tabs: Screen[] = ["home", "form", "students", "class-notes"]
+      const tabMove = tabs.includes(from) && tabs.includes(screen) ? tabs.indexOf(screen) - tabs.indexOf(from) : 0
+      setMotion(lock ? "none" : from === "meeting" ? "fade" : tabMove ? (tabMove > 0 ? "tab-forward" : "tab-back") : screen === "home" ? "back" : "forward")
       previousScreen.current = screen
       previousLocation.current = pathname
     }

@@ -260,6 +260,24 @@ object DesignVectors {
             addPath(pathData = PathParser().parsePathString("M14 2v5h5M9 13h6M9 17h6").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.8f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
         }.build()
     }
+    private val camera by lazy {
+        ImageVector.Builder(name = "camera", defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f).apply {
+            addPath(pathData = PathParser().parsePathString("M3 9a2 2 0 0 1 2-2h2.5L9 5h6l1.5 2H19a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.8f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+            addPath(pathData = PathParser().parsePathString("M8.5 13a3.5 3.5 0 1 0 7 0a3.5 3.5 0 1 0 -7 0Z").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.8f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+        }.build()
+    }
+    private val user by lazy {
+        ImageVector.Builder(name = "user", defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f).apply {
+            addPath(pathData = PathParser().parsePathString("M8 8a4 4 0 1 0 8 0a4 4 0 1 0 -8 0Z").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.8f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+            addPath(pathData = PathParser().parsePathString("M4 21a8 8 0 0 1 16 0").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.8f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+        }.build()
+    }
+    private val checkSquare by lazy {
+        ImageVector.Builder(name = "checkSquare", defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f).apply {
+            addPath(pathData = PathParser().parsePathString("M6 3H18a3 3 0 0 1 3 3V18a3 3 0 0 1 -3 3H6a3 3 0 0 1 -3 -3V6a3 3 0 0 1 3 -3Z").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.8f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+            addPath(pathData = PathParser().parsePathString("m8 12 3 3 5-6").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.8f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+        }.build()
+    }
     fun icon(name: String): ImageVector = when (name) {
         "brand" -> brand
         "globe" -> globe
@@ -304,6 +322,9 @@ object DesignVectors {
         "cameraFlip" -> cameraFlip
         "wifi" -> wifi
         "file" -> file
+        "camera" -> camera
+        "user" -> user
+        "checkSquare" -> checkSquare
         else -> error("Unknown shared icon: $name")
     }
 }

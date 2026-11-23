@@ -73,7 +73,7 @@ export function AppScreen(props: AppScreenProps) {
       />
     ))
   if (screen === "class-notes")
-    return user.role === "student" && features.notes ? <ClassNotes tab={route.notesTab} onTab={tab => navigate(`/class-notes?tab=${tab}`, { replace: true })} /> : <Status error="수업 노트를 이용할 수 없어요." />
+    return features.notes ? <ClassNotes key={user.id} role={user.role} tab={route.notesTab} onTab={tab => navigate(`/class-notes?tab=${tab}`, { replace: true })} /> : <Status error="수업 노트를 이용할 수 없어요." />
   if (screen === "students" || screen === "attendance")
     return !features.attendance ? <Status error={designContent.attendanceUnavailable} />
       : screen === "students" ? <AttendanceStudents key={user.id} />

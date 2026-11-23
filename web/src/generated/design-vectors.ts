@@ -630,6 +630,56 @@ export const designIcons: Record<string, SharedVectorPart[]> = {
         "d": "M14 2v5h5M9 13h6M9 17h6"
       }
     }
+  ],
+  "camera": [
+    {
+      "type": "path",
+      "attributes": {
+        "d": "M3 9a2 2 0 0 1 2-2h2.5L9 5h6l1.5 2H19a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"
+      }
+    },
+    {
+      "type": "circle",
+      "attributes": {
+        "cx": "12",
+        "cy": "13",
+        "r": "3.5"
+      }
+    }
+  ],
+  "user": [
+    {
+      "type": "circle",
+      "attributes": {
+        "cx": "12",
+        "cy": "8",
+        "r": "4"
+      }
+    },
+    {
+      "type": "path",
+      "attributes": {
+        "d": "M4 21a8 8 0 0 1 16 0"
+      }
+    }
+  ],
+  "checkSquare": [
+    {
+      "type": "rect",
+      "attributes": {
+        "x": "3",
+        "y": "3",
+        "width": "18",
+        "height": "18",
+        "rx": "3"
+      }
+    },
+    {
+      "type": "path",
+      "attributes": {
+        "d": "m8 12 3 3 5-6"
+      }
+    }
   ]
 };
 export const brandPaths = ["M4 4.5c2.8 0 5.1.8 7 2.3v13c-1.9-1.5-4.2-2.3-7-2.3a1 1 0 0 1-1-1v-11a1 1 0 0 1 1-1Z","M20 4.5c-2.8 0-5.1.8-7 2.3v13c1.9-1.5 4.2-2.3 7-2.3a1 1 0 0 0 1-1v-11a1 1 0 0 0-1-1Z"];

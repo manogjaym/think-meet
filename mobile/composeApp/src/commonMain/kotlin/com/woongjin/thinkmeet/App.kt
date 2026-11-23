@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import com.woongjin.thinkmeet.data.ThinkMeetApi
+import com.woongjin.thinkmeet.data.ClassNoteLesson
 import com.woongjin.thinkmeet.config.ServerConfig
 import com.woongjin.thinkmeet.design.*
 import com.woongjin.thinkmeet.design.generated.DesignContent
@@ -48,13 +49,19 @@ fun App() {
         val user = state.user
         val attendanceEnabled = user?.isTeacher == true && capabilities.supports(ContractProtocol.FeatureIds.ClassroomAttendance)
         val openStudents = (controller::attendanceStudents).takeIf { attendanceEnabled }
+        val openNotes = { controller.notes(NotesTab.Worksheets) }.takeIf { notesEnabled }
         val route = state.route
         var worksheetStudent by rememberSaveable { mutableStateOf<String?>(null) }
         var worksheetLesson by rememberSaveable { mutableStateOf<String?>(null) }
         var worksheetLabel by rememberSaveable { mutableStateOf("") }
-        val inWorksheetCamera = route == Route.Home && user != null && worksheetStudent == user.id && worksheetLesson != null
+        val inWorksheetCamera = (route == Route.Home || route is Route.Notes) && user != null && worksheetStudent == user.id && worksheetLesson != null
         val worksheetLessons = remember(state.lessons) { state.lessons.map { Triple(it.id, it.status, it.startsAt) } }
         fun closeWorksheetCamera() { worksheetStudent = null; worksheetLesson = null; worksheetLabel = "" }
+        fun openWorksheetCamera(lesson: ClassNoteLesson) {
+            worksheetStudent = user?.id ?: return
+            worksheetLesson = lesson.id
+            worksheetLabel = lesson.description()
+        }
         val inMeeting = route is Route.Meeting
         val pendingLink = AppLinks.code.collectAsState().value
         val snackbar = remember { SnackbarHostState() }
@@ -95,24 +102,21 @@ fun App() {
                 else -> BoxWithConstraints(Modifier.fillMaxSize()) {
                     val mobile = maxWidth <= LayoutToken.RootNavigationMobile
                     val compact = maxWidth <= LayoutToken.RootHeaderCompact
-                    val rootRoute = route == Route.Home || route == Route.Create || (route == Route.Students && attendanceEnabled)
-                    val rootTabs = rootRoute && mobile && user.isTeacher
+                    val rootRoute = route == Route.Home || route == Route.Create || (route == Route.Students && attendanceEnabled) || (route is Route.Notes && notesEnabled)
+                    val rootTabs = rootRoute && mobile && (user.isTeacher || notesEnabled)
                     Scaffold(containerColor = Canvas, contentWindowInsets = WindowInsets(0, 0, 0, 0),
                         snackbarHost = { SnackbarHost(snackbar) },
                         topBar = {
                             if (route is Route.Attendance && openStudents != null) AttendanceHeader(route.student.name, mobile, openStudents)
-                            else AppHeader(state, mobile, compact, maxWidth, controller::home, controller::form, controller::logout, controller::detail, openStudents, prejoinEnabled)
+                            else AppHeader(state, mobile, compact, maxWidth, controller::home, controller::form, controller::logout, controller::detail, openStudents, openNotes, prejoinEnabled)
                         },
-                        bottomBar = { if (rootTabs) RootNavigation(route, true, controller::home, controller::form, openStudents) },
+                        bottomBar = { if (rootTabs) RootNavigation(route, true, controller::home, controller::form, openStudents, openNotes, user.isTeacher) },
                     ) { padding ->
                         Box(Modifier.fillMaxSize().padding(padding).then(if (rootTabs) Modifier else Modifier.navigationBarsPadding())) {
                             when (route) {
-                                Route.Home -> savedScreens.SaveableStateProvider("home:${user.id}") { HomeScreen(state, controller) { lesson ->
-                                    worksheetStudent = user.id
-                                    worksheetLesson = lesson.id
-                                    worksheetLabel = lesson.description()
-                                } }
-                                is Route.Notes -> if (notesEnabled && !user.isTeacher) ClassNotesScreen(api, route.tab) else PageColumn { ErrorCard("수업 노트를 이용할 수 없어요.") }
+                                Route.Home -> savedScreens.SaveableStateProvider("home:${user.id}") { HomeScreen(state, controller, ::openWorksheetCamera) }
+                                is Route.Notes -> if (notesEnabled) key(user.id) { ClassNotesScreen(api, route.tab, user.isTeacher, controller::notes, ::openWorksheetCamera) }
+                                    else PageColumn { ErrorCard("수업 노트를 이용할 수 없어요.") }
                                 Route.Students -> if (attendanceEnabled) key(user.id) { AttendanceStudentsScreen(api, controller::studentAttendance) }
                                     else PageColumn { ErrorCard(DesignContent.AttendanceUnavailable) }
                                 is Route.Attendance -> if (attendanceEnabled) key(user.id, route.student.id) { StudentAttendanceScreen(api, route.student.id) }
@@ -146,11 +150,11 @@ fun BrandMark(compact: Boolean = false) {
 
 @Composable
 private fun AppHeader(state: AppUiState, mobile: Boolean, compact: Boolean, width: androidx.compose.ui.unit.Dp,
-    home: () -> Unit, form: () -> Unit, logout: () -> Unit, detail: () -> Unit, students: (() -> Unit)?,
+    home: () -> Unit, form: () -> Unit, logout: () -> Unit, detail: () -> Unit, students: (() -> Unit)?, notes: (() -> Unit)?,
     prejoinEnabled: Boolean,
 ) {
     val route = state.route
-    val rootRoute = route == Route.Home || route == Route.Create || (route == Route.Students && students != null)
+    val rootRoute = route == Route.Home || route == Route.Create || (route == Route.Students && students != null) || (route is Route.Notes && notes != null)
     val height = if (if (rootRoute) compact else mobile) LayoutToken.RootHeaderCompactHeight else LayoutToken.RootHeaderHeight
     Surface(color = Palette.White) {
         Column(Modifier.statusBarsPadding()) {
@@ -168,7 +172,7 @@ private fun AppHeader(state: AppUiState, mobile: Boolean, compact: Boolean, widt
                     if (!mobile) {
                         val gap = when { width <= LayoutToken.DashboardFeatureWide -> 24.dp; width <= LayoutToken.DashboardIntermediate -> 32.dp; else -> 48.dp }
                         Spacer(Modifier.width(gap))
-                        RootNavigation(route, false, home, form, students, state.user!!.isTeacher)
+                        RootNavigation(route, false, home, form, students, notes, state.user!!.isTeacher)
                     }
                     Spacer(Modifier.weight(1f))
                     AccountMenu(state, width <= LayoutToken.HeaderProfileCompact, logout)
@@ -200,16 +204,17 @@ private fun AppHeader(state: AppUiState, mobile: Boolean, compact: Boolean, widt
 }
 
 @Composable
-private fun RootNavigation(route: Route, mobile: Boolean, home: () -> Unit, form: () -> Unit, students: (() -> Unit)?, teacher: Boolean = true) {
+private fun RootNavigation(route: Route, mobile: Boolean, home: () -> Unit, form: () -> Unit, students: (() -> Unit)?, notes: (() -> Unit)?, teacher: Boolean) {
     val tabs: @Composable RowScope.() -> Unit = {
-        val destinations = buildList {
-            add(Triple(DesignContent.RootHomeTab, "calendar", home) to Route.Home)
-            if (teacher) add(Triple(DesignContent.RootBookingTab, "plus", form) to Route.Create)
-            if (students != null) add(Triple(DesignContent.AttendanceStudents, "users", students) to Route.Students)
+        val destinations = buildList<Pair<Triple<String, String, () -> Unit>, (Route) -> Boolean>> {
+            add(Triple(DesignContent.RootHomeTab, "calendar", home) to { it == Route.Home })
+            if (teacher) add(Triple(DesignContent.RootBookingTab, "plus", form) to { it == Route.Create })
+            if (students != null) add(Triple(DesignContent.AttendanceStudents, "users", students) to { it == Route.Students })
+            if (notes != null) add(Triple(DesignContent.NotesTitle, "file", notes) to { it is Route.Notes })
         }
-        destinations.forEach { (tab, destination) ->
+        destinations.forEach { (tab, matches) ->
             val (label, icon, action) = tab
-            val selected = route == destination
+            val selected = matches(route)
             val color = if (selected) Brand else Muted
             if (mobile) Column(Modifier.weight(1f).fillMaxHeight().clickable(onClick = action).padding(vertical = 4.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                 DesignIcon(icon, Modifier.size(22.dp), color)

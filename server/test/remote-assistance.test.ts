@@ -237,11 +237,16 @@ test('only the requested student can consent, and published screen plus approval
   assert.equal(f.lesson.share.assistanceId, session.id); assert.equal(f.lesson.share.ownerId, f.student.id)
 })
 
-test('teacher ownership, Android/revision support and unavailable features cannot be bypassed by payloads', async () => {
+test('teacher ownership, app/revision support and unavailable features cannot be bypassed by payloads', async () => {
   const f = await fixture()
   assert.equal(code(await f.command(f.studentSocket, 'assistance.request', { studentId: f.other.id, role: 'teacher' })), 'FORBIDDEN')
-  f.studentSocket.handshake.auth.platform = 'ios'
+  f.studentSocket.handshake.auth.platform = 'web'
   assert.equal(code(await f.command(f.teacherSocket, 'assistance.request', { studentId: f.student.id })), 'ASSISTANCE_UNAVAILABLE')
+  // iOS students receive the request and share through ReplayKit; only the overlay pointer is Android-only.
+  f.studentSocket.handshake.auth.platform = 'ios'
+  const ios = await f.request()
+  assert.equal(ios.status, 'pending')
+  assert.equal((await f.command(f.teacherSocket, 'assistance.stop', { sessionId: ios.id })).ok, true)
   f.studentSocket.handshake.auth.platform = 'android'; f.studentSocket.handshake.auth.contractRevision = 3
   assert.equal(code(await f.command(f.teacherSocket, 'assistance.request', { studentId: f.student.id })), 'CLIENT_UPDATE_REQUIRED')
   f.studentSocket.handshake.auth.contractRevision = 4

@@ -17,7 +17,7 @@ export async function assistanceCommand(ctx: CommandContext) {
     if (lesson.teacherId !== user.id) throw new ApiError('FORBIDDEN', '수업 선생님만 화면 보기를 요청할 수 있어요.', 403)
     const { studentId } = z.object({ studentId: z.string().uuid() }).parse(payload)
     const student = lesson.members.find((member: any) => member.userId === studentId && !member.banned && member.online && member.admissionId)
-    if (studentId === user.id || !student || !context.studentSocketId) throw new ApiError('ASSISTANCE_UNAVAILABLE', '연결된 Android 학생에게 화면 보기를 요청해 주세요.', 409)
+    if (studentId === user.id || !student || !context.studentSocketId) throw new ApiError('ASSISTANCE_UNAVAILABLE', '앱으로 연결된 학생에게 화면 보기를 요청해 주세요.', 409)
     const current = lessons.assistance.current(id)
     if (share && (!current || share.id !== current.shareId)) throw new ApiError('SHARE_BUSY', '현재 공유를 종료한 후 화면 보기를 요청해 주세요.', 409)
     const session = lessons.assistance.request(id, user.id, studentId, context.socketId, context.studentSocketId)

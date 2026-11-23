@@ -30,6 +30,8 @@ final class NativeBridge: NSObject, IosNativeBridge, RoomDelegate, BroadcastMana
     private var screenAudioActive = false
     private var restoreMicrophoneAfterReconnect = false
     private var broadcastAllowed = false
+    /// A student-approved mirroring capture. It never gets a regular `screenCaptureId`, so regular sharing ignores it.
+    private var assistanceCapture = false
     private var screenCaptureId: Int64 = 0
     private var captureGeneration: Int64 = 0
     private var lastError: String?
@@ -75,6 +77,8 @@ final class NativeBridge: NSObject, IosNativeBridge, RoomDelegate, BroadcastMana
         onMain { self.pictureInPicture.enter(completion: completion) }
     }
     func closePictureInPicture() { onMain { self.pictureInPicture.close() } }
+    func showAssistancePointer(x: Double, y: Double) { onMain { self.pictureInPicture.showPointer(x: x, y: y) } }
+    func clearAssistancePointer() { onMain { self.pictureInPicture.clearPointer() } }
 
     @MainActor private func disconnectMedia() async {
         pictureInPicture.update(enabled: false, target: nil)
@@ -154,9 +158,21 @@ final class NativeBridge: NSObject, IosNativeBridge, RoomDelegate, BroadcastMana
                         guard room.connectionState == .connected else { throw NativeError.screenNotConnected }
                         guard !BroadcastManager.shared.isBroadcasting else { throw NativeError.broadcastStopping }
                         broadcastAllowed = true
+                        assistanceCapture = false
                         BroadcastManager.shared.shouldPublishTrack = true
                         if !screenAudioActive { microphoneWanted = room.localParticipant.isMicrophoneEnabled() }
                         AudioManager.shared.mixer.micVolume = microphoneWanted ? 1 : 0
+                        do { try await room.localParticipant.setScreenShare(enabled: true) }
+                        catch { try? await stopScreenShare(); throw error }
+                    } else { try await stopScreenShare() }
+                case "assistanceScreen":
+                    // ReplayKit asks the student to start the broadcast; the track is published once it begins.
+                    if enabled {
+                        guard room.connectionState == .connected else { throw NativeError.screenNotConnected }
+                        guard !BroadcastManager.shared.isBroadcasting, screenCaptureId == 0 else { throw NativeError.broadcastStopping }
+                        broadcastAllowed = true
+                        assistanceCapture = true
+                        BroadcastManager.shared.shouldPublishTrack = true
                         do { try await room.localParticipant.setScreenShare(enabled: true) }
                         catch { try? await stopScreenShare(); throw error }
                     } else { try await stopScreenShare() }
@@ -180,6 +196,7 @@ final class NativeBridge: NSObject, IosNativeBridge, RoomDelegate, BroadcastMana
 
     @MainActor private func endBroadcast() {
         broadcastAllowed = false
+        assistanceCapture = false
         BroadcastManager.shared.shouldPublishTrack = false
         screenCaptureId = 0
         AudioManager.shared.mixer.appVolume = 0
@@ -198,12 +215,12 @@ final class NativeBridge: NSObject, IosNativeBridge, RoomDelegate, BroadcastMana
         onMain {
             if isBroadcasting {
                 guard self.broadcastAllowed else { BroadcastManager.shared.requestStop(); return }
-                if self.screenCaptureId == 0 {
+                if self.screenCaptureId == 0 && !self.assistanceCapture {
                     self.captureGeneration += 1
                     self.screenCaptureId = self.captureGeneration
                     Task { @MainActor in await self.startAppAudio() }
                 }
-            } else if self.screenCaptureId != 0 {
+            } else if self.screenCaptureId != 0 || self.assistanceCapture {
                 self.endBroadcast()
                 let ended = self.captureGeneration
                 Task { @MainActor in

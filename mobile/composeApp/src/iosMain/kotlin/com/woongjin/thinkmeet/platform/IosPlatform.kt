@@ -56,6 +56,9 @@ interface IosNativeBridge {
     fun updatePictureInPicture(enabled: Boolean, target: PipVideoTarget?)
     fun enterPictureInPicture(completion: (String?) -> Unit)
     fun closePictureInPicture()
+    /** Draws the teacher's mirroring pointer (0..1 of the shared screen) inside the PiP window. */
+    fun showAssistancePointer(x: Double, y: Double)
+    fun clearAssistancePointer()
     fun materialView(): UIView
     fun updateMaterial(view: UIView, url: String, cookie: String, type: String, page: Int, playing: Boolean, position: Double, updatedAt: String, onAspectRatio: (Float) -> Unit)
     fun disposeMaterial(view: UIView)

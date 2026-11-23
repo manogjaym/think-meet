@@ -1,14 +1,14 @@
-# Android 학생 원격 화면 안내
+# 학생 원격 화면 보기·안내
 
-선생님이 Android 학생에게 화면 보기를 요청하고 학생이 직접 승인하면 전체 화면을 공유합니다. 운영체제 권한과 캡처 시작을 확인한 뒤 수업 앱이 화면 속 화면(PiP)으로 전환됩니다. 웹 선생님이 공유 영상을 누른 채 마우스를 움직이면 학생이 보고 있는 다른 앱의 원래 위치 위에 포인터가 따라갑니다. 누른 채 멈춰 있어도 표시를 유지하며, 놓으면 마지막 좌표 수신 후 1.5초 뒤 숨깁니다. 학생의 터치를 대신 실행하지 않습니다.
+선생님이 Android·iOS 앱 학생에게 화면 보기를 요청하고 학생이 직접 승인하면 전체 화면을 공유합니다. 운영체제 권한과 캡처 시작을 확인한 뒤 수업 앱이 화면 속 화면(PiP)으로 전환됩니다. 웹 선생님이 공유 영상을 누른 채 마우스를 움직이면 학생이 보고 있는 다른 앱의 원래 위치 위에 포인터가 따라갑니다. 누른 채 멈춰 있어도 표시를 유지하며, 놓으면 마지막 좌표 수신 후 1.5초 뒤 숨깁니다. 학생의 터치를 대신 실행하지 않습니다.
 
-학생 수신은 Android부터 지원합니다. 선생님 요청·클릭 화면은 웹·Android·iOS에 구현하며, iOS·웹 학생에게 승인 버튼을 제공하지 않습니다. 기능 ID는 `meeting.remote-assistance`, 계약 revision은 4, 검증 단계는 `in-progress`이며 구현된 기능은 환경변수 없이 기본 사용합니다. `THINK_MEET_FEATURE_FLAGS`는 읽지 않습니다.
+학생 수신은 Android·iOS 앱에서 지원합니다. iOS는 기존 ReplayKit 방송으로 전체 화면을 공유하고, 선생님 포인터는 화면 속 화면(PiP) 창 안의 내 화면 사본 위에 표시합니다(아래 iOS 제약). 선생님 요청·클릭 화면은 웹·Android·iOS에 구현하며, 웹 학생에게는 승인 버튼을 제공하지 않습니다. 기능 ID는 `meeting.remote-assistance`, 계약 revision은 4, 검증 단계는 `in-progress`이며 구현된 기능은 환경변수 없이 기본 사용합니다. `THINK_MEET_FEATURE_FLAGS`는 읽지 않습니다.
 
 ## 사용 흐름
 
 1. 선생님이 **미러링 모드**를 누르면 학생 선택 모달이 열립니다. 참여 중인 학생을 선택하고 **공유 요청**을 누릅니다. 기존 방식의 방은 참석자 패널에서 요청합니다. 공유·승인 대기·캡처 준비·안내 진행 중에는 새 요청 버튼을 비활성화합니다. 수업마다 한 요청만 진행합니다.
 2. 학생에게 승인·거절 버튼을 표시합니다. 승인창은 **전체 화면이 수업 참여자에게 공유**되며 다른 앱 위에 선생님의 포인터가 표시된다고 안내합니다. 교사 전용 비공개 영상 채널은 아닙니다.
-3. 학생이 승인하면 Android의 **다른 앱 위에 표시** 설정과 **전체 화면 공유** 동의를 확인합니다. 앱의 승인 버튼만으로 운영체제 권한을 생략하지 않습니다.
+3. 학생이 승인하면 Android의 **다른 앱 위에 표시** 설정과 **전체 화면 공유** 동의를 확인합니다. iOS는 ReplayKit 방송 선택창에서 학생이 **방송 시작**을 직접 눌러야 하며, 60초 안에 시작하지 않으면 요청을 정리합니다. 앱의 승인 버튼만으로 운영체제 권한을 생략하지 않습니다.
 4. 실제 화면 영상과 서버의 승인 세션 연결을 확인한 뒤 PiP로 전환합니다. PiP에는 선생님 영상 또는 음성 수업 표시 한 명만 보여 주고 자신의 공유 화면을 반복 표시하지 않습니다. PiP 메뉴의 **미러링 끄기**로 공유를 중지하고, **화면 저장**으로 자신의 화면을 본인 기록함에 저장합니다.
 5. 웹 선생님은 공유 영상을 누른 채 마우스를 움직여 위치를 알려줍니다. 이동 중에는 기존 최대 20회/초 전송 제한을 사용하고, 정지 중에는 250ms마다 좌표를 갱신합니다. 손을 떼거나 입력 취소·창 포커스 상실·탭 숨김·연결/화면 방향 변경·공유 종료가 발생하면 연속 전송을 중단합니다. 학생 앱은 기존 수신 코드를 사용하며 마지막 좌표 수신 후 1.5초 뒤 포인터가 사라집니다. 학생은 직접 누릅니다.
 6. 학생·선생님의 **화면 안내 중지**, 일반 공유 중지, OS 캡처 중지, 수업 퇴장·종료, 강퇴, 연결 끊김, 기능 미지원 전환에서 공유와 포인터를 정리합니다. 재접속하면 새 요청과 승인이 필요합니다.
@@ -19,7 +19,7 @@
 |---|---|
 | 상태 | `pending`(승인 대기 60초) → `approved`(캡처 준비 120초) → `active`. 거절·만료·중지는 세션 제거 |
 | 선생님 | 인증된 해당 수업 선생님과 현재 수업 Socket만 요청·위치 전송 가능 |
-| 학생 | 현재 연결된 Android 앱, feature/revision 지원, 해당 요청을 받은 학생 Socket만 승인·캡처 시작 가능 |
+| 학생 | 현재 연결된 Android·iOS 앱, feature/revision 지원, 해당 요청을 받은 학생 Socket만 승인·캡처 시작 가능. 웹 학생은 `ASSISTANCE_UNAVAILABLE` |
 | 캡처 검증 | 서버는 현재 입장 ID와 실제 LiveKit 화면 트랙을 확인하고 새 공유 ID를 승인 세션에 연결 |
 | 좌표 | 공유 영상의 여백을 제외한 정규화 좌표 0~1. 학생의 실제 전체 화면 px 크기·회전·geometry version과 연결 |
 | 회전 | 학생의 크기/방향 변경 중 포인터 숨김. 새 캡처 프레임 비율 확인 후 version 갱신. 교사는 500ms 유예와 영상 비율 확인 후 다시 입력 가능 |
@@ -36,7 +36,11 @@
 - 보호된 앱은 오버레이나 화면 캡처를 숨길 수 있습니다. 이번 Android 15 실행에서 설정 앱 홈이 외부 포인터를 숨기는 동작을 확인했습니다. [AOSP 구현](https://android.googlesource.com/platform/packages/apps/Settings/+/refs/tags/android-15.0.0_r5/src/com/android/settings/homepage/SettingsHomepageActivity.java)은 `HideNonSystemOverlayMixin`을 사용합니다. 상태 표시줄·키보드·권한 창 등 모든 시스템 UI 위 표시도 보장하지 않습니다.
 - Android 14 이상은 전체 디스플레이 캡처 설정을 요청합니다. 기기가 앱 단위 공유로 바꾸거나 캡처 크기와 실제 화면이 계속 다르면 안내 세션을 중단합니다.
 - 회전 버전과 영상 비율을 검사하지만 서로 다른 미디어·Socket 전송 경로의 모든 프레임을 완전히 동기화하는 것은 아닙니다. 같은 비율의 180도 회전은 500ms 유예 후에도 실제 기기·망 조건에서 확인해야 합니다.
-- iOS 일반 앱이 다른 앱·홈 화면의 임의 좌표에 마크를 그리는 공개 API 구현 경로를 확인하지 못했습니다. 사용자가 Android 우선 범위를 선택했으므로 iOS 학생 수신은 제외합니다. FaceTime 자체의 화면 가리키기와 Think Meet의 공개 API 지원을 구분합니다.
+- iOS 일반 앱이 다른 앱·홈 화면의 임의 좌표에 마크를 그리는 공개 API 구현 경로를 확인하지 못했습니다. FaceTime 자체의 화면 가리키기와 Think Meet의 공개 API 지원을 구분합니다.
+- 2026-11-23 사용자 요청으로 iOS 학생 수신을 화면 공유까지 지원합니다. 앱 브리지의 미러링 전용 `assistanceScreen` 동작이 ReplayKit 방송을 시작합니다. 일반 수업방 공유 번호(`screenCaptureId`)를 쓰지 않으므로 일반 공유 흐름과 섞이지 않습니다. 화면 소리는 보내지 않습니다. 화면 크기는 공유 트랙 비율과 기기 화면 해상도로 정하고, 방향이 바뀌면 geometry version을 올립니다.
+- iOS는 TeamViewer의 화면 속 화면 안내처럼 PiP 창에 학생 자신의 공유 화면을 축소해 보여 주고, 그 위의 같은 0~1 위치에 선생님 포인터를 그립니다. 실제 화면 위치가 아니라 PiP 창 안에 보이므로 학생이 위치를 대응해 찾아야 합니다. Android처럼 마지막 좌표 수신 후 1.5초 뒤 숨기며 터치를 대신 실행하지 않습니다. 포인터 자동 확대는 하지 않습니다.
+- iOS에서 PiP는 선택 사항입니다. 지원 기기는 공유 시작 후 PiP 진입을 시도하고, 실패해도 공유는 유지합니다. PiP를 쓸 수 없거나 앱이 앞에 있으면 포인터는 보이지 않습니다. 이번 변경 전 iOS 앱은 요청을 받으면 미지원 안내와 거절 버튼만 표시합니다.
+- ReplayKit 방송에는 앱·`Broadcast` 확장의 서명과 App Group이 필요합니다. 시뮬레이터에서는 방송·PiP를 실행할 수 없어 실제 iPhone·iPad 검증 전까지 iOS 수신은 미검증입니다.
 
 근거: [Android MediaProjection](https://developer.android.com/media/grow/media-projection), [오버레이 계층](https://developer.android.com/reference/android/view/WindowManager.LayoutParams#TYPE_APPLICATION_OVERLAY), [터치 통과 조건](https://developer.android.com/reference/android/view/WindowManager.LayoutParams#FLAG_NOT_TOUCHABLE), [보호 앱 오버레이 차단](https://developer.android.com/security/fraud-prevention/activities#hide_overlay_windows), [Apple 비디오콜 PiP](https://developer.apple.com/documentation/avkit/adopting-picture-in-picture-for-video-calls).
 

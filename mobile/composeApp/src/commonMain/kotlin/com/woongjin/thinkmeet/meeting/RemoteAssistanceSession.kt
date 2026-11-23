@@ -9,6 +9,12 @@ import kotlin.math.abs
 import kotlin.time.Clock
 import kotlin.time.Instant
 
+/** The PiP presentation of the approved student: the teacher, or the student's own screen with the pointer (iOS). */
+internal fun assistancePipTarget(remote: RemoteAssistanceController, userId: String, teacherId: String, geometry: AssistanceGeometry?): PipVideoTarget =
+    if (!remote.showsPointerInPictureInPicture) PipVideoTarget(teacherId)
+    else PipVideoTarget(userId, screen = true, aspectRatio = geometry?.takeIf { it.width > 0 && it.height > 0 }
+        ?.let { it.width.toFloat() / it.height } ?: (16f / 9f))
+
 internal fun assistanceAspectMatches(geometry: AssistanceGeometry?, aspect: Float?): Boolean =
     geometry != null && geometry.width > 0 && geometry.height > 0 && aspect != null && aspect.isFinite() &&
         abs(aspect / (geometry.width.toFloat() / geometry.height) - 1f) < .02f
@@ -94,8 +100,11 @@ internal class RemoteAssistanceSession(
         approval = scope.launch {
             try {
                 requireCurrent(sessionId, token, "pending")
-                if (!remote.state.value.supported || !pip.state.value.supported) error("이 기기에서는 다른 앱 위 화면 안내를 지원하지 않아요.")
-                if (!link.capabilities.value.supports(ContractProtocol.FeatureIds.MeetingPip)) error("화면 속 화면을 사용할 수 없어 화면 안내를 시작하지 못했어요.")
+                // Android needs PiP for its overlay; iOS shares through ReplayKit and treats PiP as optional.
+                val pipRequired = remote.showsPointerOverOtherApps
+                val pipAvailable = pip.state.value.supported && link.capabilities.value.supports(ContractProtocol.FeatureIds.MeetingPip)
+                if (!remote.state.value.supported || pipRequired && !pip.state.value.supported) error("이 기기에서는 다른 앱 위 화면 안내를 지원하지 않아요.")
+                if (pipRequired && !pipAvailable) error("화면 속 화면을 사용할 수 없어 화면 안내를 시작하지 못했어요.")
                 pip.update(false, null)
                 remote.ensureOverlayPermission()
                 requireCurrent(sessionId, token, "pending")
@@ -105,9 +114,13 @@ internal class RemoteAssistanceSession(
                 requireCurrent(sessionId, token, "approved")
                 val snapshot = link.send(ContractProtocol.Commands.AssistanceStart, AssistanceStartPayload(sessionId, geometry))
                 requireCurrent(sessionId, token, "active")
-                // A teacher with the camera off still has an audio-call PiP presentation.
-                pip.update(true, PipVideoTarget(snapshot.lesson.teacher.id))
-                pip.enter()
+                if (pipAvailable) {
+                    // A teacher with the camera off still has an audio-call PiP presentation.
+                    pip.update(true, assistancePipTarget(remote, userId, snapshot.lesson.teacher.id, snapshot.assistance?.geometry))
+                    if (pipRequired) pip.enter()
+                    // iOS keeps sharing without PiP; leaving the app still enters it automatically when allowed.
+                    else try { pip.enter() } catch (error: CancellationException) { throw error } catch (error: Throwable) { report(error) }
+                }
             } catch (error: Throwable) {
                 withContext(NonCancellable) { cleanup(sessionId, notify = link.connected.value) }
                 if (error !is CancellationException) report(error)

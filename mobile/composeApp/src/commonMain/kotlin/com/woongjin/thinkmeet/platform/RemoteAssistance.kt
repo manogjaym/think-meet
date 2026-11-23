@@ -17,6 +17,10 @@ data class RemoteAssistanceState(
 /** Displays guidance only; it never sends touch input to another application. */
 interface RemoteAssistanceController {
     val state: StateFlow<RemoteAssistanceState>
+    /** Android draws the teacher's pointer over other apps and needs PiP; iOS only shares the screen. */
+    val showsPointerOverOtherApps: Boolean get() = true
+    /** iOS draws the pointer on a copy of the shared screen inside the PiP window instead. */
+    val showsPointerInPictureInPicture: Boolean get() = false
     suspend fun ensureOverlayPermission()
     suspend fun startScreenShare(): AssistanceGeometry
     /** Caller verifies the approved session, target student and teacher identity. */

@@ -71,7 +71,7 @@ object DesignContent {
     const val MeetingPeopleControl = "참가자"
     const val MeetingChatPanel = "수업 채팅"
     const val MeetingPeoplePanel = "참석자"
-    const val MirroringStop = "미러링 끄기"
+    const val MirroringStop = "화면 공유 중지"
     const val MirroringCaptureFailed = "화면을 저장하지 못했어요. 잠시 후 다시 시도해 주세요."
     const val TextbookPicker = "교재 불러오기"
     const val TextbookTab = "교재"

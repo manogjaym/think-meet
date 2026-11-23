@@ -187,7 +187,7 @@ fun MeetingScreen(
     }
     LaunchedEffect(pipState.error) { pipState.error?.let { snackbar.showSnackbar(it) } }
 
-    // A mirroring student gets lesson actions in the system PiP menu; the OS supplies expand/close.
+    // A mirroring student gets lesson actions in the system PiP menu (and an Android text button bar); the OS supplies expand/close.
     val ownMirror = snapshot?.share?.takeIf { share ->
         assistance?.let { it.studentId == user.id && it.status == "active" && share.assistanceId == it.id } == true &&
             share.type == "screen" && share.ownerId == user.id
@@ -204,7 +204,11 @@ fun MeetingScreen(
         pip.actions.collect { action ->
             val share = latestMirror ?: return@collect
             when (action) {
-                PipAction.StopMirroring -> share.assistanceId?.let { id -> execute { assistanceSession.stop(id) } }
+                PipAction.StopMirroring -> {
+                    // Sharing ends with the student back in the full-screen classroom, not in a leftover PiP.
+                    pip.restore()
+                    share.assistanceId?.let { id -> execute { assistanceSession.stop(id) } }
+                }
                 PipAction.CaptureScreen -> if (!mirrorCaptureBusy) {
                     mirrorCaptureBusy = true
                     scope.launch {

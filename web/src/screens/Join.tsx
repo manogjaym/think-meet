@@ -262,8 +262,12 @@ export function Prejoin({
     enhanced,
   ])
   const { mic, cam } = devices
-  const participants = lesson.students.filter((student) =>
-    lesson.participants?.some((p) => p.userId === student.id),
+  // Already-online people other than me, teacher first.
+  const participants = [lesson.teacher, ...lesson.students].filter(
+    (person, index, people) =>
+      person.id !== user.id &&
+      people.findIndex((other) => other.id === person.id) === index &&
+      lesson.participants?.some((p) => p.userId === person.id),
   )
   const scheduled = status === "SCHEDULED"
   const deviceStatus = (enabled: boolean, current: string) =>

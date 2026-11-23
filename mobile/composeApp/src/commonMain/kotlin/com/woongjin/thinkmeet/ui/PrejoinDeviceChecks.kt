@@ -247,7 +247,7 @@ import kotlin.time.TimeSource
                 }
                 if (lesson.isOpen) LessonText("공개 수업 · 로그인한 누구나 참여할 수 있어요.", color = Muted, fontSize = Type.Support)
                 if (!scheduled) {
-                    val participants = lesson.students.filter { person -> lesson.participants.any { it.userId == person.id } }
+                    val participants = lesson.onlineOthers(user)
                     LessonText(if (participants.isNotEmpty()) "${participants.size}명이 먼저 참여하고 있어요" else "아직 참여 중인 사람이 없어요",
                         color = Muted, fontSize = Type.Support)
                 }

@@ -501,7 +501,7 @@ private fun LessonSubjectField(
                         }
                     }
                     Spacer(Modifier.height(Space.S16))
-                    val participants = lesson.students.filter { person -> lesson.participants.any { it.userId == person.id } }
+                    val participants = lesson.onlineOthers(user)
                     Row(horizontalArrangement = Arrangement.spacedBy(Space.S12), verticalAlignment = Alignment.CenterVertically) {
                         if (participants.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(-Space.S5)) { participants.take(3).forEach { DesignAvatar(it.name, it.id, Modifier.border(BorderStroke(Space.S2, Palette.White), CircleShape), size = Space.S30) } }
                         LessonText(if (participants.isNotEmpty()) "${participants.size}명이 먼저 참여하고 있어요" else "아직 참여 중인 사람이 없어요", fontSize = Type.Support, color = Muted, lineHeight = Type.Support * 1.5f)
@@ -621,6 +621,9 @@ fun attendanceText(lesson: Lesson, userId: String): String {
     }
 }
 private fun clockText(value: LocalDateTime): String = "${value.hour.toString().padStart(2, '0')}:${value.minute.toString().padStart(2, '0')}"
+/** Already-online people other than [me] for the waiting screens, teacher first. */
+internal fun Lesson.onlineOthers(me: User): List<User> =
+    (listOf(teacher) + students).distinctBy { it.id }.filter { person -> person.id != me.id && participants.any { it.userId == person.id } }
 private fun invitedPeople(lesson: Lesson): String = if (lesson.students.size > 1) "${lesson.students.first().name} 외 ${lesson.students.size - 1}명" else lesson.students.firstOrNull()?.name ?: "초대 학생 없음"
 private fun lessonDay(value: String): String = localDateTime(value)?.let { "${it.month.number}월 ${it.day}일" } ?: value
 internal fun lessonStartLabel(value: String) = "${lessonDay(value)} ${koreanTime(value)}"

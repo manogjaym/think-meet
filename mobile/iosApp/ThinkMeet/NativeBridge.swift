@@ -222,13 +222,17 @@ final class NativeBridge: NSObject, IosNativeBridge, RoomDelegate, BroadcastMana
             participants: people.compactMap { p in
                 guard let id = p.identity?.stringValue else { return nil }
                 let dimensions = p.videoTracks.first { $0.source == .screenShareVideo }?.dimensions
-                let ratio = dimensions.map { $0.height > 0 ? Float($0.width) / Float($0.height) : 16 / 9 } ?? 16 / 9
+                let defaultRatio: Float = 16 / 9
+                var ratio = defaultRatio
+                if let dimensions, dimensions.height > 0 { ratio = Float(dimensions.width) / Float(dimensions.height) }
                 let microphone = p === room.localParticipant && screenAudioActive ? microphoneWanted : p.isMicrophoneEnabled()
                 return MediaParticipant(identity: id, name: p.name ?? "", camera: p.isCameraEnabled(), microphone: microphone,
                     screen: p.isScreenShareEnabled(), speaking: p.isSpeaking, local: p === room.localParticipant, screenAspectRatio: ratio)
             }, error: lastError, camera: room.localParticipant.isCameraEnabled(), microphone: screenAudioActive ? microphoneWanted : room.localParticipant.isMicrophoneEnabled(),
             screenSharing: room.localParticipant.isScreenShareEnabled(), speaker: speaker, screenCaptureId: screenCaptureId,
-            previewCamera: previewStatus, canFlipPreview: previewCanFlip)
+            previewCamera: previewStatus, canFlipPreview: previewCanFlip,
+            // Shared code maps the legacy REPLACED:/KICKED: error prefixes to MediaFailure.
+            failure: nil)
         _ = listener?(state)
         videoViews = videoViews.filter { $0.view != nil }
         for item in videoViews {

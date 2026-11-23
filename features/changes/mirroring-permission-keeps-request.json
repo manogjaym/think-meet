@@ -1,0 +1,33 @@
+{
+  "id": "mirroring-permission-keeps-request",
+  "summary": "선생님이 미러링을 요청한 뒤 학생이 처음으로 '다른 앱 위 표시' 권한을 허용하고 돌아오면 요청이 사라지던 문제를 고칩니다. 설정 화면에 있는 동안 Android 15가 백그라운드 앱의 네트워크를 끊어(blocked=APP_BACKGROUND, 약 8초 후) 수업 소켓과 LiveKit 연결이 끊겼고, 서버는 학생 소켓에 묶인 요청을 지웠습니다. 권한 설정 화면을 여는 동안만 짧은 포그라운드 서비스(shortService, Android 14 이상, 최대 약 3분)로 연결을 유지합니다. 함께, 앱이 기능 목록(capabilities)을 캐시 만료 시각(120초)과 같은 주기로 새로 받아 매번 잠깐 기본 기능으로 내려가면서 진행 중이거나 대기 중인 미러링이 최대 2분마다 끝나던 문제도 고칩니다. 갱신 주기를 만료의 절반(60초)으로 줄입니다.",
+  "scope": "platform-only",
+  "featureIds": [
+    "meeting.remote-assistance",
+    "meeting.pip"
+  ],
+  "platforms": {
+    "server": {
+      "status": "unchanged",
+      "reason": "요청을 학생 소켓에 묶는 서버 동의 정책은 그대로 두고, 앱이 연결을 유지하도록 고칩니다."
+    },
+    "web": {
+      "status": "not-applicable",
+      "reason": "웹은 미러링 요청을 보내는 선생님 쪽이며 권한 설정 화면 이동이 없습니다. 웹 기능 목록은 주기 갱신 없이 필요할 때 조회해 같은 경쟁이 없습니다."
+    },
+    "android": {
+      "status": "implemented"
+    },
+    "ios": {
+      "status": "implemented",
+      "reason": "기능 목록 갱신 주기(FeatureCapabilities.kt·AppState.kt)는 공통 코드라 iOS에도 적용됩니다. iOS에는 다른 앱 위 표시 권한 설정 이동이 없어 포그라운드 서비스는 해당하지 않습니다. Linux 환경이라 iOS 빌드·실행은 하지 않았습니다."
+    }
+  },
+  "verification": [
+    "2026-11-23 UTC, 저장소 루트: npm run shared:check -- --changed-files <변경 파일 목록>, npm run verify. mobile/에서 THINK_MEET_SERVER_ORIGIN=https://115.68.2.13 THINK_MEET_SERVER_CA_FILE=../infra/local/certs/think-meet-root.crt ./gradlew :composeApp:assembleDebug :composeApp:testDebugUnitTest :composeApp:assembleDebugAndroidTest 통과.",
+    "재현(수정 전): 로컬 서버에 임시 수업을 만들어 선생님(teacher1, Chromium 헤드리스)과 학생(student1, 기존 emulator-5554, API 35)이 참여. 학생의 다른 앱 위 표시 권한을 default로 바꾼 뒤 선생님이 미러링 요청 → 학생 승인 → 설정 화면에서 25초 대기. 약 8초 후 앱 UID가 blocked=APP_BACKGROUND가 되고 LiveKit·소켓 연결이 끊겨, 선생님 화면은 22초 만에 요청 전 상태로 돌아갔습니다.",
+    "수정 후: 같은 절차에서 설정 화면 동안 앱이 procState=FGS, 차단 없음(effective=NONE)을 유지하고 선생님 화면에 '요청 취소'(대기)가 남았습니다. 권한 허용 후 돌아오자 화면 캡처 동의 → 미러링 시작까지 선생님 재요청 없이 이어졌고, 미러링은 20:23:02~20:26:13 동안 끊기지 않았습니다(수정 전에는 기능 목록 갱신 때마다 끝나 두 번의 종료가 정확히 240초 간격). PiP 글자 버튼 바의 화면 공유 중지를 실제 흐름에서 눌러 전체 화면 복귀와 선생님 쪽 공유 종료도 확인했습니다.",
+    "남은 문제(이번 변경 범위 밖): 설정 화면에 있는 동안 Android가 백그라운드 카메라를 막아(CAMERA_ERROR) 돌아온 뒤 학생 본인 카메라 타일이 검게 남습니다.",
+    "미실행: Android 14 이하·실기기·태블릿, 설정에 3분 넘게 머무는 경우(서비스 시간 제한, 서버 대기 요청은 60초 후 만료), iOS 빌드·실행, 원격 CI."
+  ]
+}

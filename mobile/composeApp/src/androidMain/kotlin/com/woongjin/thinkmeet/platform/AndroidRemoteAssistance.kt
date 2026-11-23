@@ -372,6 +372,7 @@ actual fun rememberRemoteAssistanceController(media: MediaController): RemoteAss
     var pending by remember { mutableStateOf<CompletableDeferred<Unit>?>(null) }
     var permissionPip by remember { mutableStateOf<AndroidPictureInPictureController?>(null) }
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        AndroidSettingsVisitService.stop(context)
         permissionPip?.endTransientInteraction(); permissionPip = null
         pending?.complete(Unit); pending = null
     }
@@ -381,11 +382,14 @@ actual fun rememberRemoteAssistanceController(media: MediaController): RemoteAss
             permissionPip?.endTransientInteraction()
             permissionPip = context.findMainActivity()?.pictureInPictureController
             permissionPip?.beginTransientInteraction()
+            // The full-screen Settings page puts this app in the background; keep the class connection (and the
+            // teacher's pending request, which is bound to it) alive until the student returns.
+            AndroidSettingsVisitService.start(context)
             try { launcher.launch(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}"))) }
-            catch (error: RuntimeException) { permissionPip?.endTransientInteraction(); permissionPip = null; pending = null; result.completeExceptionally(error) }
+            catch (error: RuntimeException) { AndroidSettingsVisitService.stop(context); permissionPip?.endTransientInteraction(); permissionPip = null; pending = null; result.completeExceptionally(error) }
         }
     }
-    DisposableEffect(controller) { onDispose { permissionPip?.endTransientInteraction(); pending?.cancel(); controller.close() } }
+    DisposableEffect(controller) { onDispose { AndroidSettingsVisitService.stop(context); permissionPip?.endTransientInteraction(); pending?.cancel(); controller.close() } }
     return controller
 }
 

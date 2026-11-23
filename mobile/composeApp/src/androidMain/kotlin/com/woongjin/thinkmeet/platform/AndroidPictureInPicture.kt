@@ -6,26 +6,36 @@ import android.app.PendingIntent
 import android.app.PictureInPictureParams
 import android.app.RemoteAction
 import android.content.BroadcastReceiver
+import android.content.ComponentName
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.graphics.drawable.Icon
 import android.os.Build
 import android.os.Process
 import android.os.PowerManager
+import android.provider.Settings
 import android.util.Rational
+import android.view.Gravity
+import android.view.WindowManager
 import android.widget.Toast
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.setViewTreeLifecycleOwner
+import androidx.lifecycle.setViewTreeViewModelStoreOwner
+import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.woongjin.thinkmeet.MainActivity
 import com.woongjin.thinkmeet.R
-import com.woongjin.thinkmeet.design.generated.DesignContent
+import com.woongjin.thinkmeet.design.generated.DesignTokens
 import io.livekit.android.room.Room
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
@@ -68,6 +78,11 @@ internal class AndroidPictureInPictureController(
         }
     }
     private var receiverRegistered = false
+    // The OS PiP menu draws only icons, so a mirroring student also gets a text button bar
+    // in an app overlay window (permission already granted for mirroring). It is part of the shared screen.
+    private val barActions = mutableStateOf(emptyList<PipAction>())
+    private var actionBar: ComposeView? = null
+    private var actionBarWindows: WindowManager? = null
 
     init {
         activity?.attachPictureInPictureController(this)
@@ -83,6 +98,55 @@ internal class AndroidPictureInPictureController(
         if (closed || pipActions == actions) return
         pipActions = actions
         applyParameters()
+        syncActionBar()
+    }
+
+    override fun restore() {
+        val host = activity ?: return
+        if (closed || host.isFinishing || host.isDestroyed || !host.isInPictureInPictureMode) return
+        removeActionBar()
+        // MainActivity is singleTask, so the launcher intent expands the same call instead of starting another.
+        runCatching { host.startActivity(Intent.makeMainActivity(ComponentName(host, MainActivity::class.java))) }
+    }
+
+    private fun syncActionBar() {
+        val host = activity
+        if (host == null || closed || host.isDestroyed || !mutable.value.active || mutable.value.closedByUser ||
+            target == null || pipActions.isEmpty() || !Settings.canDrawOverlays(host)) { removeActionBar(); return }
+        barActions.value = pipActions
+        if (actionBar != null) return
+        // The PiP Activity's own configuration is only as wide as the PiP window, so use a full-display context.
+        val context = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
+            host.applicationContext.createWindowContext(host.display ?: return, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null)
+        else host.applicationContext
+        val windows = context.getSystemService(WindowManager::class.java)
+        val view = ComposeView(context).apply {
+            setViewTreeLifecycleOwner(host)
+            setViewTreeViewModelStoreOwner(host)
+            setViewTreeSavedStateRegistryOwner(host)
+            setContent { PipActionBar(barActions.value) { actionEvents.tryEmit(it) } }
+        }
+        val params = WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE, PixelFormat.TRANSLUCENT).apply {
+            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            y = (DesignTokens.Spacing.S16.value * context.resources.displayMetrics.density).roundToInt()
+            title = "ThinkMeetPipActions"
+        }
+        try {
+            windows.addView(view, params)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) view.isPreferKeepClear = true
+            actionBar = view
+            actionBarWindows = windows
+        } catch (_: RuntimeException) {
+            // Overlay permission can be revoked at any time; the system PiP menu icons still work.
+        }
+    }
+
+    private fun removeActionBar() {
+        val view = actionBar ?: return
+        actionBar = null
+        runCatching { actionBarWindows?.removeViewImmediate(view) }
+        actionBarWindows = null
     }
 
     override fun showNotice(message: String) {
@@ -91,9 +155,10 @@ internal class AndroidPictureInPictureController(
     }
 
     private fun remoteAction(host: MainActivity, action: PipAction): RemoteAction {
-        val (icon, label) = when (action) {
-            PipAction.CaptureScreen -> R.drawable.ic_pip_capture to DesignContent.NotesCapture
-            PipAction.StopMirroring -> R.drawable.ic_pip_stop_mirroring to DesignContent.MirroringStop
+        val label = action.label
+        val icon = when (action) {
+            PipAction.CaptureScreen -> R.drawable.ic_pip_capture
+            PipAction.StopMirroring -> R.drawable.ic_pip_stop_mirroring
         }
         val intent = Intent(ACTION_PIP).setPackage(host.packageName).putExtra(EXTRA_PIP_ACTION, action.name)
         val pending = PendingIntent.getBroadcast(host, action.ordinal + 1, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
@@ -105,6 +170,7 @@ internal class AndroidPictureInPictureController(
         this.enabled = enabled
         this.target = target
         applyParameters()
+        syncActionBar()
     }
 
     override suspend fun enter() { enterNow(reportFailure = true) }
@@ -131,6 +197,7 @@ internal class AndroidPictureInPictureController(
             mutable.update { it.copy(active = false, transitioning = false) }
         }
         applyParameters()
+        syncActionBar()
     }
 
     internal fun onStart() { stopped = false }
@@ -151,6 +218,7 @@ internal class AndroidPictureInPictureController(
         if (closed) return
         if (active) enteredSinceResume = true
         mutable.update { it.copy(active = active, transitioning = false, error = if (active) null else it.error) }
+        syncActionBar()
         // A normal full-screen restoration reaches onResume; a dismissed window reaches onStop.
         // Do not infer dismissal from this callback alone: both transitions deliver active=false.
         if (!active && stopped && !resumed && enteredSinceResume && !deviceLocked() && isParticipating()) dismissOwnParticipation()
@@ -184,6 +252,7 @@ internal class AndroidPictureInPictureController(
         // Latch this event until shared UI consumes it. update(false) must not erase the event.
         mutable.update { it.copy(active = false, transitioning = false, closedByUser = true) }
         applyParameters()
+        syncActionBar()
         // Synchronous room shutdown protects capture even if stopped-Activity recomposition is paused.
         // The shared session separately leaves this participant, including a lesson owner.
         media?.disconnectNow()
@@ -294,6 +363,7 @@ internal class AndroidPictureInPictureController(
         target = null
         applyParameters()
         closed = true
+        removeActionBar()
         mutable.update { it.copy(active = false, transitioning = false) }
         if (receiverRegistered) { runCatching { activity?.unregisterReceiver(actionReceiver) }; receiverRegistered = false }
         activity?.detachPictureInPictureController(this)

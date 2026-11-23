@@ -32,7 +32,7 @@ import java.util.Collections
 
 /**
  * The real Android PiP menu with the controller's own parameters: one system expand button plus the
- * mirroring actions, and a tap reaching the app. No account, server, LiveKit room or screen capture.
+ * mirroring actions, the app's text button bar, and taps reaching the app. No account, server, LiveKit room or screen capture.
  */
 @RunWith(AndroidJUnit4::class)
 class MirroringPipActionsTest {
@@ -73,6 +73,45 @@ class MirroringPipActionsTest {
     }
 
     @Test
+    fun textBarSendsActionsAndStopReturnsFullScreen() {
+        val previousOverlay = overlayMode()
+        shell("appops set ${instrumentation.targetContext.packageName} SYSTEM_ALERT_WINDOW allow")
+        val scenario = ActivityScenario.launch(MainActivity::class.java)
+        lateinit var activity: MainActivity
+        scenario.onActivity { activity = it }
+        val received = Collections.synchronizedList(mutableListOf<PipAction>())
+        val scope = CoroutineScope(Dispatchers.Main)
+        lateinit var controller: AndroidPictureInPictureController
+        try {
+            instrumentation.runOnMainSync {
+                controller = AndroidPictureInPictureController(activity, null)
+                // Same handling as MeetingScreen: stopping the share also restores the full-screen class.
+                scope.launch { controller.actions.collect { received += it; if (it == PipAction.StopMirroring) controller.restore() } }
+                controller.update(true, PipVideoTarget("teacher"))
+                controller.setActions(listOf(PipAction.CaptureScreen, PipAction.StopMirroring))
+                activity.enterPictureInPictureMode(controller.parameters(automatic = false, source = null))
+            }
+            eventually("system PiP") { inPip(activity) }
+            eventually("text button bar", 10_000) { visible(By.text(DesignContent.NotesCapture)) != null && visible(By.text(DesignContent.MirroringStop)) != null }
+            screenshot("mirroring-pip-text-bar")
+            click(By.text(DesignContent.NotesCapture))
+            eventually("capture action delivered", 5_000) { received.contains(PipAction.CaptureScreen) }
+            assertTrue("Capture keeps PiP", inPip(activity))
+            click(By.text(DesignContent.MirroringStop))
+            eventually("stop action delivered", 5_000) { received.contains(PipAction.StopMirroring) }
+            eventually("full-screen class restored", 10_000) { !inPip(activity) }
+            eventually("text button bar removed", 5_000) { visible(By.text(DesignContent.MirroringStop)) == null }
+            screenshot("mirroring-pip-stopped-fullscreen")
+            assertEquals(listOf(PipAction.CaptureScreen, PipAction.StopMirroring), received.toList())
+        } finally {
+            instrumentation.runOnMainSync { controller.close() }
+            scope.cancel()
+            scenario.close()
+            if (previousOverlay != "allow") shell("appops set ${instrumentation.targetContext.packageName} SYSTEM_ALERT_WINDOW ${previousOverlay ?: "default"}")
+        }
+    }
+
+    @Test
     fun rotatedScreenFrameBecomesUprightJpeg() {
         // Plain direct buffers keep this conversion check independent of WebRTC's native library.
         fun plane(size: Int, value: Int) = ByteBuffer.allocateDirect(size).apply { repeat(size) { put(value.toByte()) }; rewind() }
@@ -86,6 +125,12 @@ class MirroringPipActionsTest {
         } finally { frame.release() }
     }
 
+    private fun shell(command: String): String =
+        instrumentation.uiAutomation.executeShellCommand(command).let { fd -> android.os.ParcelFileDescriptor.AutoCloseInputStream(fd).use { it.readBytes().decodeToString() } }
+
+    private fun overlayMode(): String? =
+        Regex("SYSTEM_ALERT_WINDOW: (\\w+)").find(shell("appops get ${instrumentation.targetContext.packageName} SYSTEM_ALERT_WINDOW"))?.groupValues?.get(1)
+
     private fun inPip(activity: MainActivity): Boolean {
         var result = false
         instrumentation.runOnMainSync { result = !activity.isDestroyed && activity.isInPictureInPictureMode }
@@ -96,8 +141,10 @@ class MirroringPipActionsTest {
         val dismiss = By.res("com.android.systemui", "dismiss")
         eventually("AOSP PiP menu", 15_000) {
             if (visible(dismiss) != null) return@eventually true
+            // The app's text button bar is another window of this package; tap the PiP window itself.
+            val bar = visible(By.text(DesignContent.MirroringStop))?.visibleBounds
             val window = device.findObjects(By.pkg(instrumentation.targetContext.packageName)).map { it.visibleBounds }
-                .firstOrNull { !it.isEmpty && it.width() < device.displayWidth * .8f }
+                .firstOrNull { !it.isEmpty && it.width() < device.displayWidth * .8f && (bar == null || !android.graphics.Rect.intersects(it, bar)) }
             window?.let { device.click(it.centerX(), it.centerY()) }
             SystemClock.sleep(600)
             visible(dismiss) != null

@@ -55,7 +55,7 @@
 .session-enter:hover { background: var(--surface-3); border-color: var(--surface-3); }
 .session-idle-label { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--type-support); color: var(--stripe-hairline-input);  font-weight: var(--weight-medium); line-height: 1.5;}
 .session-idle .session-feature-copy h2 { font-size: var(--type-title);  line-height: var(--line-title);}
-.session-idle-action { display: flex; align-items: center; gap: 5px; background: none; border: 0; color: var(--stripe-hairline); align-self: flex-start; min-height: 44px; font-size: var(--type-support);  font-weight: var(--weight-semibold); line-height: 1.5;}
+.session-idle-action { display: flex; align-items: center; gap: 5px; background: none; border: 0; color: var(--stripe-hairline); align-self: flex-start; min-height: 44px; margin-top: auto; font-size: var(--type-support);  font-weight: var(--weight-semibold); line-height: 1.5;}
 .quick-join { display: flex; flex-direction: column; min-width: 0; padding: var(--space-6); border: 1px solid var(--line); border-radius: var(--card-radius); background: var(--tm-color-white); box-shadow: 0 1px 3px #0d253d03; }
 .quick-join-icon { width: 32px; height: 32px; display: grid; place-items: center; color: var(--accent); background: var(--accent-subdued); border-radius: var(--tm-radius-r8); margin-bottom: 14px; }
 .quick-join h2 { font-size: var(--type-heading); line-height: var(--line-heading); letter-spacing: -.02em; font-weight: var(--weight-bold); color: var(--text-secondary); }

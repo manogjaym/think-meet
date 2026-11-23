@@ -79,6 +79,8 @@
 }
 .textbook-body > :not(.textbook-pages) { flex-shrink: 0; }
 .textbook-body .upload, .textbook-body .tabs { margin: 0; }
+/* On short screens the panel body scrolls; keep the page-open action in view below the thumbnails. */
+.textbook-body > .textbook-open { position: sticky; bottom: 0; z-index: 1; box-shadow: 0 0 0 var(--space-3) var(--tm-color-white); }
 .textbook-select { display: flex; align-items: center; gap: var(--space-1); }
 .textbook-select select {
   flex: 1;
@@ -219,8 +221,14 @@
 /* Lesson owner rail: participant videos above the materials card; an opened panel replaces the card. */
 .meeting .meeting-panel-container.teacher-rail { gap: var(--space-3); }
 .teacher-rail.shows-materials .side-panel { display: none; }
+/* An opened panel keeps room for its input (chat box, menu items); on short screens the videos above it scroll instead. */
+.teacher-rail:not(.shows-materials) .textbook-participants { flex-shrink: 1; min-height: 0; overflow-y: auto; }
+.teacher-rail:not(.shows-materials) .side-panel { min-height: min(300px, 100%); }
 /* Spare height goes to the videos first (up to a 16:9-like tile), then to the card. */
 .teacher-rail .textbook-participants.rail-participants { flex: 100 1 0; min-height: 0; max-height: calc(2 * (200px + var(--tm-spacing-s36) + var(--space-2)) + var(--space-2)); }
+/* On short screens keep at least one participant cell (tile + controls + pager) visible; the materials card scrolls instead. */
+.teacher-rail.shows-materials .textbook-participants.rail-participants { min-height: min(160px, 45%); }
+.teacher-rail .materials-card { flex-shrink: 1; }
 .rail-participants .shared-participants { flex-direction: column; gap: var(--space-2); }
 .rail-participants .shared-participants .video-tile {
   flex: 1 1 0;

@@ -15,6 +15,7 @@ export function TopBar({
   isEditing = false,
   prejoinEnabled = false,
   notesEnabled = false,
+  lessonEnded = false,
   onBack,
   backLabel = "이전 화면으로 돌아가기",
 }: {
@@ -26,6 +27,7 @@ export function TopBar({
   attendanceEnabled?: boolean
   prejoinEnabled?: boolean
   notesEnabled?: boolean
+  lessonEnded?: boolean
   onBack?: () => void
   backLabel?: string
   setScreen: (s: Screen) => void
@@ -65,7 +67,8 @@ export function TopBar({
       form: "수업 일정 수정",
       waiting: "입장 대기",
       created: "예약 완료",
-      ended: "수업 종료",
+      // A student who only left sees the lesson continuing; match the end card badge.
+      ended: lessonEnded ? "수업 종료" : "수업에서 나감",
       exception: "안내",
     }
     return (

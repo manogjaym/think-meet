@@ -1,4 +1,5 @@
 import type { Lesson } from "./Home"
+import { EndedRecordingUploads } from "../components/LessonRecordings"
 import type { Role, Screen } from "../models"
 import type { User } from "../lib/api"
 import { Badge, Icon } from "../components/ui"
@@ -68,6 +69,7 @@ export function Ended({
             <Badge tone="default">{ended ? "정상 종료" : "개인 퇴장"}</Badge>
           </div>
         </div>
+        {lesson.teacher.id === user.id && <EndedRecordingUploads lessonId={lesson.id} />}
         <button className="primary full" onClick={() => setScreen("home")}>
           홈으로 돌아가기
         </button>

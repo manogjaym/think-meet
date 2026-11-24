@@ -95,28 +95,34 @@ export class Materials {
       const lesson = await this.lessons.access(lessonId, user, true)
       if (readShare(lesson.share)?.materialId !== id) throw new ApiError('FORBIDDEN', '현재 공유 중인 파일만 열 수 있습니다.', 403)
     }
-    let range: string | undefined
-    if (req.headers.range) {
-      const match = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range)
-      if (!match || (!match[1] && !match[2])) { res.setHeader('Content-Range', `bytes */${material.size}`); return res.status(416).end() }
-      let start = match[1] ? Number(match[1]) : Math.max(0, material.size - Number(match[2]))
-      let end = match[1] && match[2] ? Number(match[2]) : material.size - 1
-      end = Math.min(end, material.size - 1)
-      if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || start >= material.size || end < start) { res.setHeader('Content-Range', `bytes */${material.size}`); return res.status(416).end() }
-      range = `bytes=${start}-${end}`
-    }
-    const object = await this.s3.send(new GetObjectCommand({ Bucket: this.bucket, Key: material.objectKey, Range: range }))
-    res.status(range ? 206 : 200)
-    res.setHeader('Content-Type', material.contentType)
-    res.setHeader('Accept-Ranges', 'bytes')
-    res.setHeader('Cache-Control', 'private, no-store')
-    res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(material.name)}`)
-    res.setHeader('X-Content-Type-Options', 'nosniff')
-    if (object.ContentLength !== undefined) res.setHeader('Content-Length', object.ContentLength)
-    if (object.ContentRange) res.setHeader('Content-Range', object.ContentRange)
-    const stream = object.Body as Readable
-    res.once('close', () => stream.destroy())
-    stream.once('error', () => { if (!res.headersSent) res.status(502); res.end() })
-    stream.pipe(res)
+    await sendStoredObject(this.s3, this.bucket, { key: material.objectKey, size: material.size, contentType: material.contentType, name: material.name }, req, res)
   }
+}
+
+/** Streams a private S3 object with single byte-range support for media elements. */
+export async function sendStoredObject(s3: S3Client, bucket: string, object: { key: string; size: number; contentType: string; name: string }, req: Request, res: Response) {
+  const { size } = object
+  let range: string | undefined
+  if (req.headers.range) {
+    const match = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range)
+    if (!match || (!match[1] && !match[2])) { res.setHeader('Content-Range', `bytes */${size}`); return res.status(416).end() }
+    let start = match[1] ? Number(match[1]) : Math.max(0, size - Number(match[2]))
+    let end = match[1] && match[2] ? Number(match[2]) : size - 1
+    end = Math.min(end, size - 1)
+    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || start >= size || end < start) { res.setHeader('Content-Range', `bytes */${size}`); return res.status(416).end() }
+    range = `bytes=${start}-${end}`
+  }
+  const stored = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: object.key, Range: range }))
+  res.status(range ? 206 : 200)
+  res.setHeader('Content-Type', object.contentType)
+  res.setHeader('Accept-Ranges', 'bytes')
+  res.setHeader('Cache-Control', 'private, no-store')
+  res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(object.name)}`)
+  res.setHeader('X-Content-Type-Options', 'nosniff')
+  if (stored.ContentLength !== undefined) res.setHeader('Content-Length', stored.ContentLength)
+  if (stored.ContentRange) res.setHeader('Content-Range', stored.ContentRange)
+  const stream = stored.Body as Readable
+  res.once('close', () => stream.destroy())
+  stream.once('error', () => { if (!res.headersSent) res.status(502); res.end() })
+  stream.pipe(res)
 }

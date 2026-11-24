@@ -172,6 +172,7 @@ internal val LocalLessonWidth = staticCompositionLocalOf { LayoutToken.PageMaxWi
         if (width > LayoutToken.FormWide) Row(horizontalArrangement = Arrangement.spacedBy(Space.S24)) { main(Modifier.weight(1f)); aside(Modifier.width(if (width <= LayoutToken.PageCompactBreakpoint) LayoutToken.LessonAsideCompactWidth else LayoutToken.LessonAsideWidth)) }
         else Column(verticalArrangement = Arrangement.spacedBy(Space.S24)) { main(Modifier.fillMaxWidth()); aside(Modifier.fillMaxWidth()) }
         if (owner && notesEnabled) TeacherWorksheets(controller.api, lesson.id)
+        if (owner && lesson.startedAt != null && capabilities.supports(ContractProtocol.FeatureIds.ClassroomRecording)) TeacherRecordings(controller, lesson.id)
         state.error?.let { ErrorCard(it) }
     }
     if (cancelling) AlertDialog(onDismissRequest = { cancelling = false }, title = { LessonText("이 수업을 취소할까요?") }, text = { LessonText("취소한 수업은 예정된 수업에서 더 이상 참여할 수 없습니다.") }, confirmButton = { TextButton({ cancelling = false; controller.cancel() }) { LessonText("수업 취소", color = Palette.DangerText) } }, dismissButton = { TextButton({ cancelling = false }) { LessonText("돌아가기") } })
@@ -450,6 +451,11 @@ private fun LessonSubjectField(
     var camera by remember { mutableStateOf(readPreference("devices.camera", "true") == "true") }
     var microphone by remember { mutableStateOf(readPreference("devices.microphone", "false") == "true") }
     var flipError by remember { mutableStateOf<String?>(null) }
+    var askRecording by remember(lesson.id) { mutableStateOf(false) }
+    if (askRecording) RecordingPromptDialog(
+        onChoice = { record -> askRecording = false; controller.chooseRecording(record); controller.join() },
+        onDismiss = { askRecording = false },
+    )
     BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         val viewportWidth = maxWidth
         val phone = maxWidth <= LayoutToken.PrejoinPhone
@@ -512,7 +518,7 @@ private fun LessonSubjectField(
                     Row(horizontalArrangement = Arrangement.spacedBy(Space.S16)) { DeviceState(if (microphone) "mic" else "micOff", "마이크 ${if (microphone) "켜짐" else "꺼짐"}"); DeviceState(if (camera) "video" else "videoOff", "카메라 ${if (camera) "켜짐" else "꺼짐"}") }
                     Spacer(Modifier.height(if (wide) Space.S32 else Space.S24))
                     state.error?.let { ErrorCard(it); Spacer(Modifier.height(Space.S12)) }
-                    DesignButton(if (state.busy) "입장 확인 중…" else if (lesson.teacher.id == user.id && lesson.status == "SCHEDULED") { if (lessonModes) DesignContent.MeetingEnter else "수업 시작하기" } else "지금 참여하기", { controller.devices(camera, microphone); controller.join() }, Modifier.fillMaxWidth().heightIn(min = Space.S54), enabled = !state.busy, trailingIcon = { DesignIcon("chevron", Modifier.size(Space.S18), tint = Palette.White) }, textStyle = MaterialTheme.typography.bodyLarge)
+                    DesignButton(if (state.busy) "입장 확인 중…" else if (lesson.teacher.id == user.id && lesson.status == "SCHEDULED") { if (lessonModes) DesignContent.MeetingEnter else "수업 시작하기" } else "지금 참여하기", { controller.devices(camera, microphone); if (controller.asksRecording(lesson)) askRecording = true else controller.join() }, Modifier.fillMaxWidth().heightIn(min = Space.S54), enabled = !state.busy, trailingIcon = { DesignIcon("chevron", Modifier.size(Space.S18), tint = Palette.White) }, textStyle = MaterialTheme.typography.bodyLarge)
                     Spacer(Modifier.height(Space.S8)); LessonText(if (!microphone && !camera) "카메라와 마이크를 끈 상태로 참여합니다." else "준비가 되면 참여해 주세요.", Modifier.fillMaxWidth(), color = Muted, fontSize = Type.Caption, textAlign = TextAlign.Center)
                 }
             }
@@ -520,6 +526,17 @@ private fun LessonSubjectField(
             else Column(verticalArrangement = Arrangement.spacedBy(Space.S24), horizontalAlignment = Alignment.CenterHorizontally) { preview(Modifier.fillMaxWidth()); information(Modifier.widthIn(max = LayoutToken.PrejoinInfoMaxWidth).fillMaxWidth()) }
         }
     }
+}
+/** Asked when the owner starts or rejoins a lesson; the OS asks for screen-capture consent afterwards. */
+@Composable internal fun RecordingPromptDialog(onChoice: (record: Boolean) -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { LessonText(DesignContent.RecordingPromptTitle, fontSize = Type.Dialog, fontWeight = DesignWeight.Bold) },
+        text = { LessonText(DesignContent.RecordingPromptCopy, color = Muted, fontSize = Type.Support, lineHeight = Type.Support * 1.5f) },
+        confirmButton = { TextButton({ onChoice(true) }, Modifier.heightIn(min = Space.S48)) { LessonText(DesignContent.RecordingPromptStart, color = Brand, fontWeight = DesignWeight.SemiBold) } },
+        dismissButton = { TextButton({ onChoice(false) }, Modifier.heightIn(min = Space.S48)) { LessonText(DesignContent.RecordingPromptSkip, color = Muted) } },
+        containerColor = Palette.Surface,
+    )
 }
 @Composable internal fun PreviewControl(icon: String, label: String, enabled: Boolean, phone: Boolean, onClick: () -> Unit) {
     Surface(onClick = onClick, modifier = Modifier.size(if (phone) Space.S48 else Space.S50), shape = CircleShape, color = if (enabled) Palette.White.copy(alpha = .07f) else Palette.PrejoinControlOff, border = BorderStroke(Space.S1, if (enabled) Palette.PrejoinToggleBorder else Palette.PrejoinControlOff)) {
@@ -602,6 +619,7 @@ fun attendanceText(lesson: Lesson, userId: String): String {
                 Row(Modifier.fillMaxWidth().padding(vertical = Space.S14), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.S16)) { LessonText("종료 상태", Modifier.weight(1f), fontSize = Type.Support, color = Muted); SmallBadge(if (cancelled) "취소" else if (ended) "정상 종료" else "개인 퇴장") }
             }
         }
+        if (lesson.teacher.id == user.id) EndedRecordingUploads(controller, lesson.id)
         state.error?.let { Spacer(Modifier.height(Space.S12)); ErrorCard(it) }
         Spacer(Modifier.height(Space.S24)); DesignButton("홈으로 돌아가기", controller::home, Modifier.fillMaxWidth())
         if (lesson.canJoin) TextButton({ controller.prejoin(lesson) }, Modifier.fillMaxWidth().heightIn(min = Space.S48)) { LessonText("수업에 다시 참여", color = Muted, fontSize = Type.Label, fontWeight = DesignWeight.SemiBold) }

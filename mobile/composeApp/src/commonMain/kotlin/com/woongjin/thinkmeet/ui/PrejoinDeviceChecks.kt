@@ -124,8 +124,11 @@ import kotlin.time.TimeSource
             catch (_: Exception) { DesignContent.PrejoinSoundFailed }
         }
     }
+    var askRecording by remember(lesson.id) { mutableStateOf(false) }
     fun join() {
         if (state.busy || handoff) return
+        if (controller.asksRecording(lesson) && !askRecording) { askRecording = true; return }
+        askRecording = false
         handoff = true
         val microphoneJob = levelJob
         scope.launch {
@@ -135,6 +138,10 @@ import kotlin.time.TimeSource
             controller.join()
         }
     }
+    if (askRecording) RecordingPromptDialog(
+        onChoice = { record -> controller.chooseRecording(record); join() },
+        onDismiss = { askRecording = false },
+    )
     val heading: @Composable () -> Unit = {
         Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Space.S8)) {
             StatusBadge(status)

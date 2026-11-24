@@ -35,6 +35,16 @@ export function socketFeatureClient(headers: ClientHeaders = {}, auth: unknown =
   })
 }
 
+/** Browser media elements cannot set headers, so a GET may carry the same metadata as `platform`/`contractRevision` query values. */
+export function mediaFeatureHeaders(headers: ClientHeaders = {}, query: unknown = {}): ClientHeaders {
+  const values = query !== null && typeof query === 'object' && !Array.isArray(query) ? query as Record<string, unknown> : {}
+  if (Object.keys(headers).some(key => key.toLowerCase() === CAPABILITY_HEADERS.platform.toLowerCase())) return headers
+  const platform = typeof values.platform === 'string' ? values.platform : undefined
+  const revision = typeof values.contractRevision === 'string' ? values.contractRevision : undefined
+  if (!platform) return headers
+  return { ...headers, [CAPABILITY_HEADERS.platform.toLowerCase()]: platform, ...(revision ? { [CAPABILITY_HEADERS.revision.toLowerCase()]: revision } : {}) }
+}
+
 /** Implemented features are always available when the client supports their contract. */
 export function featureDecision(feature: FeatureDefinition, client: FeatureClient): FeatureDecision {
   if (!feature.defaultEnabled || feature.stage === 'planned') return { available: false, code: 'FEATURE_UNAVAILABLE' }

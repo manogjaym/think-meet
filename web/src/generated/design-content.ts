@@ -111,6 +111,21 @@ export const designContent = {
   "notesSubmitted": "제출한 학습지",
   "notesCorrected": "첨삭 받은 학습지",
   "notesTeacherList": "제출 학습지",
+  "recordingPromptTitle": "화면 녹화를 진행할까요?",
+  "recordingPromptCopy": "수업 화면과 소리를 이 기기에서 녹화하고, 수업이 끝나면 서버에 올려요. 녹화 영상은 30일 동안 선생님만 다시 볼 수 있어요.",
+  "recordingPromptStart": "녹화하고 시작",
+  "recordingPromptSkip": "녹화 없이 시작",
+  "recordingWebTabNotice": "녹화 중에는 이 탭을 닫지 마세요. 탭을 닫으면 그때까지의 녹화가 저장되지 않아요.",
+  "recordingActive": "녹화 중",
+  "recordingResumeTitle": "화면 녹화가 멈췄어요",
+  "recordingResumeCopy": "화면 공유나 시스템 설정으로 녹화 권한이 끝났어요. 이어서 녹화하려면 다시 허용해 주세요.",
+  "recordingResumeAction": "이어서 녹화",
+  "recordingListTitle": "수업 녹화",
+  "recordingEmpty": "이 수업에서 올린 녹화가 없어요.",
+  "recordingUploading": "업로드 중",
+  "recordingUploadFailed": "업로드하지 못했어요",
+  "recordingUploadRetry": "다시 올리기",
+  "recordingPlay": "다시 보기",
   "notesCorrection": "첨삭 이미지 첨부",
   "notesCapture": "화면 저장",
   "notesCaptureSaved": "화면을 저장했어요.",
@@ -235,7 +250,8 @@ export const screenContract = {
       "subject-button-and-picker-dialog-with-latest-completed-lesson",
       "roster-or-invitation",
       "primary-action",
-      "teacher-worksheet-list"
+      "teacher-worksheet-list",
+      "teacher-recording-list"
     ],
     "layout": [
       "layout.pageMaxWidth",
@@ -251,7 +267,8 @@ export const screenContract = {
       "camera-preview-with-overlaid-toggles",
       "camera-microphone-speaker-and-network-status",
       "owner-waiting-students",
-      "join-action"
+      "join-action",
+      "teacher-recording-prompt"
     ],
     "layout": [
       "layout.prejoinMaxWidth",
@@ -269,6 +286,7 @@ export const screenContract = {
       "mirroring-student-dialog",
       "gallery-or-shared-stage",
       "shared-frame-capture",
+      "teacher-recording-indicator",
       "white-side-panel",
       "dark-call-controls"
     ],

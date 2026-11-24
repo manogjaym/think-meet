@@ -711,6 +711,27 @@
         "android": {"status": "pending", "checks": ["mobile/composeApp/src/androidInstrumentedTest/kotlin/com/woongjin/thinkmeet/ParticipantControlsTest.kt"], "evidence": ["features/evidence/meeting-participant-controls.md"]},
         "ios": {"status": "pending", "checks": [], "evidence": []}
       }
+    },
+    {
+      "id": "classroom.recording",
+      "title": "수업 화면 녹화",
+      "stage": "in-progress",
+      "requiresRevision": 14,
+      "defaultEnabled": true,
+      "platforms": ["web", "android", "ios"],
+      "spec": "classroom-recording.md",
+      "contracts": {
+        "operations": ["createLessonRecording", "listLessonRecordings", "uploadLessonRecordingChunk", "getLessonRecordingContent"],
+        "events": [],
+        "commands": []
+      },
+      "implementation": {
+        "server": {"status": "done", "files": ["server/src/recordings.ts", "server/src/http/recordings.controller.ts"]},
+        "web": {"status": "done", "files": ["web/src/lib/lessonRecording.ts", "web/src/lib/recordingUploads.ts", "web/src/components/LessonRecordings.tsx", "web/src/screens/Join.tsx"]},
+        "android": {"status": "done", "files": ["mobile/composeApp/src/androidMain/kotlin/com/woongjin/thinkmeet/platform/AndroidRecording.kt", "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/ui/RecordingUploads.kt"]},
+        "ios": {"status": "done", "files": ["mobile/iosApp/ThinkMeet/LessonRecorder.swift", "mobile/composeApp/src/iosMain/kotlin/com/woongjin/thinkmeet/platform/IosRecording.kt"]}
+      },
+      "verification": {}
     }
   ]
 }

@@ -20,6 +20,7 @@ import io.ktor.http.HttpMethod
 import io.ktor.http.URLBuilder
 import io.ktor.http.URLProtocol
 import io.ktor.http.contentType
+import io.ktor.http.content.ByteArrayContent
 import io.ktor.http.encodedPath
 import io.ktor.http.encodeURLPathPart
 import io.ktor.http.encodeURLQueryComponent
@@ -120,7 +121,7 @@ class ThinkMeetApi(internal val client: HttpClient, origin: String) {
                 header(ContractProtocol.RevisionHeader, ContractProtocol.Revision.toString())
                 if (body is String) contentType(ContentType.Application.Json)
                 if (body != null) setBody(body)
-                timeout { requestTimeoutMillis = if (body is MultiPartFormDataContent) 300_000 else 30_000 }
+                timeout { requestTimeoutMillis = if (body is MultiPartFormDataContent || body is ByteArrayContent) 300_000 else 30_000 }
             }
         } catch (error: CancellationException) {
             throw error
@@ -257,6 +258,22 @@ class ThinkMeetApi(internal val client: HttpClient, origin: String) {
         })
         return ThinkMeetJson.decodeFromString(operationResponse(operation, mapOf("id" to id), body).bodyAsText())
     }
+
+    suspend fun createRecording(lessonId: String, input: LessonRecordingInput): LessonRecording =
+        json("createLessonRecording", mapOf("id" to lessonId), ThinkMeetJson.encodeToString(input))
+    suspend fun recordings(lessonId: String): List<LessonRecording> =
+        ThinkMeetJson.decodeFromString(response("${apiPath("listLessonRecordings")}?lessonId=${lessonId.encodeURLQueryComponent()}").bodyAsText())
+    /** Sends one fixed-size chunk; the server answers with the stored progress. */
+    suspend fun uploadRecordingChunk(id: String, offset: Long, bytes: ByteArray): LessonRecording {
+        val path = apiPath("uploadLessonRecordingChunk", mapOf("id" to id))
+        val body = ByteArrayContent(bytes, ContentType.Application.OctetStream)
+        return ThinkMeetJson.decodeFromString(response("$path?offset=$offset", HttpMethod.Put, body).bodyAsText())
+    }
+    /** Native players send the session cookie themselves; capability headers are optional for media reads. */
+    fun recordingContentUrl(id: String): String = URLBuilder("$origin${ContractProtocol.ApiBasePath}${apiPath("getLessonRecordingContent", mapOf("id" to id))}").apply {
+        parameters.append("platform", platform)
+        parameters.append("contractRevision", ContractProtocol.Revision.toString())
+    }.buildString()
 
     fun joinLink(lesson: Lesson): String = "$origin/join/${lesson.code.encodeURLPathPart()}"
     /** Also used by native PDF/video renderers, which do not share Ktor's cookie jar. */

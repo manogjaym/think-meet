@@ -499,3 +499,30 @@ data class PrejoinStatus(
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     val waitingStudents: List<PrejoinStudent>? = null,
 )
+
+@Serializable
+data class LessonRecordingInput(
+    val requestId: String,
+    val size: Long,
+    val durationMs: Long,
+    val width: Int,
+    val height: Int,
+    val startedAt: String,
+)
+
+@Serializable
+data class LessonRecording(
+    val id: String,
+    val lessonId: String,
+    val lessonTitle: String,
+    val status: String,
+    val size: Long,
+    val uploadedBytes: Long,
+    val chunkSize: Int,
+    val durationMs: Long,
+    val width: Int,
+    val height: Int,
+    val startedAt: String,
+    val createdAt: String,
+    val expiresAt: String,
+)

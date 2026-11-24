@@ -1,5 +1,5 @@
 // Generated from features/catalog.json and contracts/. Do not edit.
-export const CONTRACT_REVISION = 13 as const;
+export const CONTRACT_REVISION = 14 as const;
 export const CAPABILITY_HEADERS = {"platform":"X-ThinkMeet-Platform","revision":"X-ThinkMeet-Contract-Revision"} as const;
 export type ClientPlatform = "web" | "android" | "ios";
 export type FeatureDefinition = { readonly id: string; readonly stage: "baseline" | "planned" | "in-progress" | "ready"; readonly requiresRevision: number; readonly defaultEnabled: boolean; readonly platforms: readonly ClientPlatform[] };
@@ -112,6 +112,17 @@ export const FEATURE_DEFINITIONS = [
       "android",
       "ios"
     ]
+  },
+  {
+    "id": "classroom.recording",
+    "stage": "in-progress",
+    "requiresRevision": 14,
+    "defaultEnabled": true,
+    "platforms": [
+      "web",
+      "android",
+      "ios"
+    ]
   }
 ] as const satisfies readonly FeatureDefinition[];
 export type FeatureId = typeof FEATURE_DEFINITIONS[number]["id"];
@@ -125,7 +136,8 @@ export const FEATURE_IDS = {
   "ClassroomPrejoin": "classroom.prejoin",
   "ClassroomLessonModes": "classroom.lesson-modes",
   "ClassroomTextbookPicker": "classroom.textbook-picker",
-  "MeetingParticipantControls": "meeting.participant-controls"
+  "MeetingParticipantControls": "meeting.participant-controls",
+  "ClassroomRecording": "classroom.recording"
 } as const satisfies Record<string, FeatureId>;
 export const HTTP_OPERATIONS: readonly { id: string; method: string; path: string; feature?: string; cleanup?: boolean }[] = [
   {
@@ -343,6 +355,30 @@ export const HTTP_OPERATIONS: readonly { id: string; method: string; path: strin
     "method": "DELETE",
     "path": "/api/v1/lessons/{id}/waiting/{clientId}",
     "feature": "classroom.prejoin"
+  },
+  {
+    "id": "createLessonRecording",
+    "method": "POST",
+    "path": "/api/v1/lessons/{id}/recordings",
+    "feature": "classroom.recording"
+  },
+  {
+    "id": "listLessonRecordings",
+    "method": "GET",
+    "path": "/api/v1/recordings",
+    "feature": "classroom.recording"
+  },
+  {
+    "id": "uploadLessonRecordingChunk",
+    "method": "PUT",
+    "path": "/api/v1/recordings/{id}/content",
+    "feature": "classroom.recording"
+  },
+  {
+    "id": "getLessonRecordingContent",
+    "method": "GET",
+    "path": "/api/v1/recordings/{id}/content",
+    "feature": "classroom.recording"
   }
 ];
 const COMMAND_FEATURES: Record<string, string | undefined> = {"lesson.start":"classroom.lesson-modes","lesson.mode.set":"classroom.lesson-modes","chat.send":"classroom.core","hand.set":"classroom.core","share.start":"classroom.core","share.stop":undefined,"media.update":"classroom.core","document.page":"classroom.core","document.open":"classroom.textbook-picker","stroke.add":"classroom.core","stroke.erase":"classroom.core","annotation.undo":"classroom.core","annotation.redo":"classroom.core","annotation.clear":"classroom.core","assistance.request":"meeting.remote-assistance","assistance.respond":"meeting.remote-assistance","assistance.start":"meeting.remote-assistance","assistance.geometry":"meeting.remote-assistance","assistance.stop":undefined,"participant.control":"meeting.participant-controls"};

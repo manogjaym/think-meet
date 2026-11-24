@@ -27,7 +27,9 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import io.livekit.android.AudioOptions
 import io.livekit.android.LiveKit
+import io.livekit.android.LiveKitOverrides
 import io.livekit.android.RoomOptions
 import io.livekit.android.audio.MixerAudioBufferCallback
 import io.livekit.android.audio.ScreenAudioCapturer
@@ -56,14 +58,18 @@ import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
-internal class AndroidMediaController(private val context: Context) : MediaController, PreviewAudio {
+internal class AndroidMediaController(private val context: Context) : MediaController, PreviewAudio, LessonRecorder {
     private val mutable = MutableStateFlow(MediaState())
     override val state: StateFlow<MediaState> = mutable
+    private val recorder = AndroidLessonRecorder(context)
+    override val recording: StateFlow<RecordingState> = recorder.state
     internal val room = run {
         // Verified SDK APIs: avoid per-packet WebRTC INFO logging during long classes.
         LiveKit.loggingLevel = LoggingLevel.WARN
         LiveKit.enableWebRTCLogging = false
-        LiveKit.create(context, options = RoomOptions(adaptiveStream = true, dynacast = true))
+        // The playout tap only copies samples while a screen recording is active.
+        val audio = AudioOptions(javaAudioDeviceModuleCustomizer = { builder -> builder.setPlaybackSamplesReadyCallback(recorder::onPlayback) })
+        LiveKit.create(context, options = RoomOptions(adaptiveStream = true, dynacast = true), overrides = LiveKitOverrides(audioOptions = audio))
     }
     internal var preview by mutableStateOf<LocalVideoTrack?>(null)
     private var previewSink: VideoSink? = null
@@ -124,6 +130,7 @@ internal class AndroidMediaController(private val context: Context) : MediaContr
         deferred.await()[permission] == true
     }
     internal fun refresh() {
+        recorder.attachMicrophone(room.localParticipant.getTrackPublication(Track.Source.MICROPHONE)?.track as? LocalAudioTrack)
         val people = listOf(room.localParticipant) + room.remoteParticipants.values
         fun Participant.enabled(source: Track.Source) = getTrackPublication(source)?.let { !it.muted && it.track != null } ?: false
         mutable.value = mutable.value.copy(
@@ -168,6 +175,7 @@ internal class AndroidMediaController(private val context: Context) : MediaContr
     internal fun disconnectNow() {
         if (disconnected) return
         disconnected = true
+        recorder.stop()
         try {
             stopPreview()
             endRegularCapture()
@@ -369,6 +377,24 @@ internal class AndroidMediaController(private val context: Context) : MediaContr
         (room.lkObjects.audioDeviceModule as? JavaAudioDeviceModule)?.setAudioRecordEnabled(recordingEnabled)
         AndroidScreenAudioService.stop(context)
     }
+    private suspend fun recordingConsent(): Intent {
+        val deferred = CompletableDeferred<Intent?>()
+        screenRequest?.invoke(false, deferred) ?: error("화면 녹화를 시작할 수 없어요.")
+        return deferred.await() ?: error("화면 녹화를 허용하지 않아 녹화 없이 수업을 진행해요.")
+    }
+    override suspend fun startRecording(onFinished: (RecordedFile?) -> Unit) {
+        check(!disconnected) { "수업 연결이 종료되었어요." }
+        val consent = recordingConsent()
+        check(!disconnected) { "수업 연결이 종료되었어요." }
+        recorder.start(consent, onFinished)
+        refresh()
+    }
+    override suspend fun resumeRecording() {
+        check(!state.value.screenSharing) { "화면 공유를 끝낸 뒤 녹화를 이어갈 수 있어요." }
+        recorder.resume(recordingConsent())
+    }
+    override fun stopRecording() = recorder.stop()
+
     @Suppress("DEPRECATION")
     override suspend fun setSpeaker(enabled: Boolean) {
         val audio = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager

@@ -14,6 +14,7 @@
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
     <application android:label="웅진 씽크빅 클래스" android:icon="@drawable/ic_launcher" android:theme="@style/Theme.ThinkMeet" android:allowBackup="false" android:supportsRtl="true" android:usesCleartextTraffic="false" android:networkSecurityConfig="@xml/network_security_config">
         <service android:name=".platform.AndroidScreenAudioService" android:exported="false" android:foregroundServiceType="microphone" />
+        <service android:name=".platform.AndroidRecordingService" android:exported="false" android:foregroundServiceType="mediaProjection" />
         <service android:name=".platform.AndroidSettingsVisitService" android:exported="false" android:foregroundServiceType="shortService" />
         <!-- App and meeting state live in Compose memory, so configuration changes must not recreate the Activity. -->
         <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTask" android:supportsPictureInPicture="true" android:windowSoftInputMode="adjustResize" android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|touchscreen|uiMode|colorMode|density|fontScale|fontWeightAdjustment|locale|layoutDirection|grammaticalGender|mcc|mnc" android:resizeableActivity="true">

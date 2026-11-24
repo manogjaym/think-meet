@@ -10,7 +10,8 @@ import {
   usePrejoinProbe,
 } from "../lib/prejoin"
 import { readDevicePreferences, saveDevicePreferences } from "../lib/meeting"
-import { Avatar, Badge, Icon } from "../components/ui"
+import { Avatar, Badge, Confirm, Icon } from "../components/ui"
+import { requestRecordingCapture, webRecordingSupported } from "../lib/lessonRecording"
 import { useFeature } from "../lib/useFeature"
 import { FEATURE_IDS } from "../generated/feature-policy"
 
@@ -58,6 +59,8 @@ export function Prejoin({
   onUnavailable?: (error: ApiError) => void
 }) {
   const lessonModes = useFeature(FEATURE_IDS.ClassroomLessonModes)
+  const recordingFeature = useFeature(FEATURE_IDS.ClassroomRecording)
+  const [askRecording, setAskRecording] = useState(false)
   const [devices, setDevices] = useState<JoinDevices>(
     initialDevices || initialJoinDevices,
   )
@@ -340,7 +343,37 @@ export function Prejoin({
       </div>
     </div>
   )
+  async function join(record = false) {
+    setBusy(true)
+    setError("")
+    try {
+      if (record) await requestRecordingCapture(lesson.id, user.id)
+      await onJoin(devices)
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : "수업에 입장하지 못했어요.",
+      )
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
+    <>
+    {askRecording && (
+      <Confirm
+        title={copy.recordingPromptTitle}
+        copy={copy.recordingPromptCopy}
+        note={copy.recordingWebTabNotice}
+        cancelText={copy.recordingPromptSkip}
+        confirmText={copy.recordingPromptStart}
+        confirmClassName="primary"
+        icon="video"
+        cancel={() => { setAskRecording(false); void join(false) }}
+        confirm={() => { setAskRecording(false); void join(true) }}
+        dismiss={() => setAskRecording(false)}
+      />
+    )}
     <main className={`join-page${enhanced ? " join-check-page" : ""}`}>
       <div className="prejoin">
         {enhanced && (
@@ -579,18 +612,10 @@ export function Prejoin({
           <button
             className="primary full join-submit"
             disabled={busy}
-            onClick={async () => {
-              setBusy(true)
-              setError("")
-              try {
-                await onJoin(devices)
-              } catch (e) {
-                setError(
-                  e instanceof Error ? e.message : "수업에 입장하지 못했어요.",
-                )
-              } finally {
-                setBusy(false)
-              }
+            onClick={() => {
+              // The owner chooses recording first; the browser share picker needs this same click.
+              if (lesson.teacher.id === user.id && recordingFeature && webRecordingSupported()) setAskRecording(true)
+              else void join()
             }}
           >
             {busy
@@ -612,6 +637,7 @@ export function Prejoin({
         </aside>
       </div>
     </main>
+    </>
   )
 }
 function CheckRow({

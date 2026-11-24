@@ -71,7 +71,7 @@ private fun message(error: Throwable): String {
 private val PillShape = RoundedCornerShape(percent = 50)
 
 @Composable
-private fun NoteCard(modifier: Modifier = Modifier, title: String? = null, content: @Composable ColumnScope.() -> Unit) {
+internal fun NoteCard(modifier: Modifier = Modifier, title: String? = null, content: @Composable ColumnScope.() -> Unit) {
     Surface(modifier, color = Palette.White, border = BorderStroke(Space.S1, Palette.Line), shape = RoundedCornerShape(Component.CardRadius)) {
         Column(Modifier.fillMaxWidth().padding(Space.S16), verticalArrangement = Arrangement.spacedBy(Space.S8)) {
             if (title != null) Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = DesignWeight.Bold, color = Palette.TextSecondary)
@@ -130,7 +130,7 @@ internal fun <T> loadNote(key: Any, retry: Int, request: suspend () -> T): NoteL
 }
 
 @Composable
-private fun NoteLoadStatus(error: String?, onRetry: () -> Unit) {
+internal fun NoteLoadStatus(error: String?, onRetry: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(Space.S8)) {
         Text(error ?: "기록을 불러오는 중이에요.", color = if (error == null) Palette.Muted else Palette.DangerText)
         if (error != null) DesignButton("다시 시도", onRetry, secondary = true)
@@ -318,7 +318,7 @@ private fun NoteTag(text: String) {
 }
 
 @Composable
-private fun NoteRow(icon: String, label: String, accent: Boolean = false, enabled: Boolean = true, onClick: () -> Unit, trailing: @Composable RowScope.() -> Unit) {
+internal fun NoteRow(icon: String, label: String, accent: Boolean = false, enabled: Boolean = true, onClick: () -> Unit, trailing: @Composable RowScope.() -> Unit) {
     Surface(onClick = onClick, enabled = enabled, color = if (accent) Palette.Selection else Palette.Canvas, shape = RoundedCornerShape(Radius.R12),
         modifier = Modifier.fillMaxWidth().heightIn(min = Space.S56)) {
         Row(Modifier.padding(horizontal = Space.S16), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.S12)) {

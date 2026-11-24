@@ -72,6 +72,8 @@ fun MeetingScreen(
     camera: Boolean,
     microphone: Boolean,
     onExit: (ended: Boolean) -> Unit,
+    record: Boolean = false,
+    onRecorded: (RecordedFile) -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     val media = rememberMediaController()
@@ -138,6 +140,23 @@ fun MeetingScreen(
     }
     val sessionState by session.state.collectAsState()
     val (busy, exited, fatalError) = sessionState
+    // The owner's screen recording starts once media is connected and ends with this screen's media.
+    val recorder = media as? LessonRecorder
+    val recordingState = recorder?.recording?.collectAsState()?.value ?: RecordingState()
+    val latestRecorded by rememberUpdatedState(onRecorded)
+    var recordingRequested by remember(admission) { mutableStateOf(false) }
+    var recordingResuming by remember(admission) { mutableStateOf(false) }
+    LaunchedEffect(record, owner, mediaState.connected, recorder) {
+        if (!record || !owner || recorder == null || !mediaState.connected || recordingRequested) return@LaunchedEffect
+        recordingRequested = true
+        // Not tied to this effect: a reconnect must not cancel the pending OS consent dialog.
+        scope.launch {
+            try { recorder.startRecording { file -> if (file != null) latestRecorded(file) } }
+            catch (error: CancellationException) { throw error }
+            catch (error: Exception) { showMessage(error.message ?: "화면 녹화를 시작하지 못했어요.") }
+        }
+    }
+    DisposableEffect(recorder) { onDispose { recorder?.stopRecording() } }
     val screenShare = remember(api, realtime, media, user.id) {
         ScreenShareSession(media, RealtimeScreenShareTransport(api, realtime), user.id, scope) { latestReport(it) }
     }
@@ -304,7 +323,18 @@ fun MeetingScreen(
                 MeetingHeader(currentLesson, mediaState, socketConnected, snapshot?.serverTime, grid, compact, windowWidth,
                     instructionPhase = phase, instructionStartedAt = snapshot?.instruction?.startedAt,
                     subjectName = currentLesson.subject?.name.takeIf { capabilities.supports(ContractProtocol.FeatureIds.ClassroomSubjects) },
-                    showLayout = !teacherRail, onLayout = { grid = !grid })
+                    showLayout = !teacherRail, recording = recordingState.active, onLayout = { grid = !grid })
+                if (recordingState.active && recordingState.interrupted && recorder != null && !compactSystemPip) {
+                    RecordingInterrupted(Modifier.fillMaxWidth().padding(horizontal = bodyPadding, vertical = Space.S4), enabled = !recordingResuming && !mediaState.screenSharing) {
+                        recordingResuming = true
+                        scope.launch {
+                            try { recorder.resumeRecording() }
+                            catch (error: CancellationException) { throw error }
+                            catch (error: Exception) { showMessage(error.message ?: "화면 녹화를 이어가지 못했어요.") }
+                            finally { recordingResuming = false }
+                        }
+                    }
+                }
                 if (owner && lessonModes && phase != null && !compactSystemPip) {
                     MeetingLessonModes(activeLessonMode(phase, snapshot?.share, assistance), modeReady && !modeBusy && !busy, assistanceEnabled, onMode = ::selectMode)
                 }
@@ -461,4 +491,19 @@ fun MeetingScreen(
         onDismissRequest = {}, title = { Text("수업 연결을 확인해 주세요") }, text = { Text(fatalError) },
         confirmButton = { TextButton(onClick = session::returnToLessons) { Text("수업으로 돌아가기") } },
     )
+}
+
+/** Shown when the OS ended screen capture (for example a new screen share); sound keeps recording meanwhile. */
+@Composable
+private fun RecordingInterrupted(modifier: Modifier, enabled: Boolean, onResume: () -> Unit) {
+    Row(modifier.background(Palette.WarningSurface, RoundedCornerShape(Corner.R8)).padding(horizontal = Space.S12, vertical = Space.S8),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.S10)) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Space.S2)) {
+            Text(DesignContent.RecordingResumeTitle, style = MaterialTheme.typography.bodyMedium.copy(fontSize = Type.Support, lineHeight = Type.Support * 1.5f), color = Palette.Ink)
+            Text(DesignContent.RecordingResumeCopy, style = MaterialTheme.typography.bodySmall.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f), color = Palette.WarningText)
+        }
+        TextButton(onResume, enabled = enabled, modifier = Modifier.heightIn(min = Space.S44)) {
+            Text(DesignContent.RecordingResumeAction, style = MaterialTheme.typography.bodyMedium.copy(fontSize = Type.Support), color = Palette.Ink)
+        }
+    }
 }

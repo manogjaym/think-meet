@@ -63,23 +63,34 @@ export function Confirm({
   cancel,
   confirm,
   confirmText,
+  cancelText = "취소",
+  confirmClassName = "danger",
+  dismiss = cancel,
+  note,
+  icon = "alert",
 }: {
   title: string
   copy: string
   cancel: () => void
   confirm: () => void
   confirmText: string
+  cancelText?: string
+  confirmClassName?: string
+  /** Escape and backdrop; defaults to the cancel action. */
+  dismiss?: () => void
+  note?: string
+  icon?: string
 }) {
   const active = usePresenceActive()
   const dialogRef = useRef<HTMLDivElement>(null)
   const cancelButtonRef = useRef<HTMLButtonElement>(null)
-  const cancelRef = useRef(cancel)
+  const cancelRef = useRef(dismiss)
   const titleId = useId()
   const descriptionId = useId()
 
   useEffect(() => {
-    cancelRef.current = cancel
-  }, [cancel])
+    cancelRef.current = dismiss
+  }, [dismiss])
 
   useLayoutEffect(() => {
     if (!active) return
@@ -140,7 +151,7 @@ export function Confirm({
   }, [active])
 
   return (
-    <div className="modal-backdrop" onMouseDown={cancel}>
+    <div className="modal-backdrop" onMouseDown={dismiss}>
       <div
         ref={dialogRef}
         className="confirm"
@@ -153,11 +164,12 @@ export function Confirm({
       >
         <div className="confirm-heading">
           <div className="confirm-icon">
-            <Icon name="alert" size={19} />
+            <Icon name={icon} size={19} />
           </div>
           <h2 id={titleId}>{title}</h2>
         </div>
         <p id={descriptionId}>{copy}</p>
+        {note && <p className="confirm-note">{note}</p>}
         <div className="confirm-actions">
           <button
             ref={cancelButtonRef}
@@ -165,9 +177,9 @@ export function Confirm({
             className="secondary"
             onClick={cancel}
           >
-            취소
+            {cancelText}
           </button>
-          <button type="button" className="danger" onClick={confirm}>
+          <button type="button" className={confirmClassName} onClick={confirm}>
             {confirmText}
           </button>
         </div>

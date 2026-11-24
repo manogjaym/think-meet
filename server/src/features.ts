@@ -3,7 +3,7 @@ import type { Request } from 'express'
 import { ApiError } from './errors'
 import { CONTRACT_REVISION, type CapabilitiesResponse } from './generated/contracts'
 import { FEATURE_DEFINITIONS, featureForEvent, featureForHttp, isKnownEvent, isKnownHttpOperation } from './generated/feature-policy'
-import { featureClient, featureDecision, socketFeatureClient, type ClientHeaders, type FeatureClient, type FeatureDefinition } from './feature-policy'
+import { featureClient, featureDecision, mediaFeatureHeaders, socketFeatureClient, type ClientHeaders, type FeatureClient, type FeatureDefinition } from './feature-policy'
 
 @Injectable()
 export class FeaturePolicy {
@@ -50,7 +50,8 @@ export class HttpFeatureGuard implements CanActivate {
   constructor(private readonly features: FeaturePolicy) {}
   canActivate(context: ExecutionContext) {
     const req = context.switchToHttp().getRequest<Request>()
-    this.features.assertHttp(req.method, req.path, req.headers)
+    const read = req.method === 'GET' || req.method === 'HEAD'
+    this.features.assertHttp(req.method, req.path, read ? mediaFeatureHeaders(req.headers, req.query) : req.headers)
     return true
   }
 }

@@ -1,84 +1,91 @@
+import { useEffect, useState } from "react"
 import type { Lesson } from "./Home"
 import { EndedRecordingUploads } from "../components/LessonRecordings"
 import type { Role, Screen } from "../models"
 import type { User } from "../lib/api"
-import { Badge, Icon } from "../components/ui"
-import { designContent } from "../generated/design-content"
+import { Icon } from "../components/ui"
+import { designContent as content } from "../generated/design-content"
 import { lessonRecordStart } from "../lib/lessonRecord"
+import { noteCaptures, notesFeature } from "../lib/classNotes"
 import { useFeature } from "../lib/useFeature"
 import { FEATURE_IDS } from "../generated/feature-policy"
-const timeFormat = new Intl.DateTimeFormat("ko-KR", {
-  timeZone: "Asia/Seoul",
-  hour: "numeric",
-  minute: "2-digit",
-})
+
+/** Minutes the user spent in the lesson: teachers see the lesson length, students their own attendance. */
+function lessonMinutes(lesson: Lesson, user: User, role: Role, bySubject: boolean) {
+  const fallbackFinish = lesson.endedAt || sessionStorage.getItem(`think-meet.left.${lesson.id}`) || new Date().toISOString()
+  if (role === "student") {
+    const intervals = lesson.attendance?.filter(item => item.userId === user.id) || []
+    if (!intervals.length) return null
+    return intervals.reduce((total, item) => total + Math.max(0, Date.parse(item.leftAt || fallbackFinish) - Date.parse(item.joinedAt)), 0) / 60000
+  }
+  const startedAt = bySubject && lesson.subject ? lessonRecordStart(lesson) : lesson.startedAt
+  return startedAt ? Math.max(0, Date.parse(fallbackFinish) - Date.parse(startedAt)) / 60000 : null
+}
+
+/** Screens this user saved during the lesson; undefined while loading or when the list is unavailable. */
+function useSavedScreens(lessonId: string, enabled: boolean) {
+  const [count, setCount] = useState<number>()
+  useEffect(() => {
+    if (!enabled) return
+    const controller = new AbortController()
+    noteCaptures(controller.signal)
+      .then(rows => setCount(rows.filter(row => row.lesson.id === lessonId && row.source === "self").length))
+      .catch(() => undefined)
+    return () => controller.abort()
+  }, [lessonId, enabled])
+  return count
+}
+
 export function Ended({
   role,
   setScreen,
   lesson,
   user,
+  onRecords,
 }: {
   role: Role
   setScreen: (s: Screen) => void
   lesson: Lesson
   user: User
+  onRecords: () => void
 }) {
   const ended = lesson.status === "ENDED"
   const subjectsEnabled = useFeature(FEATURE_IDS.ClassroomSubjects)
-  const intervals = lesson.attendance?.filter(item => item.userId === user.id) || []
-  const personalStart = intervals.length ? new Date(Math.min(...intervals.map(item=>Date.parse(item.joinedAt)))) : null
-  const localFinish = sessionStorage.getItem(`think-meet.left.${lesson.id}`)
-  const fallbackFinish = lesson.endedAt || localFinish || new Date().toISOString()
-  const startedAt = subjectsEnabled && lesson.subject ? lessonRecordStart(lesson) : lesson.startedAt
-  const start = role === "student" ? personalStart : startedAt ? new Date(startedAt) : null
-  const finish = role === "student" && intervals.length ? new Date(Math.max(...intervals.map(item=>Date.parse(item.leftAt || fallbackFinish)))) : new Date(fallbackFinish)
-  const duration = role === "student" ? intervals.reduce((total,item)=>total+Math.max(0,Date.parse(item.leftAt || fallbackFinish)-Date.parse(item.joinedAt)),0) : start ? finish.getTime()-start.getTime() : 0
-  const elapsed = start ? `${timeFormat.format(start)} – ${timeFormat.format(finish)} · ${Math.max(0,Math.round(duration/60000))}분` : role === "student" ? "참여 기록이 없어요" : "수업이 시작되지 않았어요"
+  const notesEnabled = useFeature(notesFeature)
+  const minutes = lessonMinutes(lesson, user, role, subjectsEnabled)
+  const saved = useSavedScreens(lesson.id, notesEnabled)
   return (
     <main className="center-page">
-      <div className="ended-card">
-        <div className="ended-icon">
-          <Icon name="phone" size={30} />
+      <section className="ended-screen" aria-labelledby="ended-title">
+        <div className="ended-check">
+          <Icon name="check" size={36} />
         </div>
-        <Badge tone="default">
-          {ended ? "수업 종료 완료" : "수업에서 나감"}
-        </Badge>
-        <h1>{ended ? "수업이 모두 종료되었어요" : "수업을 나왔어요"}</h1>
-        <p>
-          {ended && role === "teacher"
-            ? "참여 학생에게 종료 안내를 보냈습니다."
-            : ended
-              ? "선생님이 수업을 종료했어요."
-              : "다른 참여자는 수업을 계속할 수 있어요."}
-        </p>
-        <div className="ended-summary">
+        <h1 id="ended-title">{ended ? content.endedTitle : content.endedLeftTitle}</h1>
+        <dl className="ended-stats">
           <div>
-            <small>학습 제목</small>
-            <strong>{lesson.title}</strong>
+            <dt>{content.endedDuration}</dt>
+            <dd>{minutes === null ? "–" : `${Math.round(minutes)}분`}</dd>
           </div>
-          {subjectsEnabled && lesson.subject && <div>
-            <small>{designContent.lessonSubjectLabel}</small>
-            <strong>{lesson.subject.name}</strong>
+          {notesEnabled && <div>
+            <dt>{content.endedSavedScreens}</dt>
+            <dd>{saved === undefined ? "–" : `${saved}장`}</dd>
           </div>}
-          <div>
-            <small>{role === "student" ? "내 참여 시간" : ended ? "실제 진행 시간" : "현재까지 진행 시간"}</small>
-            <strong>{elapsed}</strong>
-          </div>
-          <div>
-            <small>종료 상태</small>
-            <Badge tone="default">{ended ? "정상 종료" : "개인 퇴장"}</Badge>
-          </div>
-        </div>
+        </dl>
         {lesson.teacher.id === user.id && <EndedRecordingUploads lessonId={lesson.id} />}
-        <button className="primary full" onClick={() => setScreen("home")}>
-          홈으로 돌아가기
-        </button>
+        <div className="ended-actions">
+          <button className="primary" onClick={() => notesEnabled ? onRecords() : setScreen("detail")}>
+            {content.endedViewRecords}
+          </button>
+          <button className="outline" onClick={() => setScreen("home")}>
+            {content.endedHome}
+          </button>
+        </div>
         {!ended && (
-          <button className="ghost full" onClick={() => setScreen("prejoin")}>
-            수업에 다시 참여
+          <button className="ghost ended-rejoin" onClick={() => setScreen("prejoin")}>
+            {content.endedRejoin}
           </button>
         )}
-      </div>
+      </section>
     </main>
   )
 }

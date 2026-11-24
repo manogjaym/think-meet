@@ -529,4 +529,6 @@ data class LessonRecording(
     val startedAt: String,
     val createdAt: String,
     val expiresAt: String,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val lesson: ClassNoteLesson? = null,
 )

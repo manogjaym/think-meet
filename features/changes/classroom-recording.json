@@ -1,6 +1,6 @@
 {
   "id": "classroom-recording",
-  "summary": "선생님 앱과 PC 웹(Chrome·Edge)이 수업 시작 때 화면 녹화 여부를 묻고, 수업 화면과 소리를 기기에서 압축 녹화한 뒤 수업이 끝나면 서버에 조각 업로드합니다. 선생님은 웹·앱 수업 상세에서 30일 동안 다시 봅니다.",
+  "summary": "선생님 앱과 PC 웹(Chrome·Edge)이 수업 시작 때 화면 녹화 여부를 묻고, 수업 화면과 소리를 기기에서 압축 녹화한 뒤 수업이 끝나면 서버에 조각 업로드합니다. 선생님은 웹·앱 수업 상세에서 30일 동안 다시 봅니다. 녹화는 수업 노트의 수업 기록 탭에서도 저장한 화면과 함께 수업별로 봅니다.",
   "scope": "shared",
   "featureIds": [
     "classroom.recording"
@@ -24,6 +24,8 @@
     "server/: npx tsx --test test/recordings.test.ts 4개 통과. infra/local/ API·웹 컨테이너 재배포 후 실제 MinIO에서 조각 업로드·재전송·위치 오류·완료·Range 재생·권한 차단 확인.",
     "web: Vite 개발 서버와 로컬 API로 1280×800·390×844 수업 녹화 목록과 재생 확인.",
     "web 녹화: 확장 프로그램 없이 getDisplayMedia(현재 탭)·MediaRecorder(H.264 MP4)·OPFS·조각 업로드. Playwright Chromium 159(Xvfb, --auto-accept-this-tab-capture, 가짜 장치)로 1280×800·390×844 녹화 확인 창부터 업로드 완료까지 실행, 서버 파일 H.264 1152×720·Opus 17초 확인. 검증용 수업 3건·녹화·MinIO 객체 삭제.",
+    "웹 화질: 사용자 결정으로 해상도·비트레이트는 720p·700kbps 유지, H.264 High 프로필 우선과 세부 유지 힌트만 적용. 같은 1920×1080 화면 녹화의 글자 영역 SSIM은 기존과 같음(수업 자료 카드 0.868, 제목 0.959). 시험한 1080p·1.5Mbps는 0.958·0.986. 검증용 수업 3건·녹화·MinIO 객체 삭제.",
+    "수업 기록 탭: LessonRecording에 선택 필드 lesson(ClassNoteLesson) 추가. server/ npx tsx --test test/recordings.test.ts 4개 통과. 로컬 API 재배포 후 실제 녹화 1건으로 웹(1280×800·390×844)과 Android 휴대폰·태블릿 폭의 녹화 행·재생 확인 후 검증용 수업·녹화 삭제, 에뮬레이터 화면 설정 복원.",
     "mobile/: JDK 17로 ./gradlew :composeApp:checkDesignTokens :composeApp:checkContracts :composeApp:testDebugUnitTest :composeApp:assembleDebug 통과(단위 테스트 50개). 기존 Android 35 에뮬레이터에서 녹화 확인 창, OS 동의, 녹화, 종료 후 업로드, 서버 파일 ffprobe, 수업 상세 재생, 태블릿 폭 화면 확인 후 원래 화면 크기·밀도 복원. 검증용 수업·녹화 2건과 MinIO 객체는 삭제.",
     "iOS: Linux 환경이라 Kotlin iOS 프레임워크, Swift 호스트 빌드, 실행 모두 미실행. 실제 iPhone·iPad 확인 전까지 기능은 in-progress.",
     "미검증 범위와 화면 증거는 features/classroom-recording.md 참고."

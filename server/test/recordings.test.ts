@@ -11,12 +11,12 @@ import type { User } from '../src/generated/contracts'
 function fixture() {
   const teacher: User = { id: randomUUID(), role: 'teacher', name: 'Teacher', username: 'teacher' }
   const other: User = { id: randomUUID(), role: 'teacher', name: 'Other', username: 'other' }
-  const lesson = { id: randomUUID(), teacherId: teacher.id, title: '수학', startedAt: new Date() }
+  const lesson = { id: randomUUID(), teacherId: teacher.id, title: '수학', startsAt: new Date(), startedAt: new Date() }
   const rows: any[] = []
   const s3calls: any[] = []
   const matches = (row: any, where: any) => (!where.id || row.id === where.id) && (!where.teacherId || row.teacherId === where.teacherId)
     && (!where.expiresAt?.gt || row.expiresAt > where.expiresAt.gt) && (!where.expiresAt?.lte || row.expiresAt <= where.expiresAt.lte)
-  const withLesson = (row: any) => row && { ...row, lesson: { title: lesson.title } }
+  const withLesson = (row: any) => row && { ...row, lesson: { title: lesson.title, startsAt: lesson.startsAt, subject: null } }
   const db: any = { lessonRecording: {
     findFirst: async ({ where }: any) => withLesson(rows.find(row => matches(row, where))),
     findUnique: async ({ where }: any) => withLesson(rows.find(row => row.teacherId === where.teacherId_requestId.teacherId && row.requestId === where.teacherId_requestId.requestId)),
@@ -66,6 +66,8 @@ test('a recording uploads chunk by chunk, tolerates a resent chunk and completes
   assert.equal(done.uploadedBytes, size)
   assert.equal(s3calls.filter(name => name === 'CompleteMultipartUploadCommand').length, 1)
   assert.deepEqual((await recordings.list(teacher, lesson.id)).map(item => item.id), [created.id])
+  // The records tab groups recordings with class-note captures by this lesson summary.
+  assert.deepEqual((await recordings.list(teacher, lesson.id))[0].lesson, { id: lesson.id, title: '수학', startsAt: lesson.startsAt.toISOString(), teacherName: 'Teacher' })
 })
 
 test('only the lesson owner can upload or see a recording', async () => {

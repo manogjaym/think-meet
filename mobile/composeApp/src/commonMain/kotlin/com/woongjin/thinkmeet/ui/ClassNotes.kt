@@ -44,6 +44,8 @@ import com.woongjin.thinkmeet.design.generated.DesignTokens.Radius
 import com.woongjin.thinkmeet.design.generated.DesignTokens.Spacing as Space
 import com.woongjin.thinkmeet.design.generated.DesignTokens.Typography as Type
 import com.woongjin.thinkmeet.platform.NoteDraft
+import com.woongjin.thinkmeet.platform.RecordingPlayerDialog
+import kotlin.time.Instant
 import com.woongjin.thinkmeet.platform.decodeNoteImage
 import com.woongjin.thinkmeet.platform.rememberNoteImagePicker
 import kotlinx.coroutines.CancellationException
@@ -480,38 +482,73 @@ private fun WorksheetCorrection(api: ThinkMeetApi, row: ClassNoteWorksheet, onSa
     }
 }
 
+/** One saved screen or one finished recording, grouped per lesson in the records tab. */
+private class RecordEntry(val lesson: ClassNoteLesson, val time: String, val capture: ClassNoteCapture? = null, val recording: LessonRecording? = null)
+
 @Composable
 private fun CaptureArchive(api: ThinkMeetApi, teacher: Boolean) {
     var title by remember { mutableStateOf("") }
     var retry by remember { mutableIntStateOf(0) }
     var selected by remember { mutableStateOf<List<ClassNoteCapture>?>(null) }
+    var videos by remember { mutableStateOf<List<LessonRecording>?>(null) }
+    var playing by remember { mutableStateOf<LessonRecording?>(null) }
+    var cookie by remember { mutableStateOf<String?>(null) }
     var index by remember { mutableIntStateOf(0) }
     val list = loadNote("captures", retry) { api.noteCaptures() }
+    // Only the recording teacher sees their own lesson recordings, next to the screens they saved.
+    val recordingsEnabled = teacher && api.capabilities.collectAsState().value.supports(ContractProtocol.FeatureIds.ClassroomRecording)
+    val recordings = loadNote("recordings:$recordingsEnabled", retry) { if (recordingsEnabled) api.recordings() else emptyList() }
+    val entries = if (list.value == null || recordings.value == null) null else
+        list.value.map { RecordEntry(it.lesson, it.image.createdAt, capture = it) } +
+            recordings.value.mapNotNull { recording -> recording.lesson?.takeIf { recording.status == "ready" }?.let { RecordEntry(it, recording.startedAt, recording = recording) } }
     val sources = if (teacher) listOf("self") else listOf("self", "teacher")
-    val groups = NoteFilters(api, list.value.orEmpty(), title, { title = it }) { it.lesson }.groupBy { it.lesson.id }.values.toList()
-    if (list.value == null) NoteLoadStatus(list.error) { retry++ }
+    // Newest first, so a lesson that only has a recording sorts like one with saved screens.
+    val groups = NoteFilters(api, entries.orEmpty(), title, { title = it }) { it.lesson }
+        .sortedByDescending { runCatching { Instant.parse(it.time) }.getOrNull() }.groupBy { it.lesson.id }.values.toList()
+    if (entries == null) NoteLoadStatus(list.error ?: recordings.error) { retry++ }
     else if (groups.isEmpty()) NotesEmpty("camera", Copy.NotesCapturesEmpty)
     else NoteGrid(groups) { rows, modifier ->
         val lesson = rows.first().lesson
+        val captures = rows.mapNotNull { it.capture }
+        val lessonVideos = rows.mapNotNull { it.recording }
         NotesCard(modifier, gap = Space.S12) {
             Text("${dateLabel(lesson.startsAt)} · ${lesson.title}", style = MaterialTheme.typography.bodyLarge, fontWeight = DesignWeight.Bold, color = Palette.Ink)
             sources.forEach { source ->
-                val images = rows.filter { it.source == source }
+                val images = captures.filter { it.source == source }
                 NoteRow(if (source == "self") "camera" else "user", if (source == "self") Copy.NotesOwnCapture else Copy.NotesTeacherCapture,
                     accent = source == "teacher", enabled = images.isNotEmpty(), onClick = { selected = images; index = 0 }) {
                     Text("${images.size}장", style = MaterialTheme.typography.labelLarge, fontWeight = DesignWeight.Bold, color = if (images.isEmpty()) Palette.Muted else Brand)
                 }
             }
+            if (recordingsEnabled) NoteRow("video", Copy.RecordingListTitle, enabled = lessonVideos.isNotEmpty(), onClick = { videos = lessonVideos; index = 0 }) {
+                Text("${lessonVideos.size}개", style = MaterialTheme.typography.labelLarge, fontWeight = DesignWeight.Bold, color = if (lessonVideos.isEmpty()) Palette.Muted else Brand)
+            }
         }
     }
     selected?.let { images -> NoteDialog("${if (images.first().source == "self") Copy.NotesOwnCapture else Copy.NotesTeacherCapture} · ${images.first().lesson.title}", onClose = { selected = null }) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Space.S16, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {
-            RoundButton("back", "이전 화면", enabled = index > 0) { index-- }
-            Text("${index + 1} / ${images.size}", Modifier.widthIn(min = 64.dp), style = MaterialTheme.typography.titleSmall, textAlign = TextAlign.Center)
-            RoundButton("chevron", "다음 화면", enabled = index < images.lastIndex) { index++ }
-        }
+        NotePager(index, images.size, "화면") { index = it }
         key(images[index].image.id) { StoredNoteImage(api, images[index].image.id, "수업 화면 ${index + 1}") }
     } }
+    // The native player is full screen, so the dialog pages through recordings and opens one to play.
+    videos?.let { items -> if (playing == null) NoteDialog("${Copy.RecordingListTitle} · ${items.first().lessonTitle}", onClose = { videos = null }) {
+        val item = items[index.coerceIn(0, items.lastIndex)]
+        if (items.size > 1) NotePager(index, items.size, "녹화") { index = it }
+        Text("${dateLabel(item.startedAt)} · ${recordingDuration(item.durationMs)}", Modifier.fillMaxWidth(), style = MaterialTheme.typography.bodyMedium, color = Palette.Muted, textAlign = TextAlign.Center)
+        DesignButton(Copy.RecordingPlay, { playing = item }, Modifier.fillMaxWidth())
+    } }
+    playing?.let { item ->
+        LaunchedEffect(item.id) { cookie = api.cookieHeader() }
+        cookie?.let { RecordingPlayerDialog(api.recordingContentUrl(item.id), it) { playing = null } }
+    }
+}
+
+@Composable
+private fun NotePager(index: Int, total: Int, label: String, onIndex: (Int) -> Unit) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Space.S16, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {
+        RoundButton("back", "이전 $label", enabled = index > 0) { onIndex(index - 1) }
+        Text("${index + 1} / $total", Modifier.widthIn(min = 64.dp), style = MaterialTheme.typography.titleSmall, textAlign = TextAlign.Center)
+        RoundButton("chevron", "다음 $label", enabled = index < total - 1) { onIndex(index + 1) }
+    }
 }
 
 @Composable

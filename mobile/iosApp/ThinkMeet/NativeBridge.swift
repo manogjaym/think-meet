@@ -77,8 +77,8 @@ final class NativeBridge: NSObject, IosNativeBridge, RoomDelegate, BroadcastMana
         onMain { self.pictureInPicture.enter(completion: completion) }
     }
     func closePictureInPicture() { onMain { self.pictureInPicture.close() } }
-    func showAssistancePointer(x: Double, y: Double) { onMain { self.pictureInPicture.showPointer(x: x, y: y) } }
-    func clearAssistancePointer() { onMain { self.pictureInPicture.clearPointer() } }
+    @objc(showAssistancePointerX:y:) func showAssistancePointer(x: Double, y: Double) { onMain { self.pictureInPicture.showPointer(x: x, y: y) } }
+    @objc(clearAssistancePointer) func clearAssistancePointer() { onMain { self.pictureInPicture.clearPointer() } }
 
     @MainActor private func disconnectMedia() async {
         pictureInPicture.update(enabled: false, target: nil)

@@ -142,6 +142,9 @@ final class VideoCallPictureInPicture: NSObject, @MainActor AVPictureInPictureCo
         content.loadViewIfNeeded()
         content.view.backgroundColor = .black
         let video = VideoView()
+        // Metal rendering is suspended while the app is in the background, freezing PiP on its last frame.
+        // AVSampleBufferDisplayLayer keeps rendering for the system video-call PiP window.
+        video.renderMode = .sampleBuffer
         video.translatesAutoresizingMaskIntoConstraints = false
         content.view.addSubview(video)
         NSLayoutConstraint.activate([

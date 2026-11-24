@@ -27,6 +27,7 @@ model User {
   annotationOperations AnnotationOperation[]
   authoredNoteImages ClassNoteImage[] @relation("ClassNoteAuthor")
   studentNoteImages ClassNoteImage[] @relation("ClassNoteStudent")
+  lessonRecordings LessonRecording[]
 }
 enum UserRole {
   teacher
@@ -112,6 +113,7 @@ model Lesson {
   attendance Attendance[]
   attendanceOverrides StudentAttendanceOverride[]
   noteImages ClassNoteImage[]
+  recordings LessonRecording[]
   annotationOperations AnnotationOperation[]
   @@index([teacherId, startsAt])
   @@index([subjectId])
@@ -256,4 +258,33 @@ model ClassNoteImage {
   @@unique([authorId, requestId])
   @@index([studentId, kind, createdAt])
   @@index([lessonId, kind, createdAt])
+}
+
+/// A teacher app's screen recording, uploaded in fixed-size chunks through an S3 multipart upload and kept for 30 days.
+model LessonRecording {
+  id String @id @default(uuid()) @db.Uuid
+  lessonId String @db.Uuid
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  teacherId String @db.Uuid
+  teacher User @relation(fields: [teacherId], references: [id], onDelete: Restrict)
+  requestId String @db.Uuid
+  objectKey String @unique
+  /// S3 multipart upload ID while uploading; null once completed.
+  uploadId String?
+  /// Completed parts as [{ PartNumber, ETag }].
+  parts Json @default("[]")
+  status String @default("uploading")
+  size BigInt
+  uploadedBytes BigInt @default(0)
+  durationMs Int
+  width Int
+  height Int
+  startedAt DateTime
+  createdAt DateTime @default(now())
+  completedAt DateTime?
+  expiresAt DateTime
+  @@unique([teacherId, requestId])
+  @@index([teacherId, expiresAt])
+  @@index([lessonId])
+  @@index([expiresAt])
 }

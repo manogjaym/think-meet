@@ -6,7 +6,7 @@ export const OPENAPI_DOCUMENT = {
     "version": "1.0.0",
     "description": "Canonical REST schemas shared by NestJS, React and KMP. Socket.IO is defined in realtime.json."
   },
-  "x-contract-revision": 13,
+  "x-contract-revision": 14,
   "servers": [
     {
       "url": "/api/v1"
@@ -1812,6 +1812,259 @@ export const OPENAPI_DOCUMENT = {
           }
         ]
       }
+    },
+    "/lessons/{id}/recordings": {
+      "post": {
+        "operationId": "createLessonRecording",
+        "tags": [
+          "recordings"
+        ],
+        "description": "선생님 앱이 녹화한 수업 화면의 업로드를 시작합니다. 같은 requestId는 기존 업로드 상태를 반환합니다.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LessonRecordingInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LessonRecording"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "x-feature": "classroom.recording"
+      }
+    },
+    "/recordings": {
+      "get": {
+        "operationId": "listLessonRecordings",
+        "tags": [
+          "recordings"
+        ],
+        "description": "본인이 녹화한 수업 화면 중 보관 기간(30일)이 지나지 않은 항목을 최신순으로 반환합니다.",
+        "parameters": [
+          {
+            "name": "lessonId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LessonRecording"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "x-feature": "classroom.recording"
+      }
+    },
+    "/recordings/{id}/content": {
+      "put": {
+        "operationId": "uploadLessonRecordingChunk",
+        "tags": [
+          "recordings"
+        ],
+        "description": "offset 위치부터 chunkSize 바이트(마지막 조각은 남은 크기)를 올립니다. 이미 받은 조각을 다시 보내면 현재 상태를 반환합니다.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LessonRecording"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "x-feature": "classroom.recording"
+      },
+      "get": {
+        "operationId": "getLessonRecordingContent",
+        "tags": [
+          "recordings"
+        ],
+        "description": "업로드를 마친 녹화 영상을 Range 요청과 함께 재생합니다. 브라우저 video 요소처럼 헤더를 보낼 수 없는 경우 platform·contractRevision 쿼리로 기능 지원 정보를 전달합니다.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "platform",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "web",
+                "android",
+                "ios"
+              ]
+            }
+          },
+          {
+            "name": "contractRevision",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "video/mp4": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "206": {
+            "description": "Partial byte range"
+          },
+          "416": {
+            "description": "Invalid byte range"
+          },
+          "default": {
+            "description": "API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "x-feature": "classroom.recording"
+      }
     }
   },
   "components": {
@@ -2555,6 +2808,7 @@ export const OPENAPI_DOCUMENT = {
           "NO_SHARE",
           "PARTICIPANT_UNAVAILABLE",
           "RATE_LIMIT",
+          "RECORDING_OFFSET",
           "REQUEST_FAILED",
           "SCREEN_NOT_PUBLISHED",
           "SHARE_BUSY",
@@ -3495,6 +3749,117 @@ export const OPENAPI_DOCUMENT = {
             }
           }
         }
+      },
+      "LessonRecordingInput": {
+        "type": "object",
+        "description": "앱·웹이 녹화를 마친 MP4(H.264, AAC 또는 Opus) 파일 정보",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "durationMs": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "width": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "requestId",
+          "size",
+          "durationMs",
+          "width",
+          "height",
+          "startedAt"
+        ]
+      },
+      "LessonRecording": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "lessonId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "lessonTitle": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "uploading",
+              "ready"
+            ]
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "uploadedBytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "chunkSize": {
+            "type": "integer"
+          },
+          "durationMs": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "width": {
+            "type": "integer"
+          },
+          "height": {
+            "type": "integer"
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "lessonId",
+          "lessonTitle",
+          "status",
+          "size",
+          "uploadedBytes",
+          "chunkSize",
+          "durationMs",
+          "width",
+          "height",
+          "startedAt",
+          "createdAt",
+          "expiresAt"
+        ]
       }
     }
   }

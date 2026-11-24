@@ -69,7 +69,7 @@ internal fun MeetingLightPanel(modifier: Modifier, overlay: Boolean = false, con
 @Composable
 internal fun MeetingHeader(
     lesson: Lesson, state: MediaState, socketConnected: Boolean, serverTime: String?, grid: Boolean,
-    compact: Boolean, width: Dp, instructionPhase: String? = null, instructionStartedAt: String? = null, subjectName: String? = null, showLayout: Boolean = true, onLayout: () -> Unit,
+    compact: Boolean, width: Dp, instructionPhase: String? = null, instructionStartedAt: String? = null, subjectName: String? = null, showLayout: Boolean = true, recording: Boolean = false, onLayout: () -> Unit,
 ) {
     val short = LocalMeetingShort.current
     val height = if (short) 62.dp else if (compact) LayoutToken.MeetingHeaderCompact else if (width <= LayoutToken.MeetingOverlayBreakpoint) LayoutToken.MeetingHeaderMedium else LayoutToken.MeetingHeader
@@ -92,6 +92,7 @@ internal fun MeetingHeader(
             }
         }
         if (width > LayoutToken.MeetingOverlayBreakpoint) Spacer(Modifier.width(if (width <= LayoutToken.MeetingMediumBreakpoint) Space.S2 else Space.S12))
+        if (recording) RecordingIndicator(compact)
         if (instructionPhase != "preparing") MeetingElapsed(instructionStartedAt ?: lesson.startedAt, serverTime)
         if (!compact) Spacer(Modifier.width(if (width <= LayoutToken.MeetingMediumBreakpoint) Space.S2 else Space.S12))
         if (showLayout) Surface(onClick = onLayout, modifier = if (compact) Modifier.widthIn(min = 42.dp) else Modifier, shape = RoundedCornerShape(Corner.R8), color = Color.Transparent,
@@ -102,6 +103,19 @@ internal fun MeetingHeader(
                 if (!compact) Text(if (grid) "발표자 보기" else "바둑판 보기", style = MaterialTheme.typography.bodyMedium.copy(fontSize = Type.Support, lineHeight = Type.Support * 1.5f), color = Palette.MeetingText)
             }
         }
+    }
+}
+
+/** Visible to the recording teacher only; the OS also shows its own capture indicator. */
+@Composable
+private fun RecordingIndicator(compact: Boolean) {
+    Row(Modifier.clip(RoundedCornerShape(Corner.R8)).background(Palette.Danger.copy(alpha = .18f)).padding(horizontal = Space.S8, vertical = Space.S4)
+        .semantics(mergeDescendants = true) {}, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.S6)) {
+        Box(Modifier.size(7.dp).clip(RoundedCornerShape(7.dp)).background(Palette.Danger))
+        if (!compact) Text(DesignContent.RecordingActive, style = MaterialTheme.typography.bodySmall.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f),
+            color = Palette.MeetingText)
+        else Text("REC", style = MaterialTheme.typography.bodySmall.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f), color = Palette.MeetingText,
+            modifier = Modifier.semantics { contentDescription = DesignContent.RecordingActive })
     }
 }
 

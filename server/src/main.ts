@@ -12,11 +12,12 @@ import { Gateway } from './gateway'
 import { AuthGuard, CONTROLLERS, TeacherUploadGuard } from './http'
 import { Errors } from './errors'
 import { ClassNotes } from './class-notes'
+import { Recordings } from './recordings'
 import { StudentAttendance } from './student-attendance'
 import { FeaturePolicy, HttpFeatureGuard } from './features'
 import { OPENAPI_DOCUMENT } from './generated/openapi-document'
 // Global guards run in this order: session first (401), then the contract feature gate.
-@Module({ controllers: CONTROLLERS, providers: [Database, Auth, LiveKitAdapter, LessonRealtime, Lessons, Materials, ClassNotes, StudentAttendance, Gateway, TeacherUploadGuard, FeaturePolicy, { provide: APP_GUARD, useClass: AuthGuard }, { provide: APP_GUARD, useClass: HttpFeatureGuard }] })
+@Module({ controllers: CONTROLLERS, providers: [Database, Auth, LiveKitAdapter, LessonRealtime, Lessons, Materials, ClassNotes, Recordings, StudentAttendance, Gateway, TeacherUploadGuard, FeaturePolicy, { provide: APP_GUARD, useClass: AuthGuard }, { provide: APP_GUARD, useClass: HttpFeatureGuard }] })
 export class AppModule {}
 async function bootstrap() {
   for (const key of ['DATABASE_URL','LIVEKIT_API_KEY','LIVEKIT_API_SECRET','S3_ENDPOINT','S3_ACCESS_KEY','S3_SECRET_KEY','PROXY_AUTH_SECRET','PUBLIC_ORIGIN']) if (!process.env[key]) throw new Error(`${key} is required`)

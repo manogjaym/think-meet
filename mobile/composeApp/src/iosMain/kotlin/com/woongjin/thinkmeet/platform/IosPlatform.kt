@@ -73,6 +73,12 @@ interface IosNativeBridge {
     fun pickFile(completion: (String?, String?, String?, Long) -> Unit)
     fun share(url: String)
     fun copy(text: String)
+    /** ReplayKit in-app capture of this app's screen; sound comes from LiveKit taps in Swift. */
+    fun recordingAvailable(): Boolean
+    fun startRecording(path: String, completion: (String?) -> Unit)
+    /** Completion receives a `{size,durationMs,width,height}` JSON string or an error message. */
+    fun stopRecording(completion: (String?, String?) -> Unit)
+    fun playRecording(url: String, cookie: String, onClose: () -> Unit)
 }
 object IosPlatform {
     var bridge: IosNativeBridge? = null
@@ -90,10 +96,48 @@ actual fun shareLink(url: String) = native().share(url)
 actual fun copyText(text: String) = native().copy(text)
 @Composable actual fun BackHandler(enabled: Boolean, onBack: () -> Unit) = Unit
 
-private class IosMediaController : MediaController, PreviewAudio {
+private class IosMediaController : MediaController, PreviewAudio, LessonRecorder {
     private val mutable = MutableStateFlow(MediaState())
     private var disconnection: Deferred<Unit>? = null
     override val state: StateFlow<MediaState> = mutable
+    private val recordingState = MutableStateFlow(RecordingState())
+    override val recording: StateFlow<RecordingState> = recordingState
+    private var recordingDone: ((RecordedFile?) -> Unit)? = null
+    private var recordingName: String? = null
+
+    override suspend fun startRecording(onFinished: (RecordedFile?) -> Unit) = suspendCancellableCoroutine<Unit> { continuation ->
+        check(recordingDone == null && disconnection == null) { "화면 녹화를 시작할 수 없어요." }
+        val name = "lesson-${NSUUID().UUIDString}.mp4"
+        val startedAt = kotlin.time.Clock.System.now().toEpochMilliseconds()
+        native().startRecording(recordingPath(name)) { error ->
+            if (error == null) {
+                recordingName = name
+                recordingDone = onFinished
+                recordingState.value = RecordingState(active = true, startedAtMillis = startedAt)
+                // A meeting that closed while iOS showed its consent alert still finalizes the file.
+                if (disconnection != null || !continuation.isActive) stopRecording()
+                if (continuation.isActive) continuation.resume(Unit)
+            } else if (continuation.isActive) continuation.resumeWithException(IllegalStateException(error))
+        }
+    }
+    /** In-app ReplayKit capture is not ended by a broadcast screen share, so there is nothing to resume. */
+    override suspend fun resumeRecording() = Unit
+    override fun stopRecording() {
+        val done = recordingDone ?: return
+        val name = recordingName ?: return
+        val startedAt = recordingState.value.startedAtMillis
+        recordingDone = null; recordingName = null
+        recordingState.value = RecordingState()
+        native().stopRecording { result, _ ->
+            val file = result?.let { json -> runCatching {
+                val values = kotlinx.serialization.json.Json.parseToJsonElement(json) as kotlinx.serialization.json.JsonObject
+                fun number(key: String) = (values[key] as kotlinx.serialization.json.JsonPrimitive).content.toLong()
+                RecordedFile(name, number("size"), number("durationMs"), number("width").toInt(), number("height").toInt(), startedAt)
+            }.getOrNull() }
+            if (file == null) deleteRecordingFile(name)
+            done(file)
+        }
+    }
     init { native().listen { mutable.value = it } }
     private suspend fun perform(name: String, enabled: Boolean = false) = suspendCancellableCoroutine<Unit> { continuation ->
         native().action(name, enabled) { error ->
@@ -110,6 +154,7 @@ private class IosMediaController : MediaController, PreviewAudio {
 
     fun disconnectNative(): Deferred<Unit> = disconnection ?: CompletableDeferred<Unit>().also { done ->
         disconnection = done
+        stopRecording()
         // A disposed controller must never disconnect the next meeting's native room.
         if (IosPlatform.mediaOwner !== this) done.complete(Unit)
         else native().action("disconnect", false) { error ->

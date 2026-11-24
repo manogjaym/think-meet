@@ -1,6 +1,7 @@
 package com.woongjin.thinkmeet.ui
 
 import com.woongjin.thinkmeet.data.*
+import com.woongjin.thinkmeet.platform.lessonRecordingSupported
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.datetime.*
@@ -54,6 +55,8 @@ data class AppUiState(
     val error: String? = null,
     val camera: Boolean = true,
     val microphone: Boolean = false,
+    /** The owner chose to record the screen for the next admission from prejoin. */
+    val recordLesson: Boolean = false,
 )
 
 /** One owner for requests and admission: repeated taps cannot rotate a live admission token. */
@@ -77,6 +80,11 @@ class AppState(val api: ThinkMeetApi, private val scope: CoroutineScope) {
     }
     private val capabilityJob = scope.launch {
         while (isActive) { api.refreshCapabilities(); delay(CapabilityRefreshIntervalMillis) }
+    }
+    /** Device recordings upload for the signed-in teacher only and pause while signed out. */
+    val recordings = RecordingUploads(api, scope)
+    private val recordingObserver = scope.launch {
+        state.map { it.user?.takeIf { user -> user.isTeacher }?.id }.distinctUntilChanged().collect { recordings.attach(it) }
     }
 
     init { restore() }
@@ -200,7 +208,10 @@ class AppState(val api: ThinkMeetApi, private val scope: CoroutineScope) {
         reload()
     }
     fun open(lesson: Lesson) = openLesson(lesson) { Route.Detail(it) }
-    fun prejoin(lesson: Lesson) = openLesson(lesson) { Route.Prejoin(it) }
+    fun prejoin(lesson: Lesson) {
+        chooseRecording(false)
+        openLesson(lesson) { Route.Prejoin(it) }
+    }
 
     private fun openLesson(lesson: Lesson, destination: (Lesson) -> Route.ForLesson) = work {
         cancelWaiting()
@@ -232,6 +243,10 @@ class AppState(val api: ThinkMeetApi, private val scope: CoroutineScope) {
             mutable.update { it.copy(error = message) }
         }
     }
+    /** Only the lesson owner is asked, on a device that can record its own screen. */
+    fun asksRecording(lesson: Lesson): Boolean = state.value.user?.let(lesson::isOwner) == true && lesson.canJoin &&
+        supportsFeature(ContractProtocol.FeatureIds.ClassroomRecording) && lessonRecordingSupported()
+    fun chooseRecording(record: Boolean) { mutable.update { it.copy(recordLesson = record) } }
     fun devices(camera: Boolean, microphone: Boolean) { mutable.update { it.copy(camera = camera, microphone = microphone) } }
     fun joinCode(value: String) = work {
         if (state.value.route is Route.Meeting) return@work
@@ -362,7 +377,7 @@ class AppState(val api: ThinkMeetApi, private val scope: CoroutineScope) {
         val meeting = before.route as? Route.Meeting ?: return
         val endedRoute = Route.Ended(meeting.lesson)
         val version = sessionVersion
-        mutable.update { it.copy(route = endedRoute) }
+        mutable.update { it.copy(route = endedRoute, recordLesson = false) }
         postMeetingJob?.cancel()
         postMeetingJob = scope.launch {
             try {
@@ -383,6 +398,7 @@ class AppState(val api: ThinkMeetApi, private val scope: CoroutineScope) {
         closed = true
         operationVersion++; sessionVersion++
         operationJob?.cancel(); waitingJob?.cancel(); sessionJob?.cancel(); postMeetingJob?.cancel(); authObserver.cancel(); capabilityJob.cancel()
+        recordingObserver.cancel(); recordings.attach(null)
     }
 }
 

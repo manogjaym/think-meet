@@ -6,7 +6,7 @@ class ContractCommand<P>(val type: String, val serializer: kotlinx.serialization
 data class ContractFeature(val id: String, val stage: String, val requiresRevision: Int, val defaultEnabled: Boolean, val platforms: Set<String>)
 
 object ContractProtocol {
-    const val Revision = 13
+    const val Revision = 14
     const val ApiBasePath = "/api/v1"
     const val SocketPath = "/socket.io"
     const val PlatformHeader = "X-ThinkMeet-Platform"
@@ -33,6 +33,7 @@ object ContractProtocol {
         const val ClassroomLessonModes = "classroom.lesson-modes"
         const val ClassroomTextbookPicker = "classroom.textbook-picker"
         const val MeetingParticipantControls = "meeting.participant-controls"
+        const val ClassroomRecording = "classroom.recording"
     }
     /** Server error codes from contracts/openapi.json ErrorCode; compare exact values, never substrings. */
     object ErrorCodes {
@@ -69,6 +70,7 @@ object ContractProtocol {
         const val NoShare = "NO_SHARE"
         const val ParticipantUnavailable = "PARTICIPANT_UNAVAILABLE"
         const val RateLimit = "RATE_LIMIT"
+        const val RecordingOffset = "RECORDING_OFFSET"
         const val RequestFailed = "REQUEST_FAILED"
         const val ScreenNotPublished = "SCREEN_NOT_PUBLISHED"
         const val ShareBusy = "SHARE_BUSY"
@@ -144,6 +146,10 @@ object ContractProtocol {
         ContractHttpOperation("getPrejoinStatus", "GET", "/api/v1/lessons/{id}/prejoin", "classroom.prejoin"),
         ContractHttpOperation("renewPrejoinWait", "PUT", "/api/v1/lessons/{id}/waiting/{clientId}", "classroom.prejoin"),
         ContractHttpOperation("clearPrejoinWait", "DELETE", "/api/v1/lessons/{id}/waiting/{clientId}", "classroom.prejoin"),
+        ContractHttpOperation("createLessonRecording", "POST", "/api/v1/lessons/{id}/recordings", "classroom.recording"),
+        ContractHttpOperation("listLessonRecordings", "GET", "/api/v1/recordings", "classroom.recording"),
+        ContractHttpOperation("uploadLessonRecordingChunk", "PUT", "/api/v1/recordings/{id}/content", "classroom.recording"),
+        ContractHttpOperation("getLessonRecordingContent", "GET", "/api/v1/recordings/{id}/content", "classroom.recording"),
     )
     val Features = listOf(
         ContractFeature("classroom.core", "baseline", 0, true, setOf("web", "android", "ios")),
@@ -156,6 +162,7 @@ object ContractProtocol {
         ContractFeature("classroom.lesson-modes", "in-progress", 10, true, setOf("web", "android", "ios")),
         ContractFeature("classroom.textbook-picker", "ready", 11, true, setOf("web", "android", "ios")),
         ContractFeature("meeting.participant-controls", "in-progress", 13, true, setOf("web", "android", "ios")),
+        ContractFeature("classroom.recording", "in-progress", 14, true, setOf("web", "android", "ios")),
     )
     private val commandFeatures: Map<String, String?> = mapOf(
         "lesson.start" to "classroom.lesson-modes",

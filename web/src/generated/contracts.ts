@@ -1,5 +1,5 @@
 // Generated from contracts/openapi.json and realtime.json. Do not edit.
-export const CONTRACT_REVISION = 13 as const;
+export const CONTRACT_REVISION = 14 as const;
 export const API_BASE_PATH = "/api/v1" as const;
 export const SOCKET_PATH = "/socket.io" as const;
 export const SOCKET_EVENTS = {
@@ -35,7 +35,7 @@ export type LessonInstruction = { phase: "preparing" | "classroom" | "mirroring"
 export type MeetingSnapshot = { lessonId: string; lesson: Lesson; instruction?: LessonInstruction; participants: Array<MeetingParticipant>; messages: Array<ChatMessage>; share: (Share) | null; strokes: Array<Stroke>; seq: number; serverTime: string; assistance?: (AssistanceSession) | null };
 export type RealtimeError = { code: string; message: string };
 export type ErrorResponse = { code: string; message: string };
-export type ErrorCode = "ACCOUNT" | "ANNOTATION_NOT_ALLOWED" | "ASSISTANCE_BUSY" | "ASSISTANCE_UNAVAILABLE" | "CANCELLED" | "CLIENT_UPDATE_REQUIRED" | "CONFLICT" | "CONNECTION" | "CONSENT_REQUIRED" | "ENDED" | "FEATURE_UNAVAILABLE" | "FILE_TOO_LARGE" | "FORBIDDEN" | "INTERNAL" | "INVALID" | "INVALID_CREDENTIALS" | "INVALID_FILE" | "INVALID_MATERIAL" | "INVALID_SIGNATURE" | "KICKED" | "LESSON_MODE_CHANGED" | "LESSON_MODE_REQUIRED" | "LESSON_NOT_STARTED" | "LIVE" | "MATERIAL_IN_USE" | "NOTE_SHARE_CHANGED" | "NOTE_TARGET_CHANGED" | "NOT_CONNECTED" | "NOT_FOUND" | "NOT_READY" | "NO_SHARE" | "PARTICIPANT_UNAVAILABLE" | "RATE_LIMIT" | "REQUEST_FAILED" | "SCREEN_NOT_PUBLISHED" | "SHARE_BUSY" | "STALE_ASSISTANCE" | "STALE_GEOMETRY" | "STALE_SHARE" | "UNAUTHENTICATED" | "UNKNOWN_COMMAND" | "UNSUPPORTED_CODEC" | "UNSUPPORTED_FILE" | "UPLOAD_CANCELLED" | "VALIDATION" | "WAITING";
+export type ErrorCode = "ACCOUNT" | "ANNOTATION_NOT_ALLOWED" | "ASSISTANCE_BUSY" | "ASSISTANCE_UNAVAILABLE" | "CANCELLED" | "CLIENT_UPDATE_REQUIRED" | "CONFLICT" | "CONNECTION" | "CONSENT_REQUIRED" | "ENDED" | "FEATURE_UNAVAILABLE" | "FILE_TOO_LARGE" | "FORBIDDEN" | "INTERNAL" | "INVALID" | "INVALID_CREDENTIALS" | "INVALID_FILE" | "INVALID_MATERIAL" | "INVALID_SIGNATURE" | "KICKED" | "LESSON_MODE_CHANGED" | "LESSON_MODE_REQUIRED" | "LESSON_NOT_STARTED" | "LIVE" | "MATERIAL_IN_USE" | "NOTE_SHARE_CHANGED" | "NOTE_TARGET_CHANGED" | "NOT_CONNECTED" | "NOT_FOUND" | "NOT_READY" | "NO_SHARE" | "PARTICIPANT_UNAVAILABLE" | "RATE_LIMIT" | "RECORDING_OFFSET" | "REQUEST_FAILED" | "SCREEN_NOT_PUBLISHED" | "SHARE_BUSY" | "STALE_ASSISTANCE" | "STALE_GEOMETRY" | "STALE_SHARE" | "UNAUTHENTICATED" | "UNKNOWN_COMMAND" | "UNSUPPORTED_CODEC" | "UNSUPPORTED_FILE" | "UPLOAD_CANCELLED" | "VALIDATION" | "WAITING";
 export type LoginInput = { username: string; password: string };
 export type KickInput = { userId: string };
 export type InviteInput = { studentIds: Array<string> };
@@ -79,8 +79,10 @@ export type StudentAttendanceMonth = { student: StudentAttendanceStudent; month:
 export type StudentAttendanceInput = { status: StudentAttendanceStatus; reason?: (StudentAttendanceReason) | null; memo?: (string) | null };
 export type PrejoinStudent = { id: string; name: string };
 export type PrejoinStatus = { status: "SCHEDULED" | "LIVE" | "ENDED" | "CANCELLED"; waitingStudents?: Array<PrejoinStudent> };
+export type LessonRecordingInput = { requestId: string; size: number; durationMs: number; width: number; height: number; startedAt: string };
+export type LessonRecording = { id: string; lessonId: string; lessonTitle: string; status: "uploading" | "ready"; size: number; uploadedBytes: number; chunkSize: number; durationMs: number; width: number; height: number; startedAt: string; createdAt: string; expiresAt: string };
 export type ApiLesson = Lesson;
-export const ERROR_CODES = ["ACCOUNT","ANNOTATION_NOT_ALLOWED","ASSISTANCE_BUSY","ASSISTANCE_UNAVAILABLE","CANCELLED","CLIENT_UPDATE_REQUIRED","CONFLICT","CONNECTION","CONSENT_REQUIRED","ENDED","FEATURE_UNAVAILABLE","FILE_TOO_LARGE","FORBIDDEN","INTERNAL","INVALID","INVALID_CREDENTIALS","INVALID_FILE","INVALID_MATERIAL","INVALID_SIGNATURE","KICKED","LESSON_MODE_CHANGED","LESSON_MODE_REQUIRED","LESSON_NOT_STARTED","LIVE","MATERIAL_IN_USE","NOTE_SHARE_CHANGED","NOTE_TARGET_CHANGED","NOT_CONNECTED","NOT_FOUND","NOT_READY","NO_SHARE","PARTICIPANT_UNAVAILABLE","RATE_LIMIT","REQUEST_FAILED","SCREEN_NOT_PUBLISHED","SHARE_BUSY","STALE_ASSISTANCE","STALE_GEOMETRY","STALE_SHARE","UNAUTHENTICATED","UNKNOWN_COMMAND","UNSUPPORTED_CODEC","UNSUPPORTED_FILE","UPLOAD_CANCELLED","VALIDATION","WAITING"] as const;
+export const ERROR_CODES = ["ACCOUNT","ANNOTATION_NOT_ALLOWED","ASSISTANCE_BUSY","ASSISTANCE_UNAVAILABLE","CANCELLED","CLIENT_UPDATE_REQUIRED","CONFLICT","CONNECTION","CONSENT_REQUIRED","ENDED","FEATURE_UNAVAILABLE","FILE_TOO_LARGE","FORBIDDEN","INTERNAL","INVALID","INVALID_CREDENTIALS","INVALID_FILE","INVALID_MATERIAL","INVALID_SIGNATURE","KICKED","LESSON_MODE_CHANGED","LESSON_MODE_REQUIRED","LESSON_NOT_STARTED","LIVE","MATERIAL_IN_USE","NOTE_SHARE_CHANGED","NOTE_TARGET_CHANGED","NOT_CONNECTED","NOT_FOUND","NOT_READY","NO_SHARE","PARTICIPANT_UNAVAILABLE","RATE_LIMIT","RECORDING_OFFSET","REQUEST_FAILED","SCREEN_NOT_PUBLISHED","SHARE_BUSY","STALE_ASSISTANCE","STALE_GEOMETRY","STALE_SHARE","UNAUTHENTICATED","UNKNOWN_COMMAND","UNSUPPORTED_CODEC","UNSUPPORTED_FILE","UPLOAD_CANCELLED","VALIDATION","WAITING"] as const;
 export type ApiOperations = {
   health: { method: "GET"; path: "/health"; params: undefined; query: undefined; body: undefined; response: Record<string, unknown> };
   capabilities: { method: "GET"; path: "/capabilities"; params: undefined; query: undefined; body: undefined; response: CapabilitiesResponse };
@@ -119,6 +121,10 @@ export type ApiOperations = {
   getPrejoinStatus: { method: "GET"; path: "/lessons/{id}/prejoin"; params: { id: string }; query: undefined; body: undefined; response: PrejoinStatus };
   renewPrejoinWait: { method: "PUT"; path: "/lessons/{id}/waiting/{clientId}"; params: { id: string; clientId: string }; query: undefined; body: undefined; response: void };
   clearPrejoinWait: { method: "DELETE"; path: "/lessons/{id}/waiting/{clientId}"; params: { id: string; clientId: string }; query: undefined; body: undefined; response: void };
+  createLessonRecording: { method: "POST"; path: "/lessons/{id}/recordings"; params: { id: string }; query: undefined; body: LessonRecordingInput; response: LessonRecording };
+  listLessonRecordings: { method: "GET"; path: "/recordings"; params: undefined; query: { lessonId?: string }; body: undefined; response: Array<LessonRecording> };
+  uploadLessonRecordingChunk: { method: "PUT"; path: "/recordings/{id}/content"; params: { id: string }; query: { offset: number }; body: string; response: LessonRecording };
+  getLessonRecordingContent: { method: "GET"; path: "/recordings/{id}/content"; params: { id: string }; query: { platform?: "web" | "android" | "ios"; contractRevision?: number }; body: undefined; response: Response };
 };
 export type ApiOperationId = keyof ApiOperations;
 export const API_OPERATIONS = {
@@ -269,6 +275,22 @@ export const API_OPERATIONS = {
   "clearPrejoinWait": {
     "method": "DELETE",
     "path": "/lessons/{id}/waiting/{clientId}"
+  },
+  "createLessonRecording": {
+    "method": "POST",
+    "path": "/lessons/{id}/recordings"
+  },
+  "listLessonRecordings": {
+    "method": "GET",
+    "path": "/recordings"
+  },
+  "uploadLessonRecordingChunk": {
+    "method": "PUT",
+    "path": "/recordings/{id}/content"
+  },
+  "getLessonRecordingContent": {
+    "method": "GET",
+    "path": "/recordings/{id}/content"
   }
 } as const satisfies Record<ApiOperationId, { method: string; path: string }>;
 export type CommandType = "lesson.start" | "lesson.mode.set" | "chat.send" | "hand.set" | "share.start" | "share.stop" | "media.update" | "document.page" | "document.open" | "stroke.add" | "stroke.erase" | "annotation.undo" | "annotation.redo" | "annotation.clear" | "assistance.request" | "assistance.respond" | "assistance.start" | "assistance.geometry" | "assistance.stop" | "participant.control";

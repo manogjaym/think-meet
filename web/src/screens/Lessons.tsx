@@ -1,4 +1,5 @@
 import { TeacherWorksheets } from "./ClassNotes"
+import { LessonRecordings } from "../components/LessonRecordings"
 import { useEffect, useState } from "react"
 import type { LessonInput, TeacherSubject } from "../generated/contracts"
 import { designContent } from "../generated/design-content"
@@ -46,6 +47,7 @@ export function Detail({
   onEdit?: (lesson: Lesson) => void
 }) {
   const subjectsEnabled = useFeature(FEATURE_IDS.ClassroomSubjects)
+  const recordingEnabled = useFeature(FEATURE_IDS.ClassroomRecording)
   const [cancel, setCancel] = useState(false)
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">(
     "idle",
@@ -250,6 +252,7 @@ export function Detail({
         </aside>
       </div>
       {notesEnabled && role === "teacher" && <TeacherWorksheets key={lesson.id} lessonId={lesson.id} />}
+      {recordingEnabled && role === "teacher" && lesson.startedAt && <LessonRecordings key={`recordings-${lesson.id}`} lessonId={lesson.id} />}
       {error && (
         <p className="service-error" role="alert">
           {error}

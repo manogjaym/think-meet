@@ -1,6 +1,6 @@
 import { designContent } from "../generated/design-content"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { ConnectionState, Track, type AudioTrack, type Room } from "livekit-client"
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
+import { ConnectionState, RoomEvent, Track, type AudioTrack, type Room } from "livekit-client"
 import { type ApiLesson, type JoinResult, type User } from "../lib/api"
 import type { JoinDevices } from "./Join"
 import { useMeeting } from "../lib/useMeeting"
@@ -33,6 +33,7 @@ import "../components/meeting/live-meeting.css"
 import "../components/meeting/chat-notifications.css"
 import "../components/meeting/chat-notification-badges.css"
 import { FEATURE_IDS } from "../generated/feature-policy"
+import { recordingSnapshot, releaseRecording, retainRecording, setRecordingMicrophone, startRecording, subscribeRecording, takeRecordingNotice } from "../lib/lessonRecording"
 
 export function Meeting(props: { lesson: ApiLesson; user: User; initialDevices: JoinDevices; admission?: JoinResult; onEnded: (reason?: string) => void; onWaiting?: () => void }) {
   const { lesson, user } = props
@@ -203,6 +204,24 @@ export function Meeting(props: { lesson: ApiLesson; user: User; initialDevices: 
     if (isHost || phase === undefined || previous === undefined || ownAnnotation === undefined || previous === ownAnnotation) return
     showNotice(ownAnnotation ? designContent.participantAnnotationAllowed : designContent.participantAnnotationRevoked)
   }, [ownAnnotation, isHost, phase, showNotice])
+  // The owner's tab recording: the share picker ran in prejoin; writing starts once media is connected.
+  const recording = useSyncExternalStore(subscribeRecording, recordingSnapshot)
+  useEffect(() => { retainRecording(); return releaseRecording }, [])
+  useEffect(() => {
+    if (!room || !isHost) return
+    const microphone = () => room.localParticipant.getTrackPublication(Track.Source.Microphone)?.track?.mediaStreamTrack
+    const sync = () => setRecordingMicrophone(microphone())
+    if (live.connection === ConnectionState.Connected) void startRecording(lesson.id, microphone())
+    room.on(RoomEvent.LocalTrackPublished, sync).on(RoomEvent.LocalTrackUnpublished, sync)
+    return () => { room.off(RoomEvent.LocalTrackPublished, sync).off(RoomEvent.LocalTrackUnpublished, sync) }
+  }, [room, isHost, live.connection, lesson.id])
+  useEffect(() => { const notice = takeRecordingNotice(); if (notice) showNotice(notice) }, [recording.notice, showNotice])
+  useEffect(() => {
+    if (!recording.active) return
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = "" }
+    window.addEventListener("beforeunload", warn)
+    return () => window.removeEventListener("beforeunload", warn)
+  }, [recording.active])
   const participants = useRoomParticipants(room)
   const speaking = useRemoteSpeaker(layout === "speaker" ? room : null, user.id)
   const featured = layout === "speaker" ? speaking || participants.find(person => person.identity === lesson.teacher.id) || room?.localParticipant : undefined
@@ -214,7 +233,7 @@ export function Meeting(props: { lesson: ApiLesson; user: User; initialDevices: 
   const connectionText = live.connection === ConnectionState.Connected ? live.appConnected ? designContent.meetingConnected : "수업 상태 재연결 중" : live.connection === ConnectionState.Reconnecting || live.connection === ConnectionState.SignalReconnecting ? "재연결 중" : live.connection === ConnectionState.Disconnected ? "연결 끊김" : "연결 중"
   const captureControl = notesEnabled && <button className="share-save" disabled={!captureReady || captureBusy} onClick={() => void previewCapture()}>{designContent.notesCapture}</button>
   return <main className={`meeting ${panel || teacherRail ? "has-panel" : ""} ${teacherRail ? "has-teacher-rail" : ""}`} data-testid="meeting">
-    <header className="meeting-head"><div className="meeting-title-group"><span className="meeting-brand" aria-label="웅진 씽크빅"><BrandSymbol /></span><div><h1>{activeLesson.title}</h1><span className="meeting-subtitle">{meetingSubtitle}</span></div></div><div className="meeting-head-actions"><span className="call-connected" data-state={live.connection}><i />{connectionText}</span>{phase !== "preparing" && <span className="meeting-timer"><Icon name="clock" size={16} />{elapsed}</span>}{!teacherRail && <button className="layout-toggle" onClick={() => { captureLayout(); setLayout(layout === "grid" ? "speaker" : "grid") }} aria-label={layout === "grid" ? "발표자 보기로 전환" : "바둑판 보기로 전환"}><Icon name={layout === "grid" ? "screen" : "users"} size={18} /><span>{layout === "grid" ? "발표자 보기" : "바둑판 보기"}</span></button>}</div></header>
+    <header className="meeting-head"><div className="meeting-title-group"><span className="meeting-brand" aria-label="웅진 씽크빅"><BrandSymbol /></span><div><h1>{activeLesson.title}</h1><span className="meeting-subtitle">{meetingSubtitle}</span></div></div><div className="meeting-head-actions"><span className="call-connected" data-state={live.connection}><i />{connectionText}</span>{recording.active && <span className="recording-indicator" aria-label={designContent.recordingActive}><i /><span>{designContent.recordingActive}</span></span>}{phase !== "preparing" && <span className="meeting-timer"><Icon name="clock" size={16} />{elapsed}</span>}{!teacherRail && <button className="layout-toggle" onClick={() => { captureLayout(); setLayout(layout === "grid" ? "speaker" : "grid") }} aria-label={layout === "grid" ? "발표자 보기로 전환" : "바둑판 보기로 전환"}><Icon name={layout === "grid" ? "screen" : "users"} size={18} /><span>{layout === "grid" ? "발표자 보기" : "바둑판 보기"}</span></button>}</div></header>
     {isHost && lessonModes && instruction && <div className="meeting-lesson-modes" role="group" aria-label={designContent.meetingLessonModesLabel}>
       <button aria-pressed={activeMode === "classroom"} aria-haspopup="dialog" disabled={!modeReady || modeBusy} onClick={() => selectMode("classroom")}>{designContent.meetingLessonClassroom}</button>
       <button aria-pressed={activeMode === "mirroring"} aria-haspopup="dialog" disabled={!modeReady || modeBusy || !assistanceSupported} onClick={() => selectMode("mirroring")}>{designContent.meetingLessonMirroring}</button>

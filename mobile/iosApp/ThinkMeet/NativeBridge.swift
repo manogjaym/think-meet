@@ -5,6 +5,8 @@ import PDFKit
 import Security
 import UniformTypeIdentifiers
 import LiveKit
+import AVKit
+import ReplayKit
 import ThinkMeet
 
 /// The platform layer contains media and OS integration only; screens and rules live in KMP.
@@ -37,6 +39,7 @@ final class NativeBridge: NSObject, IosNativeBridge, RoomDelegate, BroadcastMana
     private var lastError: String?
     private var noteImageCompletion: ((Data?, String?) -> Void)?
     private var pickerCompletion: ((String?, String?, String?, KotlinLong) -> Void)?
+    private let lessonRecorder = LessonRecorder()
     private var videoViews: [WeakVideoView] = []
     private weak var callRootView: UIView?
     #if DEBUG && targetEnvironment(simulator)
@@ -603,6 +606,28 @@ final class NativeBridge: NSObject, IosNativeBridge, RoomDelegate, BroadcastMana
         }
     }
     func doCopy(text: String) { UIPasteboard.general.string = text }
+    func recordingAvailable() -> Bool { RPScreenRecorder.shared().isAvailable }
+    func startRecording(path: String, completion: @escaping (String?) -> Void) {
+        lessonRecorder.start(path: path) { error in DispatchQueue.main.async { _ = completion(error) } }
+    }
+    func stopRecording(completion: @escaping (String?, String?) -> Void) {
+        lessonRecorder.stop { result, error in DispatchQueue.main.async { _ = completion(result, error) } }
+    }
+    /// Presents the system player; the private URL is authenticated with the session cookie, as for materials.
+    func playRecording(url: String, cookie: String, onClose: @escaping () -> Void) {
+        guard let resource = URL(string: url), let presenter = topController() else { _ = onClose(); return }
+        let cookies = cookie.split(separator: ";").compactMap { part -> HTTPCookie? in
+            let pair = part.trimmingCharacters(in: .whitespaces).split(separator: "=", maxSplits: 1)
+            guard pair.count == 2 else { return nil }
+            return HTTPCookie(properties: [.domain: resource.host ?? "", .path: "/", .name: String(pair[0]), .value: String(pair[1]), .secure: "TRUE"])
+        }
+        let player = AVPlayer(playerItem: AVPlayerItem(asset: AVURLAsset(url: resource, options: [AVURLAssetHTTPCookiesKey: cookies])))
+        let controller = RecordingPlayerController()
+        controller.player = player
+        controller.onClose = { player.pause(); _ = onClose() }
+        controller.modalPresentationStyle = .fullScreen
+        presenter.present(controller, animated: true) { player.play() }
+    }
     func pickFile(completion: @escaping (String?, String?, String?, KotlinLong) -> Void) {
         pickerCompletion = completion
         let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.pdf, .mpeg4Movie], asCopy: false)
@@ -699,6 +724,13 @@ final class NativeBridge: NSObject, IosNativeBridge, RoomDelegate, BroadcastMana
         }
     }
     func room(_ room: Room, didUpdateConnectionState connectionState: ConnectionState, from oldConnectionState: ConnectionState) { emitState() }
+}
+private final class RecordingPlayerController: AVPlayerViewController {
+    var onClose: (() -> Void)?
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        if isBeingDismissed || presentingViewController == nil { onClose?(); onClose = nil }
+    }
 }
 private struct WeakVideoView { weak var view: VideoView?; let identity: String; let screen: Bool }
 private enum NativeError: LocalizedError {

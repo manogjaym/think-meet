@@ -134,6 +134,7 @@ input::placeholder,textarea::placeholder { color:var(--muted); }
 .confirm .confirm-icon { width:36px; height:36px; border-radius:var(--tm-radius-r10); flex-shrink:0; }
 .confirm h2 { font-size:var(--type-dialog); font-weight:var(--weight-bold); line-height:var(--line-dialog); letter-spacing:-.02em; margin:0;  color:var(--text);}
 .confirm p { font-size:var(--type-body); line-height:1.5; color:var(--muted);  margin:var(--space-3) 0 0;}
+.confirm p.confirm-note { padding:var(--space-3); border-radius:var(--tm-radius-r8); background:var(--tm-color-warning-surface); color:var(--tm-color-warning-text); font-size:var(--type-support); }
 .confirm-actions { display:flex; justify-content:flex-end; gap:var(--space-2); margin-top:var(--tm-spacing-s20); padding-top:var(--space-3); border-top:1px solid var(--line); }
 .confirm-actions button { min-height:48px; padding:0 18px; font-size:var(--type-label); font-weight:var(--weight-semibold);  line-height:1.5;}
 .center-page { min-height:calc(100dvh - 72px - env(safe-area-inset-top)); display:grid; grid-template-columns:minmax(0, 1fr); place-items:center; padding:var(--tm-spacing-s40) var(--space-6); }

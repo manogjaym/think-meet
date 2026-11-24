@@ -1,4 +1,4 @@
-import { Suspense, useCallback, useState } from "react"
+import { Suspense, useCallback, useEffect, useState } from "react"
 import { BrowserRouter, useLocation, useNavigate } from "react-router-dom"
 import { AppScreen } from "./app/AppScreen"
 import { Status } from "./app/Status"
@@ -11,6 +11,7 @@ import { ScreenTransition } from "./components/ScreenTransition"
 import { Login } from "./screens/Login"
 import { ApiError, call, type ApiLesson, type JoinResult } from "./lib/api"
 import { AuthProvider, useAuth } from "./lib/auth"
+import { attachRecordingUploads } from "./lib/recordingUploads"
 import { notesFeature } from "./lib/classNotes"
 import { prejoinFeature } from "./lib/prejoin"
 import { useCapabilityRefresh, useFeature } from "./lib/useFeature"
@@ -36,6 +37,8 @@ export default function App() {
 /** App shell: route, session, shared lesson state and the top bar. Screens are chosen by AppScreen. */
 function Application() {
   const auth = useAuth(), { user } = auth
+  // Recordings finished in this browser upload for the signed-in teacher only.
+  useEffect(() => { attachRecordingUploads(user?.role === "teacher" ? user.id : undefined) }, [user?.id, user?.role])
   const location = useLocation(), navigate = useNavigate()
   const route = parseRoute(location.pathname, location.search)
   const { screen, lessonId } = route

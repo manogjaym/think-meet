@@ -305,3 +305,8 @@
 .teacher-stage-guide button:disabled { opacity: .5; cursor: not-allowed; }
 .teacher-stage-guide.is-waiting p { font-size: var(--type-heading); font-weight: var(--weight-bold); }
 .teacher-stage-guide .teacher-stage-cancel { min-width: 200px; border-radius: 999px; background: transparent; color: var(--tm-color-meeting-muted); }
+
+/* Owner-only tab recording badge; Chrome also shows its own sharing indicator. */
+.recording-indicator { display:flex; align-items:center; gap:var(--tm-spacing-s6); padding:var(--tm-spacing-s4) var(--tm-spacing-s8); border-radius:var(--tm-radius-r8); background:color-mix(in srgb, var(--tm-color-danger) 18%, transparent); color:var(--meeting-text, var(--tm-color-white)); font-size:var(--type-caption); line-height:1.5; white-space:nowrap; }
+.recording-indicator i { width:7px; height:7px; border-radius:50%; background:var(--tm-color-danger); }
+@media (max-width: design(layout.meetingCompactBreakpoint)) { .recording-indicator span { font-size:0; } .recording-indicator span::after { content:"REC"; font-size:var(--type-caption); } }

@@ -1,0 +1,31 @@
+{
+  "id": "classroom-recording",
+  "summary": "선생님 앱과 PC 웹(Chrome·Edge)이 수업 시작 때 화면 녹화 여부를 묻고, 수업 화면과 소리를 기기에서 압축 녹화한 뒤 수업이 끝나면 서버에 조각 업로드합니다. 선생님은 웹·앱 수업 상세에서 30일 동안 다시 봅니다.",
+  "scope": "shared",
+  "featureIds": [
+    "classroom.recording"
+  ],
+  "platforms": {
+    "server": {
+      "status": "implemented"
+    },
+    "web": {
+      "status": "implemented"
+    },
+    "android": {
+      "status": "implemented"
+    },
+    "ios": {
+      "status": "implemented"
+    }
+  },
+  "verification": [
+    "2026-11-24 Asia/Seoul: 저장소 루트에서 npm run shared:check, npm run verify(공통 13, 서버 73, 웹 19, 타입 검사, Vite 빌드) 통과. 변경 파일 목록을 전달한 shared:check 통과.",
+    "server/: npx tsx --test test/recordings.test.ts 4개 통과. infra/local/ API·웹 컨테이너 재배포 후 실제 MinIO에서 조각 업로드·재전송·위치 오류·완료·Range 재생·권한 차단 확인.",
+    "web: Vite 개발 서버와 로컬 API로 1280×800·390×844 수업 녹화 목록과 재생 확인.",
+    "web 녹화: 확장 프로그램 없이 getDisplayMedia(현재 탭)·MediaRecorder(H.264 MP4)·OPFS·조각 업로드. Playwright Chromium 159(Xvfb, --auto-accept-this-tab-capture, 가짜 장치)로 1280×800·390×844 녹화 확인 창부터 업로드 완료까지 실행, 서버 파일 H.264 1152×720·Opus 17초 확인. 검증용 수업 3건·녹화·MinIO 객체 삭제.",
+    "mobile/: JDK 17로 ./gradlew :composeApp:checkDesignTokens :composeApp:checkContracts :composeApp:testDebugUnitTest :composeApp:assembleDebug 통과(단위 테스트 50개). 기존 Android 35 에뮬레이터에서 녹화 확인 창, OS 동의, 녹화, 종료 후 업로드, 서버 파일 ffprobe, 수업 상세 재생, 태블릿 폭 화면 확인 후 원래 화면 크기·밀도 복원. 검증용 수업·녹화 2건과 MinIO 객체는 삭제.",
+    "iOS: Linux 환경이라 Kotlin iOS 프레임워크, Swift 호스트 빌드, 실행 모두 미실행. 실제 iPhone·iPad 확인 전까지 기능은 in-progress.",
+    "미검증 범위와 화면 증거는 features/classroom-recording.md 참고."
+  ]
+}

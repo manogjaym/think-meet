@@ -98,7 +98,8 @@ fun App() {
                     controller.notes(NotesTab.Worksheets)
                 }
                 route is Route.Meeting ->
-                    MeetingScreen(api, route.lesson, user, route.admission, state.camera, state.microphone, controller::meetingExit)
+                    MeetingScreen(api, route.lesson, user, route.admission, state.camera, state.microphone, controller::meetingExit,
+                        record = state.recordLesson, onRecorded = { file -> controller.recordings.enqueue(user.id, route.lesson.id, file) })
                 else -> BoxWithConstraints(Modifier.fillMaxSize()) {
                     val mobile = maxWidth <= LayoutToken.RootNavigationMobile
                     val compact = maxWidth <= LayoutToken.RootHeaderCompact

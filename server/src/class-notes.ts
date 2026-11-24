@@ -71,15 +71,17 @@ export class ClassNotes {
     if (user.role !== 'student') throw new ApiError('FORBIDDEN', '학생 계정에서 이용할 수 있어요.', 403)
   }
 
+  /**
+   * A live lesson wins over scheduled ones. Sorting by `status` would follow the enum's declaration order
+   * (SCHEDULED before LIVE), so the two states are looked up separately.
+   */
   private async targetFor(userId: string) {
-    return this.db.lesson.findFirst({
-      where: {
-        accessMode: 'INVITE_ONLY', members: { some: { userId, banned: false } },
-        OR: [{ status: 'LIVE' }, { status: 'SCHEDULED', startsAt: { gte: new Date() } }],
-      },
-      orderBy: [{ status: 'asc' }, { startsAt: 'asc' }, { id: 'asc' }],
+    const find = (state: Prisma.LessonWhereInput) => this.db.lesson.findFirst({
+      where: { accessMode: 'INVITE_ONLY', members: { some: { userId, banned: false } }, ...state },
+      orderBy: [{ startsAt: 'asc' }, { id: 'asc' }],
       include: withSubject,
     })
+    return await find({ status: 'LIVE' }) ?? await find({ status: 'SCHEDULED', startsAt: { gte: new Date() } })
   }
 
   /** `subject` is the one the note image is stored under (the target's lesson subject for the submit target). */

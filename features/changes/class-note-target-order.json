@@ -1,0 +1,16 @@
+{
+  "id": "class-note-target-order",
+  "summary": "학습지 제출 대상이 진행 중 수업보다 예정 수업을 먼저 고르던 문제를 고칩니다. 수업 상태 enum의 선언 순서(SCHEDULED가 LIVE보다 앞)로 정렬하던 조회를 진행 중 수업 우선 조회 후 예정 수업 조회로 나눴습니다.",
+  "scope": "server-only",
+  "featureIds": ["classroom.notes"],
+  "platforms": {
+    "server": {"status": "implemented"},
+    "web": {"status": "unchanged", "reason": "웹은 서버가 고른 제출 대상을 그대로 표시하며 화면·요청은 바뀌지 않습니다."},
+    "android": {"status": "unchanged", "reason": "앱은 서버가 고른 제출 대상을 그대로 표시하며 화면·요청은 바뀌지 않습니다."},
+    "ios": {"status": "unchanged", "reason": "앱은 서버가 고른 제출 대상을 그대로 표시하며 화면·요청은 바뀌지 않습니다."}
+  },
+  "verification": [
+    "2026-11-24 Asia/Seoul: infra/local/에서 docker compose exec -T api node --input-type=module - < ../../server/test/class-note-target.integration.mjs. 수정 전 API에서 실패(예정 수업 선택)를 재현했고, API 재배포 후 통과(예정 수업만 있으면 가장 빠른 예정 수업, 진행 중 수업이 생기면 그 수업, 종료 후 다시 예정 수업).",
+    "같은 API에서 subject-storage.integration.mjs 통과. server/에서 타입 검사·단위 테스트 통과."
+  ]
+}

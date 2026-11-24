@@ -132,6 +132,13 @@ export const designContent = {
   "recordingUploadFailed": "업로드하지 못했어요",
   "recordingUploadRetry": "다시 올리기",
   "recordingPlay": "다시 보기",
+  "endedTitle": "수업이 끝났어요",
+  "endedLeftTitle": "수업을 나왔어요",
+  "endedDuration": "수업 시간",
+  "endedSavedScreens": "저장한 화면",
+  "endedViewRecords": "수업 기록 보기",
+  "endedHome": "홈으로",
+  "endedRejoin": "수업에 다시 참여",
   "notesCorrection": "첨삭 이미지 첨부",
   "notesCapture": "화면 저장",
   "notesCaptureSaved": "화면을 저장했어요.",
@@ -465,6 +472,22 @@ export const screenContract = {
       ],
       "interaction": "Android/iOS 학생 홈의 수업 노트 카드와 수업 노트 화면의 학습지 사진 찍기에서 전체 화면으로 엽니다. 점선은 학습지 위치 안내에 사용합니다. 사진 한 장을 촬영하면 같은 위치에 미리보기를 표시하고 가운데 재촬영, 오른쪽 제출하기를 제공합니다."
     }
+  },
+  "ended": {
+    "web": "web/src/screens/End.tsx",
+    "native": "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/ui/LessonScreens.kt",
+    "sections": [
+      "check-icon",
+      "ended-or-left-title",
+      "duration-and-saved-screen-stats",
+      "teacher-recording-upload",
+      "view-records-and-home-actions",
+      "rejoin-link-after-leaving"
+    ],
+    "layout": [
+      "layout.rootNavigationMobile"
+    ],
+    "interaction": "카드 없이 화면 가운데에 둡니다. 수업 시간은 선생님은 실제 진행 시간, 학생은 내 참여 시간을 분으로 표시합니다. 저장한 화면은 수업 노트를 쓸 수 있을 때만 이 수업에서 내가 저장한 화면 수를 표시합니다. 수업 기록 보기는 수업 노트의 수업 기록 탭, 수업 노트를 쓸 수 없으면 수업 상세를 엽니다. 휴대폰 폭에서는 통계와 버튼을 세로로 쌓습니다."
   },
   "studentAttendance": {
     "web": "web/src/screens/StudentAttendance.tsx",

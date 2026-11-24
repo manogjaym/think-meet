@@ -150,6 +150,6 @@ export function AppScreen(props: AppScreenProps) {
         />
       )
     default:
-      return <Ended lesson={lesson} user={user} role={lessonRole} setScreen={setScreen} />
+      return <Ended lesson={lesson} user={user} role={lessonRole} setScreen={setScreen} onRecords={() => navigate("/class-notes?tab=records")} />
   }
 }

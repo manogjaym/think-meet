@@ -1,0 +1,31 @@
+{
+  "id": "lesson-ended-summary",
+  "summary": "수업 종료 화면을 시안대로 바꿉니다. 카드 대신 화면 가운데에 체크 아이콘, '수업이 끝났어요'(혼자 나간 경우 '수업을 나왔어요'), 수업 시간(선생님은 실제 진행 시간, 학생은 내 참여 시간)과 저장한 화면(이 수업에서 내가 저장한 화면 수) 통계 카드, '수업 기록 보기'·'홈으로' 버튼을 둡니다. '수업 기록 보기'는 수업 노트의 수업 기록 탭을 열고, 수업 노트를 쓸 수 없으면 수업 상세를 엽니다. 저장한 화면 카드는 수업 노트를 쓸 수 있을 때만 표시합니다. 휴대폰 폭에서는 버튼을 세로로 쌓습니다. 선생님의 녹화 업로드 진행 표시와 혼자 나간 뒤 '수업에 다시 참여'는 유지합니다.",
+  "scope": "shared",
+  "featureIds": [
+    "classroom.core",
+    "classroom.notes"
+  ],
+  "platforms": {
+    "server": {
+      "status": "unchanged",
+      "reason": "기존 수업 정보와 수업 노트 기록 목록(listClassNoteCaptures)만 사용합니다."
+    },
+    "web": {
+      "status": "implemented"
+    },
+    "android": {
+      "status": "implemented"
+    },
+    "ios": {
+      "status": "implemented",
+      "reason": "공통 Compose 코드(LessonScreens.kt)를 함께 씁니다. Linux 환경이라 iOS 빌드·실행은 하지 않았습니다."
+    }
+  },
+  "verification": [
+    "2026-11-24 UTC, 저장소 루트: npm run shared:check, npm run shared:check -- --changed-files <변경 파일 목록>. web/에서 npm run design:generate, npm run design:check, npx tsc --noEmit. mobile/에서 THINK_MEET_SERVER_ORIGIN=https://115.68.2.13 THINK_MEET_SERVER_CA_FILE=../infra/local/certs/think-meet-root.crt ./gradlew :composeApp:checkDesignTokens :composeApp:compileDebugKotlinAndroid :composeApp:installDebug.",
+    "웹: Vite 개발 서버와 infra/local API에서 teacher1의 기존 종료 수업(저장한 화면 2장)으로 1280×800·390×844 확인. '수업 기록 보기' → /class-notes?tab=records, '홈으로' → / 이동 확인. 콘솔 오류 없음. 증거: features/evidence/lesson-ended-summary/web-desktop.png, web-phone.png",
+    "Android: 기존 emulator-5554(1080×2400·420dpi)에서 teacher1로 검증용 공개 수업을 만들고 녹화 없이 입장 → 모두 종료 → 종료 화면 확인. '수업 기록 보기' → 수업 노트 수업 기록 탭 이동 확인. wm size 1536x1350·density 240으로 잠시 바꿔 태블릿 폭을 캡처한 뒤 원래 값으로 되돌렸습니다. 검증용 수업과 출석 기록은 DB에서 삭제했습니다. 증거: features/evidence/lesson-ended-summary/android-phone.png, android-tablet.png",
+    "미실행: iOS 빌드·실행, 실기기, 원격 CI, 학생 계정의 종료 화면, 혼자 나간 경우의 화면."
+  ]
+}

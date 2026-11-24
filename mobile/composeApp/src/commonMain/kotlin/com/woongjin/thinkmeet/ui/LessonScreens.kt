@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import com.woongjin.thinkmeet.ErrorCard
 import com.woongjin.thinkmeet.data.*
 import com.woongjin.thinkmeet.design.*
@@ -622,28 +623,57 @@ fun attendanceText(lesson: Lesson, userId: String): String {
     val ended = lesson.status == "ENDED"
     val cancelled = lesson.status == "CANCELLED"
     val capabilities = controller.capabilities.collectAsState().value
-    val subject = lesson.subject.takeIf { capabilities.supports(ContractProtocol.FeatureIds.ClassroomSubjects) }
-    CenteredLessonCard {
-        Surface(Modifier.size(Space.S48), color = Palette.Canvas, shape = CircleShape) { Box(contentAlignment = Alignment.Center) { DesignIcon("phone", Modifier.size(Space.S30), tint = Muted) } }
-        Spacer(Modifier.height(Space.S24)); SmallBadge(if (cancelled) "수업 취소" else if (ended) "수업 종료 완료" else "수업에서 나감"); Spacer(Modifier.height(Space.S16))
-        LessonText(if (cancelled) "취소된 수업이에요" else if (ended) "수업이 모두 종료되었어요" else "수업을 나왔어요", fontSize = Type.Title, lineHeight = Type.Title * 1.3462f, fontWeight = DesignWeight.Bold, textAlign = TextAlign.Center); Spacer(Modifier.height(Space.S8))
-        LessonText(if (cancelled) "선생님이 이 수업 일정을 취소했습니다." else if (ended && lesson.teacher.id == user.id) "참여 학생에게 종료 안내를 보냈습니다." else if (ended) "선생님이 수업을 종료했어요." else "다른 참여자는 수업을 계속할 수 있어요.", color = Muted, fontSize = Type.Body, lineHeight = Type.Body * 1.5f, textAlign = TextAlign.Center); Spacer(Modifier.height(Space.S32))
-        Surface(Modifier.fillMaxWidth(), color = Palette.Canvas, shape = RoundedCornerShape(Corner.R8)) {
-            Column(Modifier.padding(horizontal = Space.S20, vertical = Space.S2)) {
-                SummaryRow("학습 제목", lesson.title); HorizontalDivider(color = Palette.Line)
-                subject?.let { SummaryRow(DesignContent.LessonSubjectLabel, it.name); HorizontalDivider(color = Palette.Line) }
-                SummaryRow(if (!user.isTeacher) "내 참여 시간" else if (ended) DesignContent.LessonSubjectActualTime else "현재까지 진행 시간", elapsedLesson(lesson, user, subject != null)); HorizontalDivider(color = Palette.Line)
-                Row(Modifier.fillMaxWidth().padding(vertical = Space.S14), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.S16)) { LessonText("종료 상태", Modifier.weight(1f), fontSize = Type.Support, color = Muted); SmallBadge(if (cancelled) "취소" else if (ended) "정상 종료" else "개인 퇴장") }
+    val bySubject = lesson.subject != null && capabilities.supports(ContractProtocol.FeatureIds.ClassroomSubjects)
+    val notesEnabled = capabilities.supports(ContractProtocol.FeatureIds.ClassroomNotes)
+    var saved by remember(lesson.id) { mutableStateOf<Int?>(null) }
+    LaunchedEffect(lesson.id, notesEnabled, cancelled) {
+        if (!notesEnabled || cancelled) return@LaunchedEffect
+        saved = try { controller.api.noteCaptures().count { it.lesson.id == lesson.id && it.source == "self" } } catch (error: CancellationException) { throw error } catch (_: Exception) { null }
+    }
+    BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        val phone = maxWidth <= LayoutToken.RootNavigationMobile
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = if (phone) Space.S18 else Space.S24, vertical = if (phone) Space.S28 else Space.S40), horizontalAlignment = Alignment.CenterHorizontally) {
+            Column(Modifier.widthIn(max = 600.dp).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                Surface(Modifier.size(if (phone) Space.S72 else Space.S96), color = Palette.Selection, shape = CircleShape) { Box(contentAlignment = Alignment.Center) { DesignIcon(if (cancelled) "alert" else "check", Modifier.size(Space.S36), tint = Brand) } }
+                Spacer(Modifier.height(if (phone) Space.S24 else Space.S32))
+                val titleSize = if (phone) Type.Title else Type.Display
+                LessonText(if (cancelled) "취소된 수업이에요" else if (ended) DesignContent.EndedTitle else DesignContent.EndedLeftTitle, fontSize = titleSize, lineHeight = titleSize * 1.3462f, fontWeight = DesignWeight.Bold, textAlign = TextAlign.Center)
+                Spacer(Modifier.height(if (phone) Space.S20 else Space.S24))
+                if (!cancelled) Row(if (phone) Modifier.fillMaxWidth() else Modifier, horizontalArrangement = Arrangement.spacedBy(Space.S16, Alignment.CenterHorizontally)) {
+                    val stat = if (phone) Modifier.weight(1f) else Modifier.width(200.dp)
+                    EndedStat(DesignContent.EndedDuration, lessonMinutes(lesson, user, bySubject)?.let { "${it}분" } ?: "–", phone, stat)
+                    if (notesEnabled) EndedStat(DesignContent.EndedSavedScreens, saved?.let { "${it}장" } ?: "–", phone, stat)
+                }
+                if (lesson.teacher.id == user.id) EndedRecordingUploads(controller, lesson.id)
+                state.error?.let { Spacer(Modifier.height(Space.S12)); ErrorCard(it) }
+                Spacer(Modifier.height(Space.S32))
+                val records = { if (notesEnabled) controller.notes(NotesTab.Records) else controller.detail() }
+                val buttonModifier = Modifier.heightIn(min = Space.S56)
+                if (phone) Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Space.S12)) {
+                    DesignButton(DesignContent.EndedViewRecords, records, buttonModifier.fillMaxWidth())
+                    EndedOutlineButton(DesignContent.EndedHome, controller::home, buttonModifier.fillMaxWidth())
+                } else Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Space.S16)) {
+                    DesignButton(DesignContent.EndedViewRecords, records, buttonModifier.weight(1f))
+                    EndedOutlineButton(DesignContent.EndedHome, controller::home, buttonModifier.weight(1f))
+                }
+                if (!ended && lesson.canJoin) { Spacer(Modifier.height(Space.S12)); TextButton({ controller.prejoin(lesson) }, Modifier.fillMaxWidth().heightIn(min = Space.S48)) { LessonText(DesignContent.EndedRejoin, color = Muted, fontSize = Type.Label, fontWeight = DesignWeight.SemiBold) } }
             }
         }
-        if (lesson.teacher.id == user.id) EndedRecordingUploads(controller, lesson.id)
-        state.error?.let { Spacer(Modifier.height(Space.S12)); ErrorCard(it) }
-        Spacer(Modifier.height(Space.S24)); DesignButton("홈으로 돌아가기", controller::home, Modifier.fillMaxWidth())
-        if (lesson.canJoin) TextButton({ controller.prejoin(lesson) }, Modifier.fillMaxWidth().heightIn(min = Space.S48)) { LessonText("수업에 다시 참여", color = Muted, fontSize = Type.Label, fontWeight = DesignWeight.SemiBold) }
     }
 }
-@Composable private fun SummaryRow(label: String, value: String) {
-    Row(Modifier.fillMaxWidth().padding(vertical = Space.S14), horizontalArrangement = Arrangement.spacedBy(Space.S16), verticalAlignment = Alignment.CenterVertically) { LessonText(label, color = Muted, fontSize = Type.Support); LessonText(value, Modifier.weight(1f), textAlign = TextAlign.End, fontSize = Type.Support, fontWeight = DesignWeight.SemiBold, lineHeight = Type.Support * 1.5f) }
+@Composable private fun EndedStat(label: String, value: String, phone: Boolean, modifier: Modifier) {
+    Surface(modifier, color = Palette.Surface, border = BorderStroke(Space.S1, Palette.Line), shape = RoundedCornerShape(Corner.R16)) {
+        Column(Modifier.padding(horizontal = Space.S16, vertical = Space.S20), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(Space.S4)) {
+            LessonText(label, color = Muted, fontSize = Type.Support, lineHeight = Type.Support * 1.5f, textAlign = TextAlign.Center)
+            val size = if (phone) Type.Title else Type.Display
+            LessonText(value, color = Brand, fontSize = size, lineHeight = size * 1.3f, fontWeight = DesignWeight.Bold, textAlign = TextAlign.Center)
+        }
+    }
+}
+@Composable private fun EndedOutlineButton(text: String, onClick: () -> Unit, modifier: Modifier) {
+    OutlinedButton(onClick, modifier, shape = RoundedCornerShape(Corner.R12), border = BorderStroke(1.5.dp, Brand), colors = ButtonDefaults.outlinedButtonColors(containerColor = Palette.White, contentColor = Brand)) {
+        LessonText(text, color = Brand, fontSize = Type.Label, fontWeight = DesignWeight.SemiBold)
+    }
 }
 @Composable private fun CenteredLessonCard(cardWidth: Dp = LayoutToken.StatusCardMaxWidth, waiting: Boolean = false, content: @Composable ColumnScope.() -> Unit) {
     BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -677,19 +707,18 @@ private fun completedLessonTime(lesson: Lesson): String? {
     val finish = if (startLocal.date == endLocal.date) clockText(endLocal) else "${endLocal.date} ${clockText(endLocal)}"
     return "${startLocal.date} ${clockText(startLocal)} – $finish · ${((end - start).inWholeMilliseconds / 60_000.0).roundToLong()}분"
 }
-private fun elapsedLesson(lesson: Lesson, user: User, bySubject: Boolean): String {
-    val intervals = lesson.attendance.filter { it.userId == user.id }
-    val personal = !user.isTeacher
-    val start = when {
-        personal -> intervals.minByOrNull { it.joinedAt }?.joinedAt
-        bySubject -> lessonRecordStart(lesson)
-        else -> lesson.startedAt
-    }
-    if (start == null) return if (personal) "참여 기록이 없어요" else "수업이 시작되지 않았어요"
+/** Minutes for the end screen: the teacher sees the lesson length, a student their own attendance. */
+private fun lessonMinutes(lesson: Lesson, user: User, bySubject: Boolean): Long? {
     val fallbackFinish = lesson.endedAt ?: Clock.System.now().toString()
-    val finish = if (personal) intervals.maxOfOrNull { it.leftAt ?: fallbackFinish } ?: fallbackFinish else fallbackFinish
-    val seconds = if (personal) intervals.sumOf { runCatching { (Instant.parse(it.leftAt ?: finish) - Instant.parse(it.joinedAt)).inWholeSeconds.coerceAtLeast(0) }.getOrDefault(0) } else runCatching { (Instant.parse(finish) - Instant.parse(start)).inWholeSeconds.coerceAtLeast(0) }.getOrDefault(0)
-    return "${koreanTime(start)} – ${koreanTime(finish)} · ${(seconds / 60.0).roundToLong()}분"
+    val seconds = if (!user.isTeacher) {
+        val intervals = lesson.attendance.filter { it.userId == user.id }
+        if (intervals.isEmpty()) return null
+        intervals.sumOf { runCatching { (Instant.parse(it.leftAt ?: fallbackFinish) - Instant.parse(it.joinedAt)).inWholeSeconds.coerceAtLeast(0) }.getOrDefault(0) }
+    } else {
+        val start = (if (bySubject) lessonRecordStart(lesson) else lesson.startedAt) ?: return null
+        runCatching { (Instant.parse(fallbackFinish) - Instant.parse(start)).inWholeSeconds.coerceAtLeast(0) }.getOrNull() ?: return null
+    }
+    return (seconds / 60.0).roundToLong()
 }
 
 /** CSS line-height scales with the chosen font size rather than the ambient body style. */

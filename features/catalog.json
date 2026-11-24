@@ -727,8 +727,8 @@
       },
       "implementation": {
         "server": {"status": "done", "files": ["server/src/recordings.ts", "server/src/http/recordings.controller.ts"]},
-        "web": {"status": "done", "files": ["web/src/lib/lessonRecording.ts", "web/src/lib/recordingUploads.ts", "web/src/components/LessonRecordings.tsx", "web/src/screens/Join.tsx"]},
-        "android": {"status": "done", "files": ["mobile/composeApp/src/androidMain/kotlin/com/woongjin/thinkmeet/platform/AndroidRecording.kt", "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/ui/RecordingUploads.kt"]},
+        "web": {"status": "done", "files": ["web/src/lib/lessonRecording.ts", "web/src/lib/recordingUploads.ts", "web/src/components/LessonRecordings.tsx", "web/src/screens/Join.tsx", "web/src/screens/ClassNotes.tsx"]},
+        "android": {"status": "done", "files": ["mobile/composeApp/src/androidMain/kotlin/com/woongjin/thinkmeet/platform/AndroidRecording.kt", "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/ui/RecordingUploads.kt", "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/ui/ClassNotes.kt"]},
         "ios": {"status": "done", "files": ["mobile/iosApp/ThinkMeet/LessonRecorder.swift", "mobile/composeApp/src/iosMain/kotlin/com/woongjin/thinkmeet/platform/IosRecording.kt"]}
       },
       "verification": {}

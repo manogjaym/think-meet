@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState, type ReactNode } from "react"
-import type { ClassNoteCapture, ClassNoteLesson, ClassNoteWorksheet } from "../generated/contracts"
+import type { ClassNoteCapture, ClassNoteLesson, ClassNoteWorksheet, LessonRecording } from "../generated/contracts"
 import { designContent as copy } from "../generated/design-content"
-import { ApiError } from "../lib/api"
+import { ApiError, call } from "../lib/api"
 import type { Role } from "../models"
 import { currentNoteMonth, noteCaptures, noteDateLabel, noteDay, noteImage, notesImageTypes, noteTarget, noteWorksheets, shiftNoteMonth, uploadNote, validateNoteFile } from "../lib/classNotes"
 import { Icon } from "../components/ui"
 import { useFeature } from "../lib/useFeature"
 import { FEATURE_IDS } from "../generated/feature-policy"
 import "../class-notes.css"
+import { recordingDuration, recordingSource } from "../components/LessonRecordings"
 
 export type NotesTab = "worksheets" | "records"
 const message = (error: unknown) => error instanceof Error ? error.message : "요청을 처리하지 못했어요. 다시 시도해 주세요."
@@ -358,41 +359,74 @@ function WorksheetCorrection({ row, onSaved }: { row: ClassNoteWorksheet; onSave
   </>
 }
 
+/** One saved screen or one finished recording, grouped per lesson in the records tab. */
+type RecordEntry = { lesson: ClassNoteLesson; time: string; capture?: ClassNoteCapture; recording?: LessonRecording }
+
 function CaptureArchive({ role }: { role: Role }) {
   const [title, setTitle] = useState("")
   const [group, setGroup] = useState<ClassNoteCapture[]>()
+  const [videos, setVideos] = useState<LessonRecording[]>()
   const [index, setIndex] = useState(0)
   const list = useNotesList(noteCaptures, "captures")
-  const lessons = list.value?.map(row => row.lesson) ?? []
+  // Only the recording teacher sees their own lesson recordings, next to the screens they saved.
+  const recordingsEnabled = useFeature(FEATURE_IDS.ClassroomRecording) && role === "teacher"
+  const recordings = useNotesList(signal => recordingsEnabled ? call("listLessonRecordings", { signal }) : Promise.resolve([]), `recordings:${recordingsEnabled}`)
+  const entries: RecordEntry[] | undefined = list.value && recordings.value ? [
+    ...list.value.map(capture => ({ lesson: capture.lesson, time: capture.image.createdAt, capture })),
+    ...recordings.value.flatMap(recording => recording.status === "ready" && recording.lesson ? [{ lesson: recording.lesson, time: recording.startedAt, recording }] : []),
+  ] : undefined
+  const lessons = entries?.map(entry => entry.lesson) ?? []
   const subjects = useSubjectFilter(lessons, key => { if (!keepTitle(lessons, title, key)) setTitle("") })
-  const groups = groupBy(list.value?.filter(row => subjects.matches(row.lesson) && (!title || row.lesson.title === title)) ?? [], row => row.lesson.id)
+  const visible = entries?.filter(entry => subjects.matches(entry.lesson) && (!title || entry.lesson.title === title)) ?? []
+  // Newest first, so a lesson that only has a recording sorts like one with saved screens.
+  const groups = groupBy([...visible].sort((a, b) => Date.parse(b.time) - Date.parse(a.time)), entry => entry.lesson.id)
   const sources = role === "teacher" ? ["self"] as const : ["self", "teacher"] as const
+  const error = list.error ?? recordings.error
   return <>
     {subjects.chips}
     <LessonChips lessons={lessons.filter(subjects.matches)} title={title} onChange={setTitle} />
-    {!list.value ? <ListStatus error={list.error} retry={list.reload} /> : !groups.length ? <Empty icon="camera">{copy.notesCapturesEmpty}</Empty> : <div className="note-grid">
-      {groups.map(([key, rows]) => <article key={key} className="note-card note-capture-card">
-        <h3>{noteDateLabel(rows[0].lesson.startsAt)} · {rows[0].lesson.title}</h3>
-        {sources.map(source => {
-          const images = rows.filter(row => row.source === source)
-          return <button key={source} className={`note-row ${source === "teacher" ? "accent" : ""}`} disabled={!images.length} onClick={() => { setIndex(0); setGroup(images) }}>
-            <Icon name={source === "self" ? "camera" : "user"} size={20} />
-            <span className="note-row-label">{source === "self" ? copy.notesOwnCapture : copy.notesTeacherCapture}</span>{" "}
-            <strong>{images.length}장</strong>
+    {!entries ? <ListStatus error={error} retry={() => { list.reload(); recordings.reload() }} /> : !groups.length ? <Empty icon="camera">{copy.notesCapturesEmpty}</Empty> : <div className="note-grid">
+      {groups.map(([key, rows]) => {
+        const captures = rows.flatMap(row => row.capture ? [row.capture] : [])
+        const lessonVideos = rows.flatMap(row => row.recording ? [row.recording] : [])
+        return <article key={key} className="note-card note-capture-card">
+          <h3>{noteDateLabel(rows[0].lesson.startsAt)} · {rows[0].lesson.title}</h3>
+          {sources.map(source => {
+            const images = captures.filter(row => row.source === source)
+            return <button key={source} className={`note-row ${source === "teacher" ? "accent" : ""}`} disabled={!images.length} onClick={() => { setIndex(0); setGroup(images) }}>
+              <Icon name={source === "self" ? "camera" : "user"} size={20} />
+              <span className="note-row-label">{source === "self" ? copy.notesOwnCapture : copy.notesTeacherCapture}</span>{" "}
+              <strong>{images.length}장</strong>
+              <Icon name="chevron" size={18} />
+            </button>
+          })}
+          {recordingsEnabled && <button className="note-row" disabled={!lessonVideos.length} onClick={() => { setIndex(0); setVideos(lessonVideos) }}>
+            <Icon name="video" size={20} />
+            <span className="note-row-label">{copy.recordingListTitle}</span>{" "}
+            <strong>{lessonVideos.length}개</strong>
             <Icon name="chevron" size={18} />
-          </button>
-        })}
-      </article>)}
+          </button>}
+        </article>
+      })}
     </div>}
     {group && <NoteDialog title={`${group[0].source === "self" ? copy.notesOwnCapture : copy.notesTeacherCapture} · ${group[0].lesson.title}`} onClose={() => setGroup(undefined)}>
-      <div className="note-month note-pager">
-        <button className="note-round" aria-label="이전 화면" disabled={!index} onClick={() => setIndex(value => value - 1)}><Icon name="back" size={18} /></button>
-        <span>{index + 1} / {group.length}</span>
-        <button className="note-round" aria-label="다음 화면" disabled={index + 1 >= group.length} onClick={() => setIndex(value => value + 1)}><Icon name="chevron" size={18} /></button>
-      </div>
+      <NotePager index={index} total={group.length} label="화면" onIndex={setIndex} />
       <StoredNoteImage id={group[index].image.id} label={`수업 화면 ${index + 1}`} />
     </NoteDialog>}
+    {videos && <NoteDialog title={`${copy.recordingListTitle} · ${videos[0].lessonTitle}`} onClose={() => setVideos(undefined)}>
+      {videos.length > 1 && <NotePager index={index} total={videos.length} label="녹화" onIndex={setIndex} />}
+      <p className="note-video-meta">{noteDateLabel(videos[index].startedAt)} · {recordingDuration(videos[index].durationMs)}</p>
+      <video key={videos[index].id} className="recording-video" src={recordingSource(videos[index].id)} controls autoPlay playsInline preload="metadata" />
+    </NoteDialog>}
   </>
+}
+
+function NotePager({ index, total, label, onIndex }: { index: number; total: number; label: string; onIndex: (index: number) => void }) {
+  return <div className="note-month note-pager">
+    <button className="note-round" aria-label={`이전 ${label}`} disabled={!index} onClick={() => onIndex(index - 1)}><Icon name="back" size={18} /></button>
+    <span>{index + 1} / {total}</span>
+    <button className="note-round" aria-label={`다음 ${label}`} disabled={index + 1 >= total} onClick={() => onIndex(index + 1)}><Icon name="chevron" size={18} /></button>
+  </div>
 }
 
 export function TeacherWorksheets({ lessonId }: { lessonId: string }) {

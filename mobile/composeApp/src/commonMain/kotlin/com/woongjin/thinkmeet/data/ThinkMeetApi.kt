@@ -269,8 +269,9 @@ class ThinkMeetApi(internal val client: HttpClient, origin: String) {
 
     suspend fun createRecording(lessonId: String, input: LessonRecordingInput): LessonRecording =
         json("createLessonRecording", mapOf("id" to lessonId), ThinkMeetJson.encodeToString(input))
-    suspend fun recordings(lessonId: String): List<LessonRecording> =
-        ThinkMeetJson.decodeFromString(response("${apiPath("listLessonRecordings")}?lessonId=${lessonId.encodeURLQueryComponent()}").bodyAsText())
+    /** One lesson's recordings, or every unexpired recording of this teacher when [lessonId] is null. */
+    suspend fun recordings(lessonId: String? = null): List<LessonRecording> =
+        ThinkMeetJson.decodeFromString(response(apiPath("listLessonRecordings") + (lessonId?.let { "?lessonId=${it.encodeURLQueryComponent()}" } ?: "")).bodyAsText())
     /** Sends one fixed-size chunk; the server answers with the stored progress. */
     suspend fun uploadRecordingChunk(id: String, offset: Long, bytes: ByteArray): LessonRecording {
         val path = apiPath("uploadLessonRecordingChunk", mapOf("id" to id))

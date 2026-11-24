@@ -29,13 +29,17 @@ const createInput = z.object({
 })
 const offsetInput = z.coerce.number().int().min(0).max(RECORDING_MAX_SIZE)
 type Part = { PartNumber: number; ETag: string }
-type Row = StoredRecording & { lesson: { title: string } }
+/** The lesson fields the records tab groups and filters by, like class-note captures. */
+const withLesson = { lesson: { select: { title: true, startsAt: true, subject: { select: { id: true, name: true } } } } } as const
+type Row = StoredRecording & { lesson: { title: string; startsAt: Date; subject: { id: string; name: string } | null } }
 
 const missing = () => new ApiError('NOT_FOUND', '녹화 영상을 찾을 수 없어요.', 404)
 const misplaced = () => new ApiError('RECORDING_OFFSET', '업로드 위치가 맞지 않아요. 업로드 상태를 다시 확인해 주세요.', 409)
 
-export function recordingDto(row: Row): LessonRecording {
+export function recordingDto(row: Row, owner: PublicUser): LessonRecording {
+  const { lesson } = row
   return {
+    lesson: { id: row.lessonId, title: lesson.title, startsAt: lesson.startsAt.toISOString(), teacherName: owner.name, ...(lesson.subject ? { subject: lesson.subject } : {}) },
     id: row.id, lessonId: row.lessonId, lessonTitle: row.lesson.title, status: row.status === 'ready' ? 'ready' : 'uploading',
     size: Number(row.size), uploadedBytes: Number(row.uploadedBytes), chunkSize: RECORDING_CHUNK_SIZE,
     durationMs: row.durationMs, width: row.width, height: row.height, startedAt: row.startedAt.toISOString(),
@@ -78,7 +82,7 @@ export class Recordings implements OnModuleInit, OnModuleDestroy {
   private get bucket() { return this.materials.bucket }
 
   private async own(user: PublicUser, id: unknown) {
-    const row = await this.db.lessonRecording.findFirst({ where: { id: uuid.parse(id), teacherId: user.id, expiresAt: { gt: new Date() } }, include: { lesson: { select: { title: true } } } })
+    const row = await this.db.lessonRecording.findFirst({ where: { id: uuid.parse(id), teacherId: user.id, expiresAt: { gt: new Date() } }, include: withLesson })
     if (!row) throw missing()
     return row
   }
@@ -91,11 +95,11 @@ export class Recordings implements OnModuleInit, OnModuleDestroy {
     if (lesson.teacherId !== user.id) throw missing()
     if (!lesson.startedAt) throw new ApiError('LESSON_NOT_STARTED', '시작한 수업의 녹화만 올릴 수 있어요.', 409)
     return this.lessons.locked(`recording:${user.id}:${input.requestId}`, async () => {
-      const existing = await this.db.lessonRecording.findUnique({ where: { teacherId_requestId: { teacherId: user.id, requestId: input.requestId } }, include: { lesson: { select: { title: true } } } })
+      const existing = await this.db.lessonRecording.findUnique({ where: { teacherId_requestId: { teacherId: user.id, requestId: input.requestId } }, include: withLesson })
       if (existing) {
         if (existing.lessonId !== lesson.id || Number(existing.size) !== input.size) throw new ApiError('CONFLICT', '이미 다른 녹화에 사용한 요청이에요.', 409)
         if (existing.expiresAt <= new Date()) throw missing()
-        return recordingDto(existing)
+        return recordingDto(existing, user)
       }
       const objectKey = `recordings/${lesson.id}/${randomUUID()}.mp4`
       const { UploadId } = await this.s3.send(new CreateMultipartUploadCommand({ Bucket: this.bucket, Key: objectKey, ContentType: 'video/mp4' }))
@@ -108,9 +112,9 @@ export class Recordings implements OnModuleInit, OnModuleDestroy {
             size: BigInt(input.size), durationMs: input.durationMs, width: input.width, height: input.height,
             startedAt: new Date(input.startedAt), createdAt: now, expiresAt: new Date(now.getTime() + RECORDING_RETENTION_MS),
           },
-          include: { lesson: { select: { title: true } } },
+          include: withLesson,
         })
-        return recordingDto(row)
+        return recordingDto(row, user)
       } catch (error) {
         await this.s3.send(new AbortMultipartUploadCommand({ Bucket: this.bucket, Key: objectKey, UploadId })).catch(() => {})
         throw error
@@ -124,13 +128,13 @@ export class Recordings implements OnModuleInit, OnModuleDestroy {
     const offset = offsetInput.parse(offsetValue)
     // Authorize before reading the body.
     const before = await this.own(user, id)
-    if (before.status === 'ready') return recordingDto(before)
+    if (before.status === 'ready') return recordingDto(before, user)
     const body = await readChunk(req, RECORDING_CHUNK_SIZE)
     return this.lessons.locked(`recording:${before.id}`, async () => {
       const row = await this.own(user, before.id)
-      if (row.status === 'ready' || !row.uploadId) return recordingDto(row)
+      if (row.status === 'ready' || !row.uploadId) return recordingDto(row, user)
       const size = Number(row.size), uploaded = Number(row.uploadedBytes)
-      if (offset < uploaded && offset + body.length <= uploaded) return recordingDto(row)
+      if (offset < uploaded && offset + body.length <= uploaded) return recordingDto(row, user)
       if (offset !== uploaded) throw misplaced()
       if (body.length !== Math.min(RECORDING_CHUNK_SIZE, size - offset)) throw new ApiError('VALIDATION', `업로드 조각 크기가 맞지 않아요. ${RECORDING_CHUNK_SIZE}바이트 단위로 보내 주세요.`)
       if (offset === 0 && body.subarray(4, 8).toString('latin1') !== 'ftyp') throw new ApiError('UNSUPPORTED_FILE', 'MP4 녹화 파일만 올릴 수 있어요.')
@@ -140,15 +144,15 @@ export class Recordings implements OnModuleInit, OnModuleDestroy {
       const parts = [...(row.parts as Part[]).filter(part => part.PartNumber !== PartNumber), { PartNumber, ETag }].sort((a, b) => a.PartNumber - b.PartNumber)
       const next = offset + body.length
       if (next < size) {
-        const updated = await this.db.lessonRecording.update({ where: { id: row.id }, data: { uploadedBytes: BigInt(next), parts }, include: { lesson: { select: { title: true } } } })
-        return recordingDto(updated)
+        const updated = await this.db.lessonRecording.update({ where: { id: row.id }, data: { uploadedBytes: BigInt(next), parts }, include: withLesson })
+        return recordingDto(updated, user)
       }
       await this.complete(row.objectKey, row.uploadId, parts)
       const updated = await this.db.lessonRecording.update({
         where: { id: row.id }, data: { uploadedBytes: BigInt(size), parts: [], uploadId: null, status: 'ready', completedAt: new Date() },
-        include: { lesson: { select: { title: true } } },
+        include: withLesson,
       })
-      return recordingDto(updated)
+      return recordingDto(updated, user)
     })
   }
 
@@ -166,10 +170,10 @@ export class Recordings implements OnModuleInit, OnModuleDestroy {
     this.lessons.teacher(user)
     const rows = await this.db.lessonRecording.findMany({
       where: { teacherId: user.id, expiresAt: { gt: new Date() }, ...(lessonId === undefined ? {} : { lessonId: uuid.parse(lessonId) }) },
-      include: { lesson: { select: { title: true } } },
+      include: withLesson,
       orderBy: [{ startedAt: 'desc' }, { id: 'desc' }],
     })
-    return rows.map(recordingDto)
+    return rows.map(row => recordingDto(row, user))
   }
 
   async content(user: PublicUser, id: string, req: Request, res: Response) {

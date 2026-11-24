@@ -1,9 +1,12 @@
 import { enqueueRecording } from "./recordingUploads"
 
-/** Same targets as the apps' RecordingProfile: readable slides in small files. */
+/** Same size targets as the apps' RecordingProfile: readable slides in small files. */
 const PROFILE = { maxWidth: 1280, maxHeight: 720, frameRate: 15, videoBitsPerSecond: 700_000, audioBitsPerSecond: 64_000 }
-/** H.264 MP4 only, so every client can play it; AAC when the browser can encode it, otherwise Opus. */
-const MIME_TYPES = ["video/mp4;codecs=avc1.42E01F,mp4a.40.2", "video/mp4;codecs=avc1,mp4a.40.2", "video/mp4;codecs=avc1,opus"]
+/** H.264 MP4 only, so every client can play it. High profile first; AAC when the browser can encode it, otherwise Opus. */
+const MIME_TYPES = [
+  "video/mp4;codecs=avc1.640028,mp4a.40.2", "video/mp4;codecs=avc1,mp4a.40.2",
+  "video/mp4;codecs=avc1.640028,opus", "video/mp4;codecs=avc1,opus",
+]
 
 export type RecordingSnapshot = { active: boolean; startedAt: number; notice?: string }
 type Capture = { lessonId: string; userId: string; stream: MediaStream }
@@ -67,6 +70,8 @@ export async function startRecording(lessonId: string, microphone?: MediaStreamT
   pending = undefined
   const type = mimeType()
   const video = capture.stream.getVideoTracks()[0]
+  // Screen text: ask the encoder to keep detail (resolution) rather than motion smoothness.
+  if (video) video.contentHint = "detail"
   if (!type || !video || video.readyState === "ended") { capture.stream.getTracks().forEach(track => track.stop()); return }
   let created: FileSystemFileHandle | undefined
   try {

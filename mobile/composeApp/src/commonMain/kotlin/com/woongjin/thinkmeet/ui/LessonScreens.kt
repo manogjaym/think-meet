@@ -206,9 +206,14 @@ internal val LocalLessonWidth = staticCompositionLocalOf { LayoutToken.PageMaxWi
     val initial = remember(existing?.id) { existing?.let { localDateTime(it.startsAt) } ?: (Clock.System.now() + 1.days).toLocalDateTime(Seoul).date.atTime(16, 0) }
     var title by remember(existing?.id) { mutableStateOf(existing?.title.orEmpty()) }
     var description by remember(existing?.id) { mutableStateOf(existing?.description.orEmpty()) }
-    val subjectsEnabled = controller.capabilities.collectAsState().value.supports(ContractProtocol.FeatureIds.ClassroomSubjects)
+    val formCapabilities = controller.capabilities.collectAsState().value
+    val subjectsEnabled = formCapabilities.supports(ContractProtocol.FeatureIds.ClassroomSubjects)
+    // Subject storage files materials by lesson subject, so revision-15 servers require one on save.
+    val subjectRequired = subjectsEnabled && formCapabilities.supports(ContractProtocol.FeatureIds.ClassroomSubjectStorage)
     val savedSubject = existing?.subject
     var subject by remember(existing?.id, savedSubject) { mutableStateOf(savedSubject) }
+    var subjectsEmpty by remember { mutableStateOf(false) }
+    var subjectError by remember(existing?.id) { mutableStateOf<String?>(null) }
     var date by remember(existing?.id) { mutableStateOf(initial.date.toString()) }
     var start by remember(existing?.id) { mutableStateOf(clockText(initial)) }
     var end by remember(existing?.id) { mutableStateOf(existing?.endsAt?.let { localDateTime(it) }?.let(::clockText) ?: clockText((initial.toInstant(Seoul) + 50.minutes).toLocalDateTime(Seoul))) }
@@ -221,6 +226,9 @@ internal val LocalLessonWidth = staticCompositionLocalOf { LayoutToken.PageMaxWi
     fun toggle(id: String) { selected = if (id in selected) selected - id else selected + id }
     fun save() {
         validation = null
+        subjectError = if (subjectRequired && subject == null)
+            if (subjectsEmpty) DesignContent.LessonSubjectsEmptyRequired else DesignContent.LessonSubjectRequiredError
+        else null
         try {
             require(title.isNotBlank()) { "학습 제목을 입력해 주세요." }
             require(open || selected.isNotEmpty()) { "학생을 한 명 이상 선택해 주세요." }
@@ -228,6 +236,7 @@ internal val LocalLessonWidth = staticCompositionLocalOf { LayoutToken.PageMaxWi
             require(startInstant > Clock.System.now()) { "현재 시간 이후의 시작 시간을 선택해 주세요." }
             val endInstant = if (noEnd) null else LocalDateTime.parse("${date}T${end}:00").toInstant(Seoul)
             require(endInstant == null || endInstant > startInstant) { "종료 시간은 시작 시간보다 늦어야 해요." }
+            if (subjectError != null) return
             val subjectChanged = subjectsEnabled && subject?.id != savedSubject?.id
             controller.save(
                 LessonInput(
@@ -259,7 +268,11 @@ internal val LocalLessonWidth = staticCompositionLocalOf { LayoutToken.PageMaxWi
                 Spacer(Modifier.height(Space.S24))
                 if (subjectsEnabled) {
                     LessonSubjectField(controller.api, subject, !state.busy, state.lessons, state.user?.id,
-                        wide = width > LayoutToken.DashboardCompact) { subject = it }
+                        wide = width > LayoutToken.DashboardCompact, required = subjectRequired, error = subjectError,
+                        onSubjects = { subjectsEmpty = it?.isEmpty() == true }) {
+                        subject = it
+                        if (it != null) subjectError = null
+                    }
                     Spacer(Modifier.height(Space.S24))
                 }
                 DesignTextField(description, { description = it.take(5000) }, Modifier.fillMaxWidth(), label = "학습 내용", placeholder = "함께 배울 내용을 간단히 적어 주세요.", singleLine = false, minLines = 3)
@@ -346,7 +359,8 @@ internal val LocalLessonWidth = staticCompositionLocalOf { LayoutToken.PageMaxWi
 @Composable
 private fun LessonSubjectField(
     api: ThinkMeetApi, selected: TeacherSubject?, enabled: Boolean, lessons: List<Lesson>, teacherId: String?,
-    wide: Boolean, onSelect: (TeacherSubject?) -> Unit,
+    wide: Boolean, required: Boolean = false, error: String? = null, onSubjects: (List<TeacherSubject>?) -> Unit = {},
+    onSelect: (TeacherSubject?) -> Unit,
 ) {
     var subjects by remember(api) { mutableStateOf<List<TeacherSubject>?>(null) }
     var failed by remember(api) { mutableStateOf(false) }
@@ -355,7 +369,7 @@ private fun LessonSubjectField(
     LaunchedEffect(api, retry) {
         failed = false
         try {
-            subjects = api.subjects()
+            subjects = api.subjects().also(onSubjects)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
@@ -370,7 +384,8 @@ private fun LessonSubjectField(
         else -> null
     }
     Column(verticalArrangement = Arrangement.spacedBy(Space.S8)) {
-        LessonText(DesignContent.LessonSubjectOptional, color = Palette.TextSecondary, fontSize = Type.Support, fontWeight = DesignWeight.Medium)
+        LessonText(if (required) DesignContent.LessonSubjectRequired else DesignContent.LessonSubjectOptional,
+            color = Palette.TextSecondary, fontSize = Type.Support, fontWeight = DesignWeight.Medium)
         Row(horizontalArrangement = Arrangement.spacedBy(Space.S12), verticalAlignment = Alignment.CenterVertically) {
             DesignButton(DesignContent.LessonSubjectPickerTitle, { open = true }, enabled = enabled,
                 icon = { DesignIcon("file", Modifier.size(Space.S16), tint = Palette.White) })
@@ -378,6 +393,8 @@ private fun LessonSubjectField(
                 LessonText(it.name, Modifier.weight(1f), Palette.TextSecondary, Type.Support, DesignWeight.SemiBold)
             }
         }
+        val notice = error ?: DesignContent.LessonSubjectsEmptyRequired.takeIf { required && selected == null && rows?.isEmpty() == true }
+        notice?.let { LessonText(it, color = Palette.DangerText, fontSize = Type.Support, lineHeight = Type.Support * 1.5f) }
     }
     if (open) {
         val records = remember(lessons, teacherId) {
@@ -419,7 +436,7 @@ private fun LessonSubjectField(
                     if (wide && row.size == 1) Spacer(Modifier.weight(1f))
                 }
             }
-            if (rows != null) DesignButton(DesignContent.LessonSubjectNone, { onSelect(null); open = false }, Modifier.align(Alignment.End), secondary = true)
+            if (rows != null && !required) DesignButton(DesignContent.LessonSubjectNone, { onSelect(null); open = false }, Modifier.align(Alignment.End), secondary = true)
         }
     }
 }

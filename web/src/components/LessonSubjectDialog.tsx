@@ -8,6 +8,7 @@ type Props = {
   subjects: TeacherSubject[] | null
   selectedId: string | null
   failed: boolean
+  required?: boolean
   lessons: ApiLesson[]
   teacherId: string
   onRetry: () => void
@@ -15,7 +16,7 @@ type Props = {
   onSelect: (id: string | null) => void
 }
 
-export function LessonSubjectDialog({ subjects, selectedId, failed, lessons, teacherId, onRetry, onClose, onSelect }: Props) {
+export function LessonSubjectDialog({ subjects, selectedId, failed, required = false, lessons, teacherId, onRetry, onClose, onSelect }: Props) {
   const title = useId()
   const dialogRef = useRef<HTMLDialogElement>(null)
   const closeRef = useRef<HTMLButtonElement>(null)
@@ -74,7 +75,7 @@ export function LessonSubjectDialog({ subjects, selectedId, failed, lessons, tea
           })}
         </div>
       )}
-      {subjects !== null && <footer>
+      {subjects !== null && !required && <footer>
         <button type="button" className="secondary" onClick={() => onSelect(null)}>{designContent.lessonSubjectNone}</button>
       </footer>}
     </div>

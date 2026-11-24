@@ -97,6 +97,8 @@ data class Material(
     val duration: Double? = null,
     val pages: Int? = null,
     val createdAt: String,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val subject: TeacherSubject? = null,
 )
 
 @Serializable
@@ -413,6 +415,8 @@ data class ClassNoteLesson(
     val title: String,
     val startsAt: String,
     val teacherName: String,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val subject: TeacherSubject? = null,
 )
 
 @Serializable

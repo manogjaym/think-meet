@@ -6,7 +6,7 @@ class ContractCommand<P>(val type: String, val serializer: kotlinx.serialization
 data class ContractFeature(val id: String, val stage: String, val requiresRevision: Int, val defaultEnabled: Boolean, val platforms: Set<String>)
 
 object ContractProtocol {
-    const val Revision = 14
+    const val Revision = 15
     const val ApiBasePath = "/api/v1"
     const val SocketPath = "/socket.io"
     const val PlatformHeader = "X-ThinkMeet-Platform"
@@ -34,6 +34,7 @@ object ContractProtocol {
         const val ClassroomTextbookPicker = "classroom.textbook-picker"
         const val MeetingParticipantControls = "meeting.participant-controls"
         const val ClassroomRecording = "classroom.recording"
+        const val ClassroomSubjectStorage = "classroom.subject-storage"
     }
     /** Server error codes from contracts/openapi.json ErrorCode; compare exact values, never substrings. */
     object ErrorCodes {
@@ -163,6 +164,7 @@ object ContractProtocol {
         ContractFeature("classroom.textbook-picker", "ready", 11, true, setOf("web", "android", "ios")),
         ContractFeature("meeting.participant-controls", "in-progress", 13, true, setOf("web", "android", "ios")),
         ContractFeature("classroom.recording", "in-progress", 14, true, setOf("web", "android", "ios")),
+        ContractFeature("classroom.subject-storage", "in-progress", 15, true, setOf("web", "android", "ios")),
     )
     private val commandFeatures: Map<String, String?> = mapOf(
         "lesson.start" to "classroom.lesson-modes",

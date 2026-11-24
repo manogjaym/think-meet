@@ -12,19 +12,37 @@ import { Lessons } from './lessons'
 import { ApiError } from './errors'
 import type { PublicUser, Share } from './types'
 import { readShare } from './lesson/share'
+import { subjectSelect } from './lesson/dto'
 const run = promisify(execFile)
+const withSubject = { subject: { select: subjectSelect } } as const
 @Injectable()
 export class Materials {
   readonly s3 = new S3Client({ endpoint: process.env.S3_ENDPOINT, region: process.env.S3_REGION || 'us-east-1', forcePathStyle: true, credentials: { accessKeyId: process.env.S3_ACCESS_KEY || '', secretAccessKey: process.env.S3_SECRET_KEY || '' } })
   readonly bucket = process.env.S3_BUCKET || 'think-meet'
   constructor(readonly db: Database, readonly lessons: Lessons) {}
   async ready() { await this.s3.send(new HeadBucketCommand({ Bucket: this.bucket })); return true }
-  async list(user: PublicUser) { this.lessons.teacher(user); return (await this.db.material.findMany({ where: { ownerId: user.id }, orderBy: { createdAt: 'desc' } })).map(material => this.lessons.materialDto(material)) }
-  async upload(user: PublicUser, file: Express.Multer.File | undefined, req: Request) {
+  /**
+   * Subject a lesson files materials under: the lesson owner's subject, or null (unclassified).
+   * Another teacher in the lesson keeps an unclassified library because subjects belong to one teacher.
+   */
+  private async lessonSubject(user: PublicUser, lessonId: string | undefined) {
+    if (lessonId === undefined) return undefined
+    const lesson = await this.lessons.access(lessonId, user)
+    return lesson.teacherId === user.id ? lesson.subjectId : null
+  }
+  /** With a lesson, lists the materials stored under its subject plus unclassified ones. */
+  async list(user: PublicUser, lessonId?: string) {
+    this.lessons.teacher(user)
+    const subjectId = await this.lessonSubject(user, lessonId)
+    const rows = await this.db.material.findMany({ where: { ownerId: user.id, ...(subjectId ? { OR: [{ subjectId }, { subjectId: null }] } : {}) }, include: withSubject, orderBy: { createdAt: 'desc' } })
+    return rows.map(material => this.lessons.materialDto(material))
+  }
+  async upload(user: PublicUser, file: Express.Multer.File | undefined, req: Request, lessonId?: string) {
     let objectKey: string | undefined
     let saved = false
     try {
       this.lessons.teacher(user)
+      const subjectId = await this.lessonSubject(user, lessonId)
       if (!file) throw new ApiError('VALIDATION', '업로드할 파일을 선택해 주세요.')
       let name = file.originalname
       // multipart filenames are commonly decoded as latin1 by busboy.
@@ -54,7 +72,7 @@ export class Materials {
         kind = 'media'; contentType = 'video/mp4'
       } else throw new ApiError('UNSUPPORTED_FILE', 'PDF와 MP4 파일만 업로드할 수 있습니다.')
       if (req.aborted || req.res?.destroyed) throw new ApiError('UPLOAD_CANCELLED', '업로드가 취소되었습니다.', 499)
-      objectKey = `${user.id}/${randomUUID()}.${extension}`
+      objectKey = subjectId ? `subjects/${subjectId}/materials/${randomUUID()}.${extension}` : `${user.id}/${randomUUID()}.${extension}`
       const controller = new AbortController()
       const abort = () => { if (!req.res?.writableEnded) controller.abort() }
       req.res?.once('close', abort)
@@ -62,7 +80,7 @@ export class Materials {
         await this.s3.send(new PutObjectCommand({ Bucket: this.bucket, Key: objectKey, Body: createReadStream(file.path), ContentLength: file.size, ContentType: contentType }), { abortSignal: controller.signal })
       } finally { req.res?.removeListener('close', abort) }
       if (req.aborted || req.res?.destroyed) throw new ApiError('UPLOAD_CANCELLED', '업로드가 취소되었습니다.', 499)
-      const material = await this.db.material.create({ data: { ownerId: user.id, name, objectKey, size: file.size, kind, contentType, duration, pages } })
+      const material = await this.db.material.create({ data: { ownerId: user.id, subjectId, name, objectKey, size: file.size, kind, contentType, duration, pages }, include: withSubject })
       if (req.aborted || req.res?.destroyed) {
         await this.db.material.delete({ where: { id: material.id } })
         throw new ApiError('UPLOAD_CANCELLED', '업로드가 취소되었습니다.', 499)

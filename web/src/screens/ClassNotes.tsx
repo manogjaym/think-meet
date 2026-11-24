@@ -5,6 +5,8 @@ import { ApiError } from "../lib/api"
 import type { Role } from "../models"
 import { currentNoteMonth, noteCaptures, noteDateLabel, noteDay, noteImage, notesImageTypes, noteTarget, noteWorksheets, shiftNoteMonth, uploadNote, validateNoteFile } from "../lib/classNotes"
 import { Icon } from "../components/ui"
+import { useFeature } from "../lib/useFeature"
+import { FEATURE_IDS } from "../generated/feature-policy"
 import "../class-notes.css"
 
 export type NotesTab = "worksheets" | "records"
@@ -196,6 +198,32 @@ function LessonChips({ lessons, title, onChange }: { lessons: ClassNoteLesson[];
   </div>
 }
 
+const UNCLASSIFIED = "\u0000unclassified"
+const subjectKey = (lesson: ClassNoteLesson) => lesson.subject?.id ?? UNCLASSIFIED
+
+/** Subject chips (all · subject names · unclassified) built from the loaded lessons; shown only for 2+ groups. */
+function useSubjectFilter(lessons: ClassNoteLesson[], onChange: (key: string) => void) {
+  const enabled = useFeature(FEATURE_IDS.ClassroomSubjectStorage)
+  const [selected, setSelected] = useState("")
+  const names = new Map<string, string>()
+  for (const lesson of lessons) names.set(subjectKey(lesson), lesson.subject?.name ?? copy.subjectUnclassified)
+  const options = [...names].sort(([a, nameA], [b, nameB]) =>
+    a === UNCLASSIFIED ? 1 : b === UNCLASSIFIED ? -1 : nameA.localeCompare(nameB, "ko"))
+  const visible = enabled && options.length > 1
+  const subject = visible && names.has(selected) ? selected : ""
+  const matches = (lesson: ClassNoteLesson) => !subject || subjectKey(lesson) === subject
+  const select = (key: string) => { setSelected(key); onChange(key) }
+  const chips = visible && <div className="note-chips" role="group" aria-label={`${copy.lessonSubjectLabel} 필터`}>
+    <button aria-pressed={!subject} onClick={() => select("")}>{copy.subjectAll}</button>
+    {options.map(([key, name]) => <button key={key} aria-pressed={key === subject} onClick={() => select(key)}>{name}</button>)}
+  </div>
+  return { chips, matches }
+}
+
+/** Clears a lesson-title filter that has no lesson left in the newly selected subject. */
+const keepTitle = (lessons: ClassNoteLesson[], title: string, subject: string) =>
+  !title || lessons.some(lesson => lesson.title === title && (!subject || subjectKey(lesson) === subject))
+
 export function ClassNotes({ role, tab, onTab }: { role: Role; tab: NotesTab; onTab: (tab: NotesTab) => void }) {
   const [submitted, setSubmitted] = useState(0)
   const submission = useWorksheetSubmission(role === "student", "notes", () => { onTab("worksheets"); setSubmitted(value => value + 1) })
@@ -217,13 +245,16 @@ function WorksheetArchive({ role }: { role: Role }) {
   const [title, setTitle] = useState("")
   const [openKey, setOpenKey] = useState<string>()
   const list = useNotesList(signal => noteWorksheets({ month }, signal), month)
-  const groups = groupBy(list.value?.filter(row => !title || row.lesson.title === title) ?? [], row => `${noteDay(row.original.createdAt)}/${row.lesson.id}`)
+  const lessons = list.value?.map(row => row.lesson) ?? []
+  const subjects = useSubjectFilter(lessons, key => { if (!keepTitle(lessons, title, key)) setTitle("") })
+  const groups = groupBy(list.value?.filter(row => subjects.matches(row.lesson) && (!title || row.lesson.title === title)) ?? [], row => `${noteDay(row.original.createdAt)}/${row.lesson.id}`)
   const opened = groups.find(([key]) => key === openKey)?.[1]
   const [year, number] = month.split("-")
   const teacher = role === "teacher"
   function changeMonth(delta: number) { setMonth(value => shiftNoteMonth(value, delta)); setTitle(""); setOpenKey(undefined) }
   return <>
-    <LessonChips lessons={list.value?.map(row => row.lesson) ?? []} title={title} onChange={setTitle} />
+    {subjects.chips}
+    <LessonChips lessons={lessons.filter(subjects.matches)} title={title} onChange={setTitle} />
     <div className="note-month">
       <button className="note-round" aria-label="이전 달" onClick={() => changeMonth(-1)}><Icon name="back" size={18} /></button>
       <strong>{year}년 {Number(number)}월 제출</strong>
@@ -332,10 +363,13 @@ function CaptureArchive({ role }: { role: Role }) {
   const [group, setGroup] = useState<ClassNoteCapture[]>()
   const [index, setIndex] = useState(0)
   const list = useNotesList(noteCaptures, "captures")
-  const groups = groupBy(list.value?.filter(row => !title || row.lesson.title === title) ?? [], row => row.lesson.id)
+  const lessons = list.value?.map(row => row.lesson) ?? []
+  const subjects = useSubjectFilter(lessons, key => { if (!keepTitle(lessons, title, key)) setTitle("") })
+  const groups = groupBy(list.value?.filter(row => subjects.matches(row.lesson) && (!title || row.lesson.title === title)) ?? [], row => row.lesson.id)
   const sources = role === "teacher" ? ["self"] as const : ["self", "teacher"] as const
   return <>
-    <LessonChips lessons={list.value?.map(row => row.lesson) ?? []} title={title} onChange={setTitle} />
+    {subjects.chips}
+    <LessonChips lessons={lessons.filter(subjects.matches)} title={title} onChange={setTitle} />
     {!list.value ? <ListStatus error={list.error} retry={list.reload} /> : !groups.length ? <Empty icon="camera">{copy.notesCapturesEmpty}</Empty> : <div className="note-grid">
       {groups.map(([key, rows]) => <article key={key} className="note-card note-capture-card">
         <h3>{noteDateLabel(rows[0].lesson.startsAt)} · {rows[0].lesson.title}</h3>

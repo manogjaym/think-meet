@@ -27,7 +27,10 @@ export async function lessonDto(db: Database, lesson: any) {
 export type LessonDto = Awaited<ReturnType<typeof lessonDto>>
 
 export function materialDto(material: any): Material {
-  return { id: material.id, name: material.name, type: material.kind, size: material.size, duration: material.duration ?? undefined, pages: material.pages ?? undefined, createdAt: material.createdAt.toISOString() }
+  return {
+    id: material.id, name: material.name, type: material.kind, size: material.size, duration: material.duration ?? undefined, pages: material.pages ?? undefined, createdAt: material.createdAt.toISOString(),
+    ...(material.subject ? { subject: { id: material.subject.id, name: material.subject.name } } : {}),
+  }
 }
 
 /** Teachers and lessons without lesson modes keep free annotation; lesson-mode students need the teacher's permission. */

@@ -77,6 +77,8 @@ model TeacherSubject {
   teacher User @relation(fields: [teacherId], references: [id], onDelete: Cascade)
   name String
   lessons Lesson[]
+  materials Material[]
+  noteImages ClassNoteImage[]
   @@unique([teacherId, name])
 }
 
@@ -193,6 +195,9 @@ model Material {
   id String @id @default(uuid()) @db.Uuid
   ownerId String @db.Uuid
   owner User @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  /// Subject the material is stored under; null for unclassified (pre-subject) uploads.
+  subjectId String? @db.Uuid
+  subject TeacherSubject? @relation(fields: [subjectId], references: [id], onDelete: SetNull)
   name String
   kind MaterialKind
   objectKey String @unique
@@ -201,7 +206,7 @@ model Material {
   duration Float?
   pages Int?
   createdAt DateTime @default(now())
-  @@index([ownerId])
+  @@index([ownerId, subjectId])
 }
 model Stroke {
   id String @id
@@ -246,6 +251,9 @@ model ClassNoteImage {
   author User @relation("ClassNoteAuthor", fields: [authorId], references: [id], onDelete: Restrict)
   studentId String? @db.Uuid
   student User? @relation("ClassNoteStudent", fields: [studentId], references: [id], onDelete: Restrict)
+  /// Subject the image is stored under; follows the lesson's subject, null when unclassified.
+  subjectId String? @db.Uuid
+  subject TeacherSubject? @relation(fields: [subjectId], references: [id], onDelete: SetNull)
   kind ClassNoteImageKind
   requestId String @db.Uuid
   originalId String? @unique @db.Uuid
@@ -258,6 +266,7 @@ model ClassNoteImage {
   @@unique([authorId, requestId])
   @@index([studentId, kind, createdAt])
   @@index([lessonId, kind, createdAt])
+  @@index([subjectId])
 }
 
 /// A teacher app's screen recording, uploaded in fixed-size chunks through an S3 multipart upload and kept for 30 days.

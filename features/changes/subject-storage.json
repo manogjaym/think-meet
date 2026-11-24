@@ -1,0 +1,30 @@
+{
+  "id": "subject-storage",
+  "summary": "선생님이 수업을 만들 때 과목을 필수로 고르고, 수업에서 올린 교재와 학생 학습지·첨삭·수업 중 저장한 화면을 그 수업 과목 아래에 저장합니다. 수업방 교재 패널은 수업 과목 교재와 미분류 교재만, 수업 노트는 과목 칩으로 거릅니다.",
+  "scope": "shared",
+  "featureIds": [
+    "classroom.subject-storage"
+  ],
+  "platforms": {
+    "server": {
+      "status": "implemented"
+    },
+    "web": {
+      "status": "implemented"
+    },
+    "android": {
+      "status": "implemented"
+    },
+    "ios": {
+      "status": "implemented"
+    }
+  },
+  "verification": [
+    "2026-11-24 Asia/Seoul: 저장소 루트에서 npm run shared:check, npm run verify(공통 13, 서버 75, 웹 19, 타입 검사, 웹 빌드) 통과. 변경 파일 목록을 전달한 shared:check 통과.",
+    "server/: npx tsx --test test/subject-storage.test.ts test/class-note-capture.test.ts 4개 통과. infra/local/ API 재배포(마이그레이션 20261124100000_subject_storage 적용) 후 subject-storage.integration.mjs와 기존 lesson-subjects.integration.mjs 통과.",
+    "web: Vite 개발 서버와 로컬 API로 390×844·834×1194 수업 예약·수업 노트, 390×844·1280×800 수업방 교재 패널 확인.",
+    "mobile/: JDK 17로 ./gradlew :composeApp:checkDesignTokens :composeApp:checkContracts :composeApp:testDebugUnitTest :composeApp:assembleDebug :composeApp:compileKotlinIosSimulatorArm64 --offline 통과(단위 테스트 50개). 기존 Android 35 에뮬레이터에서 휴대폰·180dpi 태블릿 폭 수업 예약·수업 노트, 휴대폰 교재 패널과 실제 예약 저장 확인 후 밀도·기존 로그인 복원.",
+    "iOS: Linux 환경이라 Kotlin iOS 컴파일만 실행. Swift 호스트 빌드와 iPhone·iPad 실행은 미검증이라 기능은 in-progress.",
+    "검증 데이터(임시 계정 2, 수업 3, 교재 3, 이미지 4와 MinIO 객체)는 삭제. 상세와 화면 증거는 features/lesson-subjects.md 참고."
+  ]
+}

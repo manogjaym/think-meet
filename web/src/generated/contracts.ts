@@ -1,5 +1,5 @@
 // Generated from contracts/openapi.json and realtime.json. Do not edit.
-export const CONTRACT_REVISION = 14 as const;
+export const CONTRACT_REVISION = 15 as const;
 export const API_BASE_PATH = "/api/v1" as const;
 export const SOCKET_PATH = "/socket.io" as const;
 export const SOCKET_EVENTS = {
@@ -23,7 +23,7 @@ export type TeacherSubject = { id: string; name: string };
 export type Lesson = { id: string; title: string; description: string; accessMode?: LessonAccessMode; teacher: User; subject?: TeacherSubject; instruction?: LessonInstruction; students: Array<User>; startsAt: string; endsAt: (string) | null; status: "SCHEDULED" | "LIVE" | "ENDED" | "CANCELLED"; code: string; startedAt: (string) | null; endedAt: (string) | null; participants?: Array<LessonParticipant>; attendance?: Array<Attendance> };
 export type LessonInput = { title: string; subjectId?: (string) | null; description?: string; startsAt: string; endsAt: (string) | null; accessMode?: LessonAccessMode; studentIds?: Array<string> };
 export type JoinResult = { waiting: boolean; lesson: Lesson; token?: string; livekitUrl?: string; admissionId?: string };
-export type Material = { id: string; name: string; type: "media" | "document"; size: number; duration?: (number) | null; pages?: (number) | null; createdAt: string };
+export type Material = { id: string; name: string; type: "media" | "document"; size: number; duration?: (number) | null; pages?: (number) | null; createdAt: string; subject?: TeacherSubject };
 export type Share = { id: string; type: "screen" | "media" | "document"; ownerId: string; materialId?: string; material?: Material; page: number; playing: boolean; position: number; updatedAt: string; assistanceId?: string };
 export type Point = { x: number; y: number };
 export type Stroke = { id: string; authorId: string; shareId: string; page: number; tool: "pen" | "highlighter"; color: string; points: Array<Point>; deleted: boolean };
@@ -65,7 +65,7 @@ export type AssistanceRespondPayload = { sessionId: string; approved: boolean };
 export type AssistanceStartPayload = { sessionId: string; geometry: AssistanceGeometry };
 export type AssistanceGeometryPayload = { sessionId: string; geometry: AssistanceGeometry };
 export type AssistanceStopPayload = { sessionId: string };
-export type ClassNoteLesson = { id: string; title: string; startsAt: string; teacherName: string };
+export type ClassNoteLesson = { id: string; title: string; startsAt: string; teacherName: string; subject?: TeacherSubject };
 export type ClassNoteTarget = { lesson: (ClassNoteLesson) | null };
 export type ClassNoteImage = { id: string; createdAt: string };
 export type ClassNoteWorksheet = { lesson: ClassNoteLesson; studentName: string; original: ClassNoteImage; correction: (ClassNoteImage) | null };
@@ -106,8 +106,8 @@ export type ApiOperations = {
   kickParticipant: { method: "POST"; path: "/lessons/{id}/kick"; params: { id: string }; query: undefined; body: KickInput; response: Record<string, unknown> };
   inviteStudents: { method: "POST"; path: "/lessons/{id}/invites"; params: { id: string }; query: undefined; body: InviteInput; response: Lesson };
   getSnapshot: { method: "GET"; path: "/lessons/{id}/snapshot"; params: { id: string }; query: undefined; body: undefined; response: MeetingSnapshot };
-  listMaterials: { method: "GET"; path: "/materials"; params: undefined; query: undefined; body: undefined; response: Array<Material> };
-  uploadMaterial: { method: "POST"; path: "/materials"; params: undefined; query: undefined; body: FormData; response: Material };
+  listMaterials: { method: "GET"; path: "/materials"; params: undefined; query: { lessonId?: string }; body: undefined; response: Array<Material> };
+  uploadMaterial: { method: "POST"; path: "/materials"; params: undefined; query: { lessonId?: string }; body: FormData; response: Material };
   deleteMaterial: { method: "DELETE"; path: "/materials/{id}"; params: { id: string }; query: undefined; body: undefined; response: Record<string, unknown> };
   getMaterialContent: { method: "GET"; path: "/materials/{id}/content"; params: { id: string }; query: { lessonId?: string }; body: undefined; response: Response };
   livekitWebhook: { method: "POST"; path: "/webhooks/livekit"; params: undefined; query: undefined; body: string; response: Record<string, unknown> };

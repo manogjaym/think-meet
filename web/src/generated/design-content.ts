@@ -28,6 +28,11 @@ export const designContent = {
   "lessonSubjectsEmpty": "등록된 과목이 없어요.",
   "lessonSubjectsError": "과목을 불러오지 못했어요.",
   "lessonSubjectsRetry": "다시 불러오기",
+  "lessonSubjectRequired": "과목 (필수)",
+  "lessonSubjectRequiredError": "과목을 선택해 주세요.",
+  "lessonSubjectsEmptyRequired": "등록된 과목이 없어 수업을 만들 수 없어요. 관리자에게 과목 등록을 요청해 주세요.",
+  "subjectUnclassified": "미분류",
+  "subjectAll": "전체 과목",
   "meetingEnter": "화상미팅 입장",
   "meetingWaitForTeacher": "선생님이 화상미팅에 입장할 때까지 잠시 기다려 주세요.",
   "meetingLessonClassroom": "수업방 모드",
@@ -76,6 +81,7 @@ export const designContent = {
   "textbookSelect": "PDF 교재 선택",
   "textbookAdd": "PDF 추가",
   "textbookEmpty": "올린 PDF가 없어요. 교재를 추가해 주세요.",
+  "textbookSubject": "{subject} 교재",
   "textbookListError": "교재 목록을 불러오지 못했어요.",
   "textbookPreviewLoading": "교재를 불러오는 중이에요.",
   "textbookPreviewError": "교재 미리보기를 불러오지 못했어요.",
@@ -246,7 +252,7 @@ export const screenContract = {
     "native": "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/ui/LessonScreens.kt",
     "sections": [
       "hierarchical-appbar",
-      "lesson-or-form-card-with-optional-subject",
+      "lesson-or-form-card-with-required-subject",
       "subject-button-and-picker-dialog-with-latest-completed-lesson",
       "roster-or-invitation",
       "primary-action",
@@ -256,7 +262,8 @@ export const screenContract = {
     "layout": [
       "layout.pageMaxWidth",
       "layout.formWide"
-    ]
+    ],
+    "interaction": "과목별 자료 보관을 지원하면 과목 라벨을 '과목 (필수)'로 표시하고 과목 팝업의 '선택 안 함'을 숨깁니다. 과목 없이 저장하면 과목 버튼 아래에 오류를 표시하고 요청을 보내지 않습니다. 등록된 과목이 없으면 과목 등록 요청 안내를 표시합니다."
   },
   "prejoin": {
     "web": "web/src/screens/Join.tsx",
@@ -348,8 +355,9 @@ export const screenContract = {
         "textbook-side-overlay"
       ],
       "panel": [
+        "lesson-subject-heading",
         "materials-tabs",
-        "pdf-selector",
+        "pdf-selector-with-unclassified-tag",
         "two-column-page-previews",
         "open-selected-page"
       ],
@@ -358,7 +366,7 @@ export const screenContract = {
         "frame-capture-when-supported",
         "annotation-tools"
       ],
-      "interaction": "수업 자료는 교재 탭을 먼저 엽니다. 선택한 PDF와 쪽은 불러오기 성공 시 함께 공유합니다. 겹침 패널은 성공 후 닫습니다."
+      "interaction": "수업 자료는 교재 탭을 먼저 엽니다. 과목이 있는 수업은 패널 위에 '{과목} 교재'를 표시하고 그 과목 교재와 미분류 교재만 보여 줍니다. 미분류 교재에는 '미분류' 표시를 붙입니다. 새로 올린 교재는 수업 과목에 저장됩니다. 선택한 PDF와 쪽은 불러오기 성공 시 함께 공유합니다. 겹침 패널은 성공 후 닫습니다."
     },
     "remoteAssistance": {
       "web": "web/src/screens/Meeting.tsx",
@@ -414,6 +422,7 @@ export const screenContract = {
     "native": "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/ui/ClassNotes.kt",
     "sections": [
       "segmented-tabs-and-student-submit-action",
+      "subject-chips",
       "lesson-title-chips",
       "worksheet-month",
       "worksheet-or-capture-cards",
@@ -437,7 +446,7 @@ export const screenContract = {
       "student": "학습지 탭에서 오른쪽에 학습지 제출 버튼을 둡니다. 웹은 '학습지 사진 올리기'로 이미지를 고르고, Android/iOS는 '학습지 사진 찍기'로 전체 화면 카메라를 엽니다. 제출할 수업이 없으면 안내 창을 표시합니다. 카드는 제출한 학습지와 첨삭 받은 학습지 수를 보여 주고, 기록 카드는 내가 저장한 화면과 선생님이 저장한 화면을 나눕니다.",
       "teacher": "제출 버튼이 없습니다. 학습지 카드는 담당 수업에 제출된 학습지와 첨삭한 학습지 수를 보여 주며, 누르면 학생별 원본을 보고 첨삭 이미지를 붙입니다. 기록 카드는 선생님이 저장한 화면만 보여 줍니다."
     },
-    "interaction": "상단 루트 탭의 '수업 노트'로 엽니다. 학습지·수업 기록은 같은 화면의 분할 탭이며 선택한 탭은 주소(웹 ?tab=)에 남깁니다. 수업명 칩으로 거르고, 학습지 탭은 한국 시간 제출 월을 이전·다음 달로 바꿉니다. layout.dashboardCompact 이하에서는 카드를 한 열로 쌓고 분할 탭과 제출 버튼을 각각 한 줄 전체 폭으로 둡니다.",
+    "interaction": "상단 루트 탭의 '수업 노트'로 엽니다. 학습지·수업 기록은 같은 화면의 분할 탭이며 선택한 탭은 주소(웹 ?tab=)에 남깁니다. 과목 칩(전체 과목·과목명·미분류)은 목록에 있는 과목만 보여 주며 둘 이상일 때 표시합니다. 과목 칩으로 먼저 거르고 그 과목의 수업명 칩으로 다시 거릅니다. 학습지 탭은 한국 시간 제출 월을 이전·다음 달로 바꿉니다. layout.dashboardCompact 이하에서는 카드를 한 열로 쌓고 분할 탭과 제출 버튼을 각각 한 줄 전체 폭으로 둡니다.",
     "tokens": [
       "color.selection",
       "color.canvas",

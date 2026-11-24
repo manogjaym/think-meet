@@ -105,7 +105,9 @@ export class Lessons implements OnModuleInit, OnModuleDestroy {
     this.teacher(user)
     return this.db.teacherSubject.findMany({ where: { teacherId: user.id }, select: subjectSelect, orderBy: { name: 'asc' } })
   }
-  private async validateSubject(teacherId: string, subjectId: string | null | undefined) {
+  /** `requireSubject` applies to classroom.subject-storage clients; older clients may still omit or clear the subject. */
+  private async validateSubject(teacherId: string, subjectId: string | null | undefined, requireSubject: boolean, savedSubjectId?: string | null) {
+    if (requireSubject && (subjectId === null || (subjectId === undefined && !savedSubjectId))) throw new ApiError('VALIDATION', '과목을 선택해 주세요.')
     if (!subjectId) return
     const subject = await this.db.teacherSubject.findFirst({ where: { id: subjectId, teacherId }, select: { id: true } })
     if (!subject) throw new ApiError('FORBIDDEN', '내 과목 목록에서 선택해 주세요.', 403)
@@ -129,10 +131,10 @@ export class Lessons implements OnModuleInit, OnModuleDestroy {
     const lessons = await this.db.lesson.findMany({ where: { OR: [{ teacherId: user.id }, { members: { some: { userId: user.id } } }, { accessMode: 'OPEN', status: { in: ['SCHEDULED', 'LIVE'] } }] }, include: { members: true, subject: { select: subjectSelect } }, orderBy: { startsAt: 'asc' } })
     return Promise.all(lessons.map(lesson => this.dto(lesson)))
   }
-  async create(user: PublicUser, input: unknown) {
+  async create(user: PublicUser, input: unknown, requireSubject = false) {
     this.teacher(user)
     const data = lessonInput.parse(input)
-    await this.validateSubject(user.id, data.subjectId)
+    await this.validateSubject(user.id, data.subjectId, requireSubject)
     if (data.studentIds.length) await this.validateRoster(user.id, data.studentIds)
     const lesson = await this.db.lesson.create({ include: { subject: { select: subjectSelect } }, data: {
       teacherId: user.id, title: data.title, description: data.description, accessMode: data.accessMode, startsAt: new Date(data.startsAt), endsAt: data.endsAt === null ? null : new Date(data.endsAt),
@@ -144,14 +146,16 @@ export class Lessons implements OnModuleInit, OnModuleDestroy {
     if (data.accessMode === 'OPEN') this.notifyAllUsers()
     return this.dto(lesson)
   }
-  async edit(id: string, user: PublicUser, input: unknown) {
+  async edit(id: string, user: PublicUser, input: unknown, requireSubject = false) {
     return this.locked(id, async () => {
       const lesson = await this.access(id, user, false, true)
       if (lesson.status !== 'SCHEDULED') throw new ApiError('CONFLICT', '예정된 수업만 수정할 수 있습니다.', 409)
       const data = lessonInput.parse(input)
-      await this.validateSubject(user.id, data.subjectId)
+      await this.validateSubject(user.id, data.subjectId, requireSubject, lesson.subjectId)
       if (data.studentIds.length) await this.validateRoster(user.id, data.studentIds)
       await this.db.$transaction(async tx => {
+        // Worksheets already submitted to this scheduled lesson move with its subject.
+        if (data.subjectId !== undefined && data.subjectId !== lesson.subjectId) await tx.classNoteImage.updateMany({ where: { lessonId: id }, data: { subjectId: data.subjectId } })
         // The status condition keeps a concurrent start/cancel from being overwritten.
         const updated = await tx.lesson.updateMany({ where: { id, status: 'SCHEDULED' }, data: { title: data.title, description: data.description, accessMode: data.accessMode, startsAt: new Date(data.startsAt), endsAt: data.endsAt === null ? null : new Date(data.endsAt), subjectId: data.subjectId } })
         if (!updated.count) throw new ApiError('CONFLICT', '예정된 수업만 수정할 수 있습니다.', 409)

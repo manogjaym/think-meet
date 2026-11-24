@@ -35,8 +35,8 @@ REST·공유 모델의 원본은 `../contracts/openapi.json`, Socket.IO는 `../c
 | POST | `/lessons/:id/kick` | `{userId}`; 수업 교사가 해당 수업 재입장 차단 |
 | POST | `/lessons/:id/invites` | `{studentIds}`; 담당 학생만 초대 |
 | GET | `/lessons/:id/snapshot` | Snapshot |
-| GET | `/materials` | 교사의 Material[] |
-| POST | `/materials` | multipart `file` → Material |
+| GET | `/materials?lessonId=…` | 교사의 Material[]. `lessonId`가 있으면 수업 과목과 미분류 자료만 |
+| POST | `/materials?lessonId=…` | multipart `file` → Material. `lessonId`가 있으면 수업 과목에 저장 |
 | DELETE | `/materials/:id` | 자료 소유자만 삭제, 공유 중이면 충돌 |
 | GET | `/materials/:id/content?lessonId=…` | 인증된 파일 조회; 단일 byte Range·206·416 지원 |
 | POST | `/webhooks/livekit` | 서명된 LiveKit 원본 webhook |
@@ -104,7 +104,7 @@ UI를 우회해도 HTTP·실시간 명령에 같은 정책이 적용됩니다.
 
 | 모델 | 필드·의미 |
 |---|---|
-| Material | `{id,name,type:'media'\|'document',size,duration?,pages?,createdAt}` |
+| Material | `{id,name,type:'media'\|'document',size,duration?,pages?,createdAt,subject?}`. `subject`가 없으면 미분류 |
 | Share | `{id,type:'screen'\|'media'\|'document',ownerId,materialId?,material?,page,playing,position,updatedAt}`. 영상 `position`은 초 단위이며 서버 `updatedAt` 기준 |
 | Stroke | `{id,authorId,shareId,page,tool:'pen'\|'highlighter',color,points:{x,y}[],deleted}`. 좌표는 여백을 뺀 원본 콘텐츠 영역 기준 `[0,1]` |
 | Snapshot | `{lessonId,lesson,participants:{user,online,raised}[],messages,share,strokes,seq,serverTime}` |

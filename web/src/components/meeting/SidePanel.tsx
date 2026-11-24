@@ -1,7 +1,7 @@
 import { designContent } from "../../generated/design-content"
 import { useEffect, useRef, useState } from "react"
 import { Track, createAudioAnalyser, supportsAudioOutputSelection, type LocalAudioTrack, type Participant, type Room } from "livekit-client"
-import { call, colorFor, joinLink, type ApiLesson, type User } from "../../lib/api"
+import { call, colorFor, joinLink, operationPath, type ApiLesson, type User } from "../../lib/api"
 import { API_BASE_PATH } from "../../generated/contracts"
 import { capabilityHeaders, requireHttpFeature } from "../../lib/features"
 import { friendlyError, saveDevicePreferences, readDevicePreferences, formatDuration, type Command, type Material, type MeetingSnapshot } from "../../lib/meeting"
@@ -18,6 +18,8 @@ type PanelProps = { panel: Panel; activePanel: Panel; setPanel: (panel: Panel) =
 export function SidePanel({ panel, activePanel, setPanel, user, lesson, room, snapshot, command, onOutputChange, unreadChatCount = 0, textbookEnabled, textbookConnected, onTextbookOpened }: PanelProps) {
   const isHost = lesson.teacher.id === user.id
   const assistanceSupported = useFeature(FEATURE_IDS.MeetingRemoteAssistance)
+  const subjectStorage = useFeature(FEATURE_IDS.ClassroomSubjectStorage)
+  const lessonSubject = subjectStorage ? (snapshot?.lesson ?? lesson).subject : undefined
   const phase = snapshot?.instruction?.phase
   const remoteAssistanceEnabled = assistanceSupported && phase === undefined
   const showMaterials = isHost && (phase === undefined || phase === "classroom")
@@ -81,7 +83,7 @@ export function SidePanel({ panel, activePanel, setPanel, user, lesson, room, sn
     const request = new AbortController()
     setListing(true)
     setListError(false)
-    void call("listMaterials", { signal: request.signal }).then(files => {
+    void call("listMaterials", { signal: request.signal, query: subjectStorage ? { lessonId: lesson.id } : undefined }).then(files => {
       if (!request.signal.aborted) setMaterials(files)
     }).catch(() => {
       if (!request.signal.aborted) setListError(true)
@@ -89,7 +91,7 @@ export function SidePanel({ panel, activePanel, setPanel, user, lesson, room, sn
       if (!request.signal.aborted) setListing(false)
     })
     return () => request.abort()
-  }, [contentOpen, listAttempt])
+  }, [contentOpen, listAttempt, subjectStorage, lesson.id])
   useEffect(() => () => { uploadGateRef.current?.abort(); uploadRef.current?.abort() }, [])
   const run = async (action: () => Promise<unknown>, success?: string) => {
     setError("")
@@ -133,7 +135,7 @@ export function SidePanel({ panel, activePanel, setPanel, user, lesson, room, sn
       return
     } finally { if (uploadGateRef.current === gate) uploadGateRef.current = null }
     const xhr = new XMLHttpRequest()
-    xhr.open("POST", `${API_BASE_PATH}/materials`); xhr.withCredentials = true
+    xhr.open("POST", `${API_BASE_PATH}${operationPath("uploadMaterial", undefined, subjectStorage ? { lessonId: lesson.id } : undefined)}`); xhr.withCredentials = true
     for (const [name, value] of Object.entries(capabilityHeaders())) xhr.setRequestHeader(name, value)
     uploadRef.current = xhr; setUpload({ name: file.name, progress: 0 })
     xhr.upload.onprogress = event => { if (event.lengthComputable) setUpload({ name: file.name, progress: Math.min(99, Math.round(event.loaded / event.total * 100)) }) }
@@ -186,6 +188,7 @@ export function SidePanel({ panel, activePanel, setPanel, user, lesson, room, sn
       </div>}
       {panel === "settings" && <Settings room={room} onError={setError} onOutputChange={onOutputChange} />}
       {panel === "content" && contentOpen && <div className={`panel-body content-body ${textbookTab ? "textbook-body" : ""}`}>
+        {lessonSubject && <h3 className="material-subject-heading">{designContent.textbookSubject.replace("{subject}", lessonSubject.name)}</h3>}
         <div className="tabs">
           {(textbookEnabled ? ["document", "media"] as const : ["media", "document"] as const).map(tab =>
             <button key={tab} className={contentTab === tab ? "active" : ""} aria-pressed={contentTab === tab}
@@ -202,6 +205,7 @@ export function SidePanel({ panel, activePanel, setPanel, user, lesson, room, sn
         {listError && <div className="panel-error" role="alert"><p>{textbookTab ? designContent.textbookListError : "자료 목록을 불러오지 못했어요."}</p><button className="textbook-retry" onClick={() => setListAttempt(value => value + 1)}>{designContent.textbookRetry}</button></div>}
         {listing ? <p className="chat-notice" role="status">자료 목록을 불러오는 중이에요.</p> : !listError && (textbookTab ?
           <TextbookPicker materials={materials.filter(item => item.type === "document")} share={snapshot?.share}
+            markUnclassified={Boolean(lessonSubject)}
             busy={textbookBusy || Boolean(upload)} connected={textbookConnected}
             onOpen={(materialId, page) => changeTextbook(async () => {
               await command("document.open", { materialId, page })
@@ -213,7 +217,7 @@ export function SidePanel({ panel, activePanel, setPanel, user, lesson, room, sn
             {materials.filter(material => material.type === contentTab).map(material => <div className={`content-item ${snapshot?.share?.materialId === material.id ? "active" : ""}`} key={material.id}>
               <div className="file-thumb"><Icon name={material.type === "media" ? "video" : "file"} /></div>
               <button className="content-share" onClick={() => void run(async () => { await command("share.start", { type: material.type, materialId: material.id }); setPanel(null) })}>
-                <strong>{material.name}</strong><span>{material.type === "media" ? `${formatDuration(material.duration || 0)} · MP4` : `${material.pages || ""}페이지 · PDF`} · {(material.size / 1024 / 1024).toFixed(1)}MiB</span>
+                <strong>{material.name}{lessonSubject && !material.subject && <> <em className="subject-tag">{designContent.subjectUnclassified}</em></>}</strong><span>{material.type === "media" ? `${formatDuration(material.duration || 0)} · MP4` : `${material.pages || ""}페이지 · PDF`} · {(material.size / 1024 / 1024).toFixed(1)}MiB</span>
               </button>
               <button className="content-delete" disabled={snapshot?.share?.materialId === material.id} title={snapshot?.share?.materialId === material.id ? "공유를 중지한 후 삭제할 수 있어요." : "파일 삭제"} aria-label={`${material.name} 삭제`} onClick={() => void run(() => removeMaterial(material))}><Icon name="trash" size={17} /></button>
             </div>)}

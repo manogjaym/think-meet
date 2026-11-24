@@ -10,11 +10,13 @@ type Props = {
   share: Share | null | undefined
   busy: boolean
   connected: boolean
+  /** Tags materials without a subject; only set when the lesson has a subject. */
+  markUnclassified?: boolean
   onOpen: (id: string, page: number) => Promise<void>
   onDelete: (material: Material) => Promise<void>
 }
 
-export function TextbookPicker({ materials, share, busy, connected, onOpen, onDelete }: Props) {
+export function TextbookPicker({ materials, share, busy, connected, markUnclassified = false, onOpen, onDelete }: Props) {
   const [selection, setSelection] = useState<{ id: string; page: number }>()
   const material = materials.find(item => item.id === selection?.id)
     ?? materials.find(item => item.id === share?.materialId) ?? materials[0]
@@ -26,8 +28,11 @@ export function TextbookPicker({ materials, share, busy, connected, onOpen, onDe
     <div className="textbook-select">
       <select aria-label={copy.textbookSelect} disabled={busy} value={material.id}
         onChange={event => setSelection({ id: event.target.value, page: 1 })}>
-        {materials.map(item => <option value={item.id} key={item.id}>{item.name}</option>)}
+        {materials.map(item => <option value={item.id} key={item.id}>
+          {markUnclassified && !item.subject ? `${item.name} · ${copy.subjectUnclassified}` : item.name}
+        </option>)}
       </select>
+      {markUnclassified && !material.subject && <em className="subject-tag">{copy.subjectUnclassified}</em>}
       <button className="content-delete" disabled={busy || share?.materialId === material.id} aria-label={`${material.name} 삭제`}
         onClick={() => void onDelete(material)}><Icon name="trash" size={17} /></button>
     </div>

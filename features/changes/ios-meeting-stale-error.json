@@ -1,0 +1,17 @@
+{
+  "id": "ios-meeting-stale-error",
+  "summary": "iOS 앱에서 이전 수업의 종료 사유(REPLACED·KICKED)가 남아, 다음 수업 입장 직후 '다른 기기에서 입장했거나 수업 접근이 종료되었어요' 안내로 수업이 끝나던 문제를 고칩니다. 수업 화면이 미디어 상태를 구독할 때 연결이 끊긴 상태면 이전 오류를 지웁니다.",
+  "scope": "platform-only",
+  "featureIds": ["classroom.core"],
+  "platforms": {
+    "server": {"status": "unchanged", "reason": "서버의 강제 퇴장·중복 입장 처리는 바뀌지 않았습니다."},
+    "web": {"status": "unchanged", "reason": "웹은 수업마다 새 미디어 연결을 만들어 같은 문제가 없습니다."},
+    "android": {"status": "unchanged", "reason": "iOS Swift 브리지(NativeBridge.listen)만의 상태 초기화 문제입니다."},
+    "ios": {"status": "implemented"}
+  },
+  "verification": [
+    "2026-11-24 Asia/Seoul. mobile/에서 ./gradlew :composeApp:linkDebugFrameworkIosSimulatorArm64 후 iOS Simulator arm64용 xcodebuild(SKIP_KOTLIN_BUILD=YES, CODE_SIGNING_ALLOWED=NO) 통과.",
+    "수정 전: iPhone 17 Pro 시뮬레이터에서 이전 수업 종료 후 새 수업에 student1로 입장하자 곧바로 '다른 기기에서…' 안내가 표시됨. 수정 후: 앱 재설치 뒤 같은 흐름에서 안내 없이 입장했고, 웹 teacher1의 미러링 요청 수신·승인·60초 방송 대기 종료·선생님의 수업 종료 화면까지 정상 표시됐습니다.",
+    "미실행: 실제 iPhone, 같은 계정 다른 기기 입장(REPLACED)과 강제 퇴장(KICKED) 직후 재입장 재현, Android, 원격 CI."
+  ]
+}

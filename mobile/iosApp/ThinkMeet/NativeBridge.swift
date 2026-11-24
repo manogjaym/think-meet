@@ -110,7 +110,12 @@ final class NativeBridge: NSObject, IosNativeBridge, RoomDelegate, BroadcastMana
         }
     }
 
-    func listen(listener: @escaping (MediaState) -> Void) { self.listener = listener; emitState() }
+    func listen(listener: @escaping (MediaState) -> Void) {
+        self.listener = listener
+        // The bridge outlives meetings: a previous room's REPLACED:/KICKED: reason must not end the next meeting before it connects.
+        if room.connectionState == .disconnected { lastError = nil }
+        emitState()
+    }
     func connect(url: String, token: String, camera: Bool, microphone: Bool, completion: @escaping (String?) -> Void) {
         Task { @MainActor in
             do {

@@ -12,7 +12,7 @@ function fixture(share: (users: { teacher: User; student: User }) => any) {
   const other: User = { id: randomUUID(), role: 'student', name: 'Other', username: 'other' }
   const admissions = new Map([teacher, student, other].map(user => [user.id, randomUUID()]))
   const current = { id: randomUUID(), page: 1, type: 'screen', playing: false, position: 0, updatedAt: new Date().toISOString(), ...share({ teacher, student }) }
-  const lesson = { id: randomUUID(), teacherId: teacher.id, share: current,
+  const lesson = { id: randomUUID(), teacherId: teacher.id, subjectId: randomUUID(), share: current,
     members: [teacher, student, other].map(user => ({ userId: user.id, online: true, admissionId: admissions.get(user.id) })) }
   const db: any = { attendance: { findFirst: async () => ({ id: 'attendance' }) } }
   const notes = new ClassNotes(db, { access: async () => lesson } as any, {} as any)
@@ -27,13 +27,13 @@ const rejected = async (promise: Promise<unknown>) => {
 
 test('a mirrored screen is saved only by its own student and stays private', async () => {
   const mirrored = fixture(({ student }) => ({ ownerId: student.id, assistanceId: randomUUID() }))
-  assert.deepEqual(await mirrored.capture(mirrored.student), { lessonId: mirrored.lesson.id, studentId: mirrored.student.id, kind: 'capture' })
+  assert.deepEqual(await mirrored.capture(mirrored.student), { lessonId: mirrored.lesson.id, subjectId: mirrored.lesson.subjectId, studentId: mirrored.student.id, kind: 'capture' })
   assert.equal(await rejected(mirrored.capture(mirrored.teacher)), 'NOTE_SHARE_CHANGED')
   assert.equal(await rejected(mirrored.capture(mirrored.other)), 'NOTE_SHARE_CHANGED')
 
   const classroom = fixture(({ teacher }) => ({ ownerId: teacher.id }))
-  assert.deepEqual(await classroom.capture(classroom.teacher), { lessonId: classroom.lesson.id, studentId: null, kind: 'capture' })
-  assert.deepEqual(await classroom.capture(classroom.other), { lessonId: classroom.lesson.id, studentId: classroom.other.id, kind: 'capture' })
+  assert.deepEqual(await classroom.capture(classroom.teacher), { lessonId: classroom.lesson.id, subjectId: classroom.lesson.subjectId, studentId: null, kind: 'capture' })
+  assert.deepEqual(await classroom.capture(classroom.other), { lessonId: classroom.lesson.id, subjectId: classroom.lesson.subjectId, studentId: classroom.other.id, kind: 'capture' })
 })
 
 test('teachers list worksheets of their own lessons and only the captures they saved', async () => {

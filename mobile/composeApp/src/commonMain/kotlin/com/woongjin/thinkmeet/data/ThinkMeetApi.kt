@@ -197,13 +197,21 @@ class ThinkMeetApi(internal val client: HttpClient, origin: String) {
         "inviteStudents", mapOf("id" to id), ThinkMeetJson.encodeToString(InviteInput(studentIds.distinct())),
     )
     suspend fun snapshot(id: String): MeetingSnapshot = json("getSnapshot", mapOf("id" to id))
-    suspend fun materials(): List<Material> = json("listMaterials")
+    /** With [lessonId], the server lists that lesson's subject materials plus unclassified ones. */
+    suspend fun materials(lessonId: String? = null): List<Material> =
+        ThinkMeetJson.decodeFromString(response(materialsPath("listMaterials", lessonId)).bodyAsText())
+
+    private fun materialsPath(id: String, lessonId: String?): String =
+        apiPath(id) + (lessonId?.let { "?lessonId=${it.encodeURLQueryComponent()}" } ?: "")
 
     suspend fun upload(name: String, bytes: ByteArray, contentType: String): Material =
         upload(name, bytes.size.toLong(), contentType) { ByteReadChannel(bytes) }
 
-    /** Streams files from their platform handle instead of retaining a 500MiB video in memory. */
-    suspend fun upload(name: String, size: Long, contentType: String, openChannel: () -> ByteReadChannel): Material {
+    /**
+     * Streams files from their platform handle instead of retaining a 500MiB video in memory.
+     * With [lessonId], the server stores the upload under that lesson's subject.
+     */
+    suspend fun upload(name: String, size: Long, contentType: String, lessonId: String? = null, openChannel: () -> ByteReadChannel): Material {
         val isPdf = name.endsWith(".pdf", ignoreCase = true)
         val isVideo = name.endsWith(".mp4", ignoreCase = true)
         if (!isPdf && !isVideo) throw ApiException(400, "UNSUPPORTED_FILE", "PDF 또는 MP4 파일을 선택해 주세요.")
@@ -217,7 +225,7 @@ class ThinkMeetApi(internal val client: HttpClient, origin: String) {
                 append(HttpHeaders.ContentDisposition, "filename=\"$safeName\"")
             })
         })
-        return ThinkMeetJson.decodeFromString(operationResponse("uploadMaterial", body = body).bodyAsText())
+        return ThinkMeetJson.decodeFromString(response(materialsPath("uploadMaterial", lessonId), HttpMethod.parse(operation("uploadMaterial").method), body).bodyAsText())
     }
 
     suspend fun deleteMaterial(id: String) { operationResponse("deleteMaterial", mapOf("id" to id)) }

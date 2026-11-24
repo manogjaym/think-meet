@@ -53,6 +53,7 @@ internal fun ColumnScope.TextbookPicker(
     share: Share?,
     busy: Boolean,
     connected: Boolean,
+    unclassifiedTag: Boolean = false,
     onOpen: (Material, Int) -> Unit,
     onDelete: (Material) -> Unit,
 ) {
@@ -72,12 +73,18 @@ internal fun ColumnScope.TextbookPicker(
                 modifier = Modifier.fillMaxWidth().semantics { contentDescription = DesignContent.TextbookSelect }) {
                 Text(material.name, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.labelMedium)
+                if (unclassifiedTag && material.subject == null) SubjectUnclassifiedTag(Modifier.padding(horizontal = Space.S4))
                 DesignIcon("chevron", Modifier.size(Space.S16).rotate(90f), Palette.Muted)
             }
             DropdownMenu(expanded, onDismissRequest = { expanded = false }, modifier = Modifier.heightIn(max = Space.S96 * 3)) {
                 materials.forEach { item ->
                     DropdownMenuItem(
-                        text = { Text(item.name, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.S6)) {
+                                Text(item.name, Modifier.weight(1f, fill = false), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                if (unclassifiedTag && item.subject == null) SubjectUnclassifiedTag()
+                            }
+                        },
                         onClick = {
                             if (item.id != material.id) selection = TextbookSelection(item.id, 1)
                             expanded = false
@@ -201,6 +208,15 @@ private fun TextbookPage(
             style = MaterialTheme.typography.bodySmall.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f),
             fontWeight = if (selected) DesignWeight.SemiBold else DesignWeight.Medium)
     }
+}
+
+/** Marks a material without a subject while the lesson lists its subject's materials. */
+@Composable
+internal fun SubjectUnclassifiedTag(modifier: Modifier = Modifier) {
+    Text(DesignContent.SubjectUnclassified, modifier.background(Palette.MeetingSubtle, RoundedCornerShape(Corner.R4))
+        .padding(horizontal = Space.S6, vertical = Space.S2),
+        color = Palette.Muted, maxLines = 1,
+        style = MaterialTheme.typography.labelSmall.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f))
 }
 
 @Composable

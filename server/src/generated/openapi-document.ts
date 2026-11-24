@@ -6,7 +6,7 @@ export const OPENAPI_DOCUMENT = {
     "version": "1.0.0",
     "description": "Canonical REST schemas shared by NestJS, React and KMP. Socket.IO is defined in realtime.json."
   },
-  "x-contract-revision": 14,
+  "x-contract-revision": 15,
   "servers": [
     {
       "url": "/api/v1"
@@ -1017,6 +1017,18 @@ export const OPENAPI_DOCUMENT = {
         "tags": [
           "materials"
         ],
+        "parameters": [
+          {
+            "name": "lessonId",
+            "in": "query",
+            "required": false,
+            "description": "classroom.subject-storage: the teacher's own lesson. Returns materials stored under its subject plus unclassified ones; a lesson without a subject returns every material.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Success",
@@ -1053,6 +1065,18 @@ export const OPENAPI_DOCUMENT = {
         "operationId": "uploadMaterial",
         "tags": [
           "materials"
+        ],
+        "parameters": [
+          {
+            "name": "lessonId",
+            "in": "query",
+            "required": false,
+            "description": "classroom.subject-storage: the teacher's own lesson. The upload is stored under that lesson's subject.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
         ],
         "responses": {
           "201": {
@@ -2282,7 +2306,7 @@ export const OPENAPI_DOCUMENT = {
             "type": "string",
             "format": "uuid",
             "nullable": true,
-            "description": "Omit on update to preserve the subject, or send null to clear it."
+            "description": "Omit on update to preserve the subject. Revision 15+ clients (classroom.subject-storage) must send a subject when creating and cannot clear it; older clients may still omit it or send null."
           },
           "description": {
             "type": "string",
@@ -2379,6 +2403,10 @@ export const OPENAPI_DOCUMENT = {
           "createdAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/TeacherSubject",
+            "description": "Subject the material is stored under (classroom.subject-storage). Omitted for unclassified materials."
           }
         },
         "required": [
@@ -3443,6 +3471,10 @@ export const OPENAPI_DOCUMENT = {
           },
           "teacherName": {
             "type": "string"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/TeacherSubject",
+            "description": "Subject the note image is stored under (classroom.subject-storage). Omitted when unclassified."
           }
         },
         "required": [

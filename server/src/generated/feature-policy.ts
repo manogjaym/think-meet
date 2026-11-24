@@ -1,5 +1,5 @@
 // Generated from features/catalog.json and contracts/. Do not edit.
-export const CONTRACT_REVISION = 14 as const;
+export const CONTRACT_REVISION = 15 as const;
 export const CAPABILITY_HEADERS = {"platform":"X-ThinkMeet-Platform","revision":"X-ThinkMeet-Contract-Revision"} as const;
 export type ClientPlatform = "web" | "android" | "ios";
 export type FeatureDefinition = { readonly id: string; readonly stage: "baseline" | "planned" | "in-progress" | "ready"; readonly requiresRevision: number; readonly defaultEnabled: boolean; readonly platforms: readonly ClientPlatform[] };
@@ -123,6 +123,17 @@ export const FEATURE_DEFINITIONS = [
       "android",
       "ios"
     ]
+  },
+  {
+    "id": "classroom.subject-storage",
+    "stage": "in-progress",
+    "requiresRevision": 15,
+    "defaultEnabled": true,
+    "platforms": [
+      "web",
+      "android",
+      "ios"
+    ]
   }
 ] as const satisfies readonly FeatureDefinition[];
 export type FeatureId = typeof FEATURE_DEFINITIONS[number]["id"];
@@ -137,7 +148,8 @@ export const FEATURE_IDS = {
   "ClassroomLessonModes": "classroom.lesson-modes",
   "ClassroomTextbookPicker": "classroom.textbook-picker",
   "MeetingParticipantControls": "meeting.participant-controls",
-  "ClassroomRecording": "classroom.recording"
+  "ClassroomRecording": "classroom.recording",
+  "ClassroomSubjectStorage": "classroom.subject-storage"
 } as const satisfies Record<string, FeatureId>;
 export const HTTP_OPERATIONS: readonly { id: string; method: string; path: string; feature?: string; cleanup?: boolean }[] = [
   {

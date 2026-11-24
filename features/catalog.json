@@ -732,6 +732,27 @@
         "ios": {"status": "done", "files": ["mobile/iosApp/ThinkMeet/LessonRecorder.swift", "mobile/composeApp/src/iosMain/kotlin/com/woongjin/thinkmeet/platform/IosRecording.kt"]}
       },
       "verification": {}
+    },
+    {
+      "id": "classroom.subject-storage",
+      "title": "과목 필수 선택과 과목별 자료 보관",
+      "stage": "in-progress",
+      "requiresRevision": 15,
+      "defaultEnabled": true,
+      "platforms": ["web", "android", "ios"],
+      "spec": "lesson-subjects.md",
+      "contracts": {
+        "operations": [],
+        "events": [],
+        "commands": []
+      },
+      "implementation": {
+        "server": {"status": "done", "files": ["server/src/lessons.ts", "server/src/materials.ts", "server/src/class-notes.ts", "server/src/http/materials.controller.ts"]},
+        "web": {"status": "done", "files": ["web/src/screens/Lessons.tsx", "web/src/components/meeting/SidePanel.tsx", "web/src/screens/ClassNotes.tsx"]},
+        "android": {"status": "done", "files": ["mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/ui/LessonScreens.kt", "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/meeting/MeetingPanels.kt", "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/ui/ClassNotes.kt"]},
+        "ios": {"status": "done", "files": ["mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/ui/LessonScreens.kt", "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/meeting/MeetingPanels.kt", "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/ui/ClassNotes.kt"]}
+      },
+      "verification": {}
     }
   ]
 }

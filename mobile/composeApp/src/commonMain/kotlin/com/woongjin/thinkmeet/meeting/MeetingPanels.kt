@@ -104,7 +104,7 @@ internal fun MeetingPanel(
             Panel.Chat -> ChatPanel(snapshot, user, realtime, report, chatDraft)
             Panel.People -> PeoplePanel(api, lesson, user, snapshot, mediaState, realtime, report)
             Panel.Materials -> if (snapshot?.instruction?.phase.let { it == null || it == "classroom" }) {
-                MaterialsPanel(api, snapshot, realtime, report, onClose, textbookEnabled, textbookConnected,
+                MaterialsPanel(api, lesson, user, snapshot, realtime, report, onClose, textbookEnabled, textbookConnected,
                     onTextbookTab = { textbookTab = it },
                     onTextbookOpened = { if (closeAfterTextbook) onClose() })
             }
@@ -356,11 +356,15 @@ private fun ColumnScope.PeoplePanel(api: ThinkMeetApi, lesson: Lesson, user: Use
 
 @Composable
 private fun ColumnScope.MaterialsPanel(
-    api: ThinkMeetApi, snapshot: MeetingSnapshot?, realtime: MeetingRealtime, report: (Throwable) -> Unit,
+    api: ThinkMeetApi, lesson: Lesson, user: User, snapshot: MeetingSnapshot?, realtime: MeetingRealtime, report: (Throwable) -> Unit,
     onShared: () -> Unit, textbookEnabled: Boolean, textbookConnected: Boolean,
     onTextbookTab: (Boolean) -> Unit, onTextbookOpened: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
+    val capabilities by api.capabilities.collectAsState()
+    // Subject storage scopes the list and new uploads to the lesson; the server files by the owner's subject only.
+    val lessonId = lesson.id.takeIf { capabilities.supports(ContractProtocol.FeatureIds.ClassroomSubjectStorage) }
+    val subject = lesson.subject.takeIf { lessonId != null && lesson.teacher.id == user.id }
     var materials by remember { mutableStateOf<List<Material>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var listFailed by remember { mutableStateOf(false) }
@@ -373,10 +377,10 @@ private fun ColumnScope.MaterialsPanel(
     val textbookTab = textbookEnabled && contentTab == "document"
     val shown = materials.filter { it.type == contentTab }
     LaunchedEffect(textbookTab) { onTextbookTab(textbookTab); textbookError = null }
-    LaunchedEffect(api, listAttempt) {
+    LaunchedEffect(api, listAttempt, lessonId) {
         loading = true
         listFailed = false
-        try { materials = api.materials() }
+        try { materials = api.materials(lessonId) }
         catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { listFailed = true }
         finally { loading = false }
@@ -394,7 +398,7 @@ private fun ColumnScope.MaterialsPanel(
                 uploading = true
                 scope.launch {
                     try {
-                        val material = api.upload(file.name, file.size, if (pdf) "application/pdf" else "video/mp4", file.openChannel)
+                        val material = api.upload(file.name, file.size, if (pdf) "application/pdf" else "video/mp4", lessonId, file.openChannel)
                         materials = listOf(material) + materials.filterNot { it.id == material.id }
                         contentTab = material.type
                     } catch (error: Exception) {
@@ -419,6 +423,12 @@ private fun ColumnScope.MaterialsPanel(
         }
     }
     val tools: @Composable () -> Unit = {
+        // Both tabs list only this lesson's subject (plus unclassified), so the heading sits above the tabs.
+        subject?.let {
+            Text(DesignContent.TextbookSubject.replace("{subject}", it.name), Modifier.fillMaxWidth().padding(bottom = Space.S4),
+                style = MaterialTheme.typography.labelLarge.copy(fontSize = Type.Support, lineHeight = Type.Support * 1.5f),
+                fontWeight = DesignWeight.Bold, color = Palette.TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
         val tabs = if (textbookEnabled) listOf("document" to DesignContent.TextbookTab, "media" to "미디어")
             else listOf("media" to "미디어", "document" to "문서")
         Row(Modifier.fillMaxWidth().padding(bottom = if (textbookTab) Space.S4 else Space.S16)) {
@@ -447,7 +457,7 @@ private fun ColumnScope.MaterialsPanel(
             when {
                 loading -> TextbookNotice("자료 목록을 불러오는 중이에요.")
                 listFailed -> TextbookRetry(DesignContent.TextbookListError) { listAttempt++ }
-                else -> TextbookPicker(api, shown, snapshot?.share, textbookBusy || uploading, textbookConnected,
+                else -> TextbookPicker(api, shown, snapshot?.share, textbookBusy || uploading, textbookConnected, unclassifiedTag = subject != null,
                     onOpen = { material, page ->
                         changeTextbook {
                             realtime.send(ContractProtocol.Commands.DocumentOpen, DocumentOpenPayload(material.id, page))
@@ -484,6 +494,7 @@ private fun ColumnScope.MaterialsPanel(
                 Box(Modifier.size(42.dp, Space.S44).background(Palette.Selection, RoundedCornerShape(Corner.R7)), contentAlignment = Alignment.Center) { DesignIcon(if (material.type == "document") "file" else "video", Modifier.size(Space.S22), Palette.Primary) }
                 Column(Modifier.weight(1f).clickable { scope.launch { try { realtime.send(ContractProtocol.Commands.ShareStart, ShareStartPayload(material.type, material.id)); onShared() } catch (error: Throwable) { report(error) } } }, verticalArrangement = Arrangement.spacedBy(Space.S4)) {
                     Text(material.name, style = MaterialTheme.typography.labelMedium.copy(fontSize = Type.Support, lineHeight = Type.Support * 1.5f), fontWeight = DesignWeight.SemiBold, color = Palette.TextSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    if (subject != null && material.subject == null) SubjectUnclassifiedTag()
                     val detail = if (material.type == "document") "${material.pages ?: 0}페이지 · PDF" else "${meetingDuration(material.duration?.toDouble() ?: 0.0)} · MP4"
                     Text("$detail · ${(material.size / 1024 / 1024.0 * 10).toInt() / 10.0}MiB", style = MaterialTheme.typography.bodySmall.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f), color = if (active) Palette.PrimaryPressed else Palette.Muted)
                 }

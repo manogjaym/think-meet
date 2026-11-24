@@ -82,6 +82,9 @@
 /* On short screens the panel body scrolls; keep the page-open action in view below the thumbnails. */
 .textbook-body > .textbook-open { position: sticky; bottom: 0; z-index: 1; box-shadow: 0 0 0 var(--space-3) var(--tm-color-white); }
 .textbook-select { display: flex; align-items: center; gap: var(--space-1); }
+.material-subject-heading { margin: 0; color: var(--text); font-size: var(--type-label); font-weight: var(--weight-semibold); line-height: 1.5; overflow-wrap: anywhere; }
+.content-body:not(.textbook-body) > .material-subject-heading { margin-bottom: var(--space-2); }
+.subject-tag { display: inline-block; flex: none; padding: 0 var(--space-2); border-radius: 999px; background: var(--surface-3); color: var(--muted); font-size: var(--type-caption); font-style: normal; font-weight: var(--weight-medium); line-height: 1.5; white-space: nowrap; vertical-align: middle; }
 .textbook-select select {
   flex: 1;
   min-width: 0;

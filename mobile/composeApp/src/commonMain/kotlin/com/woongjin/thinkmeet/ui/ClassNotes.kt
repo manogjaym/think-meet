@@ -207,6 +207,32 @@ private fun LessonFilter(lessons: List<ClassNoteLesson>, selected: String, onSel
     NoteChips(selected, listOf("" to "전체") + lessons.map { it.title }.distinct().sorted().map { it to it }, onSelect = onSelect)
 }
 
+private const val UnclassifiedSubject = "unclassified"
+private fun ClassNoteLesson.subjectKey() = subject?.id ?: UnclassifiedSubject
+
+/** All, the listed subjects by name, then unclassified; empty below two groups so the chips stay hidden. */
+private fun subjectOptions(lessons: List<ClassNoteLesson>): List<Pair<String, String>> {
+    val groups = lessons.mapNotNull { it.subject }.distinctBy { it.id }.sortedBy { it.name }.map { it.id to it.name } +
+        listOfNotNull((UnclassifiedSubject to Copy.SubjectUnclassified).takeIf { lessons.any { it.subject == null } })
+    return if (groups.size < 2) emptyList() else listOf("" to Copy.SubjectAll) + groups
+}
+
+/** Subject chips (with subject storage) narrow the lesson-title chips; returns the rows both filters keep. */
+@Composable
+private fun <T> NoteFilters(api: ThinkMeetApi, rows: List<T>, title: String, onTitle: (String) -> Unit, lesson: (T) -> ClassNoteLesson): List<T> {
+    val bySubject = api.capabilities.collectAsState().value.supports(ContractProtocol.FeatureIds.ClassroomSubjectStorage)
+    var subject by remember { mutableStateOf("") }
+    val subjects = if (bySubject) subjectOptions(rows.map(lesson)) else emptyList()
+    val selected = subject.takeIf { key -> subjects.any { it.first == key } } ?: ""
+    val inSubject = if (selected.isEmpty()) rows else rows.filter { lesson(it).subjectKey() == selected }
+    if (subjects.isNotEmpty()) NoteChips(selected, subjects) { key ->
+        subject = key
+        if (title.isNotEmpty() && rows.none { lesson(it).title == title && (key.isEmpty() || lesson(it).subjectKey() == key) }) onTitle("")
+    }
+    LessonFilter(inSubject.map(lesson), title, onTitle)
+    return inSubject.filter { title.isEmpty() || lesson(it).title == title }
+}
+
 /** Web .notes-segment: worksheet/record switch on the line color. */
 @Composable
 private fun NotesSegment(tab: NotesTab, fill: Boolean, onTab: (NotesTab) -> Unit) {
@@ -337,9 +363,8 @@ private fun WorksheetArchive(api: ThinkMeetApi, teacher: Boolean) {
     var retry by remember { mutableIntStateOf(0) }
     var openKey by remember { mutableStateOf<Pair<LocalDate, String>?>(null) }
     val list = loadNote(month, retry) { api.noteWorksheets(month = month.toString().take(7)) }
-    val groups = list.value.orEmpty().filter { title.isEmpty() || it.lesson.title == title }.groupBy { date(it.original.createdAt) to it.lesson.id }
     fun changeMonth(delta: Int) { month = month.plus(DatePeriod(months = delta)); title = ""; openKey = null }
-    LessonFilter(list.value.orEmpty().map { it.lesson }, title) { title = it }
+    val groups = NoteFilters(api, list.value.orEmpty(), title, { title = it }) { it.lesson }.groupBy { date(it.original.createdAt) to it.lesson.id }
     Surface(color = Palette.White, border = BorderStroke(Space.S1, Palette.Line), shape = RoundedCornerShape(Component.CardRadius)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = Space.S12, vertical = Space.S8), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             RoundButton("back", "이전 달") { changeMonth(-1) }
@@ -462,9 +487,8 @@ private fun CaptureArchive(api: ThinkMeetApi, teacher: Boolean) {
     var selected by remember { mutableStateOf<List<ClassNoteCapture>?>(null) }
     var index by remember { mutableIntStateOf(0) }
     val list = loadNote("captures", retry) { api.noteCaptures() }
-    val groups = list.value.orEmpty().filter { title.isEmpty() || it.lesson.title == title }.groupBy { it.lesson.id }.values.toList()
     val sources = if (teacher) listOf("self") else listOf("self", "teacher")
-    LessonFilter(list.value.orEmpty().map { it.lesson }, title) { title = it }
+    val groups = NoteFilters(api, list.value.orEmpty(), title, { title = it }) { it.lesson }.groupBy { it.lesson.id }.values.toList()
     if (list.value == null) NoteLoadStatus(list.error) { retry++ }
     else if (groups.isEmpty()) NotesEmpty("camera", Copy.NotesCapturesEmpty)
     else NoteGrid(groups) { rows, modifier ->

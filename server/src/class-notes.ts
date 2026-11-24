@@ -16,10 +16,13 @@ import { Lessons } from './lessons'
 import { Materials } from './materials'
 import type { PublicUser, Share } from './types'
 import { readShare } from './lesson/share'
+import { subjectSelect } from './lesson/dto'
 
 export const CLASS_NOTE_IMAGE_LIMIT = 10 * 1024 * 1024
 const run = promisify(execFile)
 const uuid = z.string().uuid()
+const withSubject = { subject: { select: subjectSelect } } as const
+type Subject = { id: string; name: string } | null
 const ordered = [{ createdAt: 'desc' }, { id: 'desc' }] satisfies Prisma.ClassNoteImageOrderByWithRelationInput[]
 const captureInput = z.object({ shareId: uuid, admissionId: uuid, page: z.coerce.number().int().positive() })
 const unavailable = () => new ApiError('NOT_FOUND', '수업 노트에서 항목을 찾을 수 없어요.', 404)
@@ -75,11 +78,16 @@ export class ClassNotes {
         OR: [{ status: 'LIVE' }, { status: 'SCHEDULED', startsAt: { gte: new Date() } }],
       },
       orderBy: [{ status: 'asc' }, { startsAt: 'asc' }, { id: 'asc' }],
+      include: withSubject,
     })
   }
 
-  private lessonDto(lesson: Lesson, names: Map<string, string>): ClassNoteLesson {
-    return { id: lesson.id, title: lesson.title, startsAt: lesson.startsAt.toISOString(), teacherName: names.get(lesson.teacherId) ?? '선생님' }
+  /** `subject` is the one the note image is stored under (the target's lesson subject for the submit target). */
+  private lessonDto(lesson: Lesson, names: Map<string, string>, subject: Subject): ClassNoteLesson {
+    return {
+      id: lesson.id, title: lesson.title, startsAt: lesson.startsAt.toISOString(), teacherName: names.get(lesson.teacherId) ?? '선생님',
+      ...(subject ? { subject: { id: subject.id, name: subject.name } } : {}),
+    }
   }
 
   private async names(ids: string[]) {
@@ -90,7 +98,7 @@ export class ClassNotes {
   async target(user: PublicUser): Promise<ClassNoteTarget> {
     this.requireStudent(user)
     const lesson = await this.targetFor(user.id)
-    return { lesson: lesson ? this.lessonDto(lesson, await this.names([lesson.teacherId])) : null }
+    return { lesson: lesson ? this.lessonDto(lesson, await this.names([lesson.teacherId]), lesson.subject) : null }
   }
 
   /** Teachers list one of their lessons, or every submission to their lessons in a Seoul month. Students list their own month. */
@@ -104,10 +112,10 @@ export class ClassNotes {
       if (!(await this.db.lesson.findFirst({ where: { id, teacherId: user.id } }))) throw unavailable()
       filter = { lessonId: id, lesson: { teacherId: user.id } }
     } else filter = { lesson: { teacherId: user.id }, createdAt: worksheetMonth(month) }
-    const rows = await this.db.classNoteImage.findMany({ where: { kind: 'worksheet', ...filter }, include: { lesson: true, correction: true }, orderBy: ordered })
+    const rows = await this.db.classNoteImage.findMany({ where: { kind: 'worksheet', ...filter }, include: { lesson: true, correction: true, ...withSubject }, orderBy: ordered })
     const names = await this.names(rows.flatMap(row => [row.authorId, row.lesson.teacherId]))
     return rows.map(row => ({
-      lesson: this.lessonDto(row.lesson, names), studentName: names.get(row.authorId) ?? '학생',
+      lesson: this.lessonDto(row.lesson, names, row.subject), studentName: names.get(row.authorId) ?? '학생',
       original: image(row), correction: row.correction ? image(row.correction) : null,
     }))
   }
@@ -122,9 +130,9 @@ export class ClassNotes {
   /** Students see their own and their attended teachers' captures; teachers see only the captures they saved. */
   async captures(user: PublicUser): Promise<ClassNoteCapture[]> {
     if (user.role !== 'teacher') this.requireStudent(user)
-    const rows = await this.db.classNoteImage.findMany({ where: this.capturesVisibleTo(user), include: { lesson: true }, orderBy: ordered })
+    const rows = await this.db.classNoteImage.findMany({ where: this.capturesVisibleTo(user), include: { lesson: true, ...withSubject }, orderBy: ordered })
     const names = await this.names(rows.map(row => row.lesson.teacherId))
-    return rows.map(row => ({ lesson: this.lessonDto(row.lesson, names), image: image(row), source: row.authorId === user.id ? 'self' : 'teacher' }))
+    return rows.map(row => ({ lesson: this.lessonDto(row.lesson, names, row.subject), image: image(row), source: row.authorId === user.id ? 'self' : 'teacher' }))
   }
 
   async content(user: PublicUser, id: string, res: Response) {
@@ -142,8 +150,9 @@ export class ClassNotes {
     this.requireStudent(user)
     const lessonId = uuid.parse(id)
     return this.save(user, fields, file, { kind: 'worksheet', lessonId }, async () => {
-      if ((await this.targetFor(user.id))?.id !== lessonId) throw changedTarget()
-      return { lessonId, studentId: user.id, kind: 'worksheet' }
+      const target = await this.targetFor(user.id)
+      if (target?.id !== lessonId) throw changedTarget()
+      return { lessonId, subjectId: target.subjectId, studentId: user.id, kind: 'worksheet' }
     })
   }
 
@@ -153,7 +162,7 @@ export class ClassNotes {
     return this.save(user, fields, file, { kind: 'correction', originalId }, async () => {
       const original = await this.db.classNoteImage.findFirst({ where: { id: originalId, kind: 'worksheet', lesson: { teacherId: user.id } } })
       if (!original) throw unavailable()
-      return { lessonId: original.lessonId, studentId: original.studentId, kind: 'correction', originalId }
+      return { lessonId: original.lessonId, subjectId: original.subjectId, studentId: original.studentId, kind: 'correction', originalId }
     })
   }
 
@@ -171,14 +180,14 @@ export class ClassNotes {
       // A mirrored student screen may be saved only by that student, and stays private to them.
       const mirrored = Boolean(share?.assistanceId)
       if (!share || (mirrored && (user.role !== 'student' || share.ownerId !== user.id)) || share.id !== input.shareId || share.page !== input.page) throw changedShare()
-      return { lessonId, studentId: lesson.teacherId === user.id ? null : user.id, kind: 'capture' }
+      return { lessonId, subjectId: lesson.subjectId, studentId: lesson.teacherId === user.id ? null : user.id, kind: 'capture' }
     })
   }
 
   private async save(
     user: PublicUser, fields: unknown, file: Express.Multer.File | undefined,
     target: { kind: string; lessonId?: string; originalId?: string },
-    authorize: () => Promise<Pick<Prisma.ClassNoteImageUncheckedCreateInput, 'lessonId' | 'studentId' | 'kind' | 'originalId'>>,
+    authorize: () => Promise<Pick<Prisma.ClassNoteImageUncheckedCreateInput, 'lessonId' | 'subjectId' | 'studentId' | 'kind' | 'originalId'>>,
   ): Promise<ClassNoteImage> {
     const requestId = z.object({ requestId: uuid }).parse(fields).requestId
     const where = { authorId_requestId: { authorId: user.id, requestId } }
@@ -192,9 +201,10 @@ export class ClassNotes {
     }
     const existing = await receipt()
     if (existing) return image(existing)
-    const { lessonId } = await authorize()
+    const { lessonId, subjectId } = await authorize()
     const body = await normalizeClassNoteImage(file)
-    const key = `class-notes/${randomUUID()}.jpg`
+    // Images are filed under the lesson's subject; unclassified lessons keep the original prefix.
+    const key = subjectId ? `subjects/${subjectId}/class-notes/${randomUUID()}.jpg` : `class-notes/${randomUUID()}.jpg`
     let committed = false
     try {
       await this.materials.s3.send(new PutObjectCommand({ Bucket: this.materials.bucket, Key: key, Body: body, ContentType: 'image/jpeg', ContentLength: body.length }))

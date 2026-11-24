@@ -324,6 +324,7 @@ export function Form({
 }) {
   const details = lesson
   const subjectsEnabled = useFeature(FEATURE_IDS.ClassroomSubjects)
+  const subjectRequired = useFeature(FEATURE_IDS.ClassroomSubjectStorage) && subjectsEnabled
   const [subjects, setSubjects] = useState<TeacherSubject[] | null>(null)
   const [subjectsFailed, setSubjectsFailed] = useState(false)
   const [subjectRetry, setSubjectRetry] = useState(0)
@@ -395,6 +396,8 @@ export function Form({
   const results = students.filter((student) =>
     student.name.includes(search.trim()),
   )
+  const subjectNotice = errors.subject
+    ?? (subjectRequired && !selectedSubjectId && subjects?.length === 0 ? designContent.lessonSubjectsEmptyRequired : undefined)
   const save = async () => {
     if (saving) return
     const nextErrors: Record<string, string> = {}
@@ -414,6 +417,10 @@ export function Form({
       nextErrors.end = "종료 시간은 시작 시간보다 늦어야 해요."
     if (!isOpen && !selected.length)
       nextErrors.students = "학생을 한 명 이상 선택해 주세요."
+    if (subjectRequired && !selectedSubjectId)
+      nextErrors.subject = subjects?.length === 0
+        ? designContent.lessonSubjectsEmptyRequired
+        : designContent.lessonSubjectRequiredError
     setErrors(nextErrors)
     if (Object.keys(nextErrors).length) return
     setSaving(true)
@@ -477,10 +484,12 @@ export function Form({
             </label>
             {subjectsEnabled && (
               <div className="field min-w-0">
-                <span>{designContent.lessonSubjectOptional}</span>
+                <span>{subjectRequired ? designContent.lessonSubjectRequired : designContent.lessonSubjectOptional}</span>
                 <div className="lesson-subject-action">
                   <button type="button" className="primary"
-                    aria-describedby={selectedSubjectName ? "selected-lesson-subject" : undefined}
+                    aria-describedby={[selectedSubjectName && "selected-lesson-subject", subjectNotice && "lesson-subject-error"]
+                      .filter(Boolean).join(" ") || undefined}
+                    aria-invalid={subjectRequired ? Boolean(errors.subject) : undefined}
                     aria-haspopup="dialog" aria-expanded={subjectPickerOpen} disabled={saving}
                     onClick={() => setSubjectPickerOpen(true)}>
                     <Icon name="file" size={16} />
@@ -488,13 +497,20 @@ export function Form({
                   </button>
                   {selectedSubjectName && <span id="selected-lesson-subject">{selectedSubjectName}</span>}
                 </div>
+                {subjectNotice && <em id="lesson-subject-error" role={errors.subject ? "alert" : "status"}>{subjectNotice}</em>}
                 {subjectPickerOpen && (
                   <LessonSubjectDialog subjects={subjects} selectedId={selectedSubjectId} failed={subjectsFailed}
                     lessons={lessons} teacherId={teacherId} onRetry={() => setSubjectRetry(attempt => attempt + 1)}
+                    required={subjectRequired}
                     onClose={() => setSubjectPickerOpen(false)}
                     onSelect={id => {
                       setSubjectChange(id === savedSubjectId ? undefined : id)
                       setSubjectPickerOpen(false)
+                      if (id) setErrors(current => {
+                        const next = { ...current }
+                        delete next.subject
+                        return next
+                      })
                     }} />
                 )}
               </div>

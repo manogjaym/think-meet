@@ -26,6 +26,8 @@ xcrun simctl keychain booted add-root-cert ../../infra/local/certs/think-meet-ro
 
 Xcode는 `embedAndSignAppleFrameworkForXcode`로 대상에 맞는 KMP 프레임워크를 생성합니다. `Build Kotlin and Compose Resources` 단계는 공식 `syncComposeResourcesForIos`로 공통 리소스를 앱에 넣습니다.
 
+Xcode 링크 단계는 정적 Kotlin 프레임워크 파일의 변경을 추적하지 않습니다. 그래서 같은 단계가 프레임워크의 수정 시각·크기를 담은 `DerivedSources/KotlinFrameworkStamp.swift`를 갱신합니다. Kotlin만 바뀌어도 이 파일이 다시 컴파일되어 같은 빌드에서 앱(`ThinkMeet.debug.dylib`)을 다시 링크합니다. 변경이 없으면 파일을 그대로 둬 링크를 생략합니다.
+
 Apple Silicon에서 서명 없이 시뮬레이터용 앱을 빌드하려면 [공통 iOS 실행 안내](../README.md#ios-실행)의 `xcodebuild` 명령을 사용합니다. Xcode 빌드 단계가 Kotlin 프레임워크도 다시 만듭니다.
 
 `SKIP_KOTLIN_BUILD=YES`는 Kotlin 컴파일만 생략하고 `generateComposeResClass`와 리소스 동기화는 계속 실행합니다. `KMP_FRAMEWORK_DIR`로 Gradle 프레임워크(`composeApp/build/bin/iosSimulatorArm64/debugFramework`)를 지정하는 방식은 CI처럼 **비어 있는 `-derivedDataPath`**에서만 사용합니다.

@@ -13,6 +13,8 @@
 
   A00000000000000000000060 = {isa = PBXFileReference; explicitFileType = archive.ar; name = "ThinkMeet (KMP static archive)"; path = "$(KMP_FRAMEWORK_DIR)/ThinkMeet.framework/ThinkMeet"; sourceTree = "<absolute>"; };
   A00000000000000000000061 = {isa = PBXBuildFile; fileRef = A00000000000000000000060; };
+  A00000000000000000000076 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KotlinFrameworkStamp.swift; sourceTree = DERIVED_FILE_DIR; };
+  A00000000000000000000077 = {isa = PBXBuildFile; fileRef = A00000000000000000000076; };
 
   A00000000000000000000040 = {isa = PBXNativeTarget; buildConfigurationList = A00000000000000000000043; buildPhases = (A00000000000000000000044,A00000000000000000000045); buildRules = (); dependencies = (); name = Broadcast; packageProductDependencies = (A00000000000000000000031); productName = Broadcast; productReference = A00000000000000000000042; productType = "com.apple.product-type.app-extension"; };
   A00000000000000000000041 = {isa = PBXGroup; children = (A00000000000000000000046,A00000000000000000000047); path = Broadcast; sourceTree = "<group>"; };
@@ -35,7 +37,7 @@
   A00000000000000000000002 = {isa = PBXNativeTarget; buildConfigurationList = A00000000000000000000006; buildPhases = (A00000000000000000000007,A00000000000000000000008,A00000000000000000000009,A0000000000000000000000A,A00000000000000000000049); buildRules = (); dependencies = (A0000000000000000000004B); name = ThinkMeet; packageProductDependencies = (A00000000000000000000031); productName = ThinkMeet; productReference = A0000000000000000000000B; productType = "com.apple.product-type.application"; };
   A00000000000000000000003 = {isa = XCConfigurationList; buildConfigurations = (A00000000000000000000020,A00000000000000000000021); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
   A00000000000000000000006 = {isa = XCConfigurationList; buildConfigurations = (A00000000000000000000022,A00000000000000000000023); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
-  A00000000000000000000004 = {isa = PBXGroup; children = (A0000000000000000000000C,A00000000000000000000041,A00000000000000000000060,A00000000000000000000005); sourceTree = "<group>"; };
+  A00000000000000000000004 = {isa = PBXGroup; children = (A0000000000000000000000C,A00000000000000000000041,A00000000000000000000060,A00000000000000000000076,A00000000000000000000005); sourceTree = "<group>"; };
   A00000000000000000000005 = {isa = PBXGroup; children = (A0000000000000000000000B,A00000000000000000000042); name = Products; sourceTree = "<group>"; };
   A0000000000000000000000C = {isa = PBXGroup; children = (A00000000000000000000010,A00000000000000000000011,A00000000000000000000012,A00000000000000000000070,A00000000000000000000072,A00000000000000000000074,A00000000000000000000013); path = ThinkMeet; sourceTree = "<group>"; };
   A0000000000000000000000B = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ThinkMeet.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -47,8 +49,8 @@
   A00000000000000000000015 = {isa = PBXBuildFile; fileRef = A00000000000000000000011; };
   A00000000000000000000016 = {isa = PBXBuildFile; fileRef = A00000000000000000000012; };
   A00000000000000000000017 = {isa = PBXBuildFile; productRef = A00000000000000000000031; };
-  A00000000000000000000007 = {isa = PBXShellScriptBuildPhase; alwaysOutOfDate = 1; buildActionMask = 2147483647; files = (); inputPaths = ("$(SRCROOT)/scripts/build-kotlin-and-resources.sh"); name = "Build Kotlin and Compose Resources"; outputPaths = (); runOnlyForDeploymentPostprocessing = 0; shellPath = /bin/sh; shellScript = "/bin/sh \"$SRCROOT/scripts/build-kotlin-and-resources.sh\"\n"; };
-  A00000000000000000000008 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000014,A00000000000000000000015,A00000000000000000000016,A00000000000000000000071,A00000000000000000000073,A00000000000000000000075); runOnlyForDeploymentPostprocessing = 0; };
+  A00000000000000000000007 = {isa = PBXShellScriptBuildPhase; alwaysOutOfDate = 1; buildActionMask = 2147483647; files = (); inputPaths = ("$(SRCROOT)/scripts/build-kotlin-and-resources.sh"); name = "Build Kotlin and Compose Resources"; outputPaths = ("$(DERIVED_FILE_DIR)/KotlinFrameworkStamp.swift"); runOnlyForDeploymentPostprocessing = 0; shellPath = /bin/sh; shellScript = "/bin/sh \"$SRCROOT/scripts/build-kotlin-and-resources.sh\"\n"; };
+  A00000000000000000000008 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000014,A00000000000000000000015,A00000000000000000000016,A00000000000000000000071,A00000000000000000000073,A00000000000000000000075,A00000000000000000000077); runOnlyForDeploymentPostprocessing = 0; };
   A00000000000000000000009 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000017,A00000000000000000000061); runOnlyForDeploymentPostprocessing = 0; };
   A0000000000000000000000A = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
   A00000000000000000000020 = {isa = XCBuildConfiguration; buildSettings = {ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ENABLE_MODULES = YES; DEBUG_INFORMATION_FORMAT = dwarf; GCC_OPTIMIZATION_LEVEL = 0; IPHONEOS_DEPLOYMENT_TARGET = 17.2; SDKROOT = iphoneos; SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG; SWIFT_OPTIMIZATION_LEVEL = "-Onone";}; name = Debug; };

@@ -1,0 +1,32 @@
+{
+  "id": "mirroring-single-bar",
+  "summary": "미러링으로 학생 화면이 공유되는 동안 화면을 정리합니다. (1) 위쪽 학생 화면 보기 안내 막대('학생 화면을 눌러 위치를 알려주세요 · 화면 안내 중지')를 숨기고 공유 상태 막대 하나만 둡니다. 공유 상태 막대의 공유 중지는 화면 안내 중지와 같이 화면 보기 세션을 끝냅니다(assistance.stop). 승인 대기·준비 중에는 기존 안내 막대와 요청 취소를 그대로 표시합니다. (2) 선생님의 안내 문구는 공유 화면 왼쪽 위에 표시합니다. 앱은 원래 표시했고 웹에 같은 위치로 추가합니다. (3) 공유 중인 학생 앱은 자기 화면을 다시 비추지 않고 '내 화면을 선생님께 보여주고 있어요'와 위치 안내 방법(Android 다른 앱 위, iOS PiP)을 한 번만 표시합니다.",
+  "scope": "shared",
+  "featureIds": [
+    "meeting.remote-assistance",
+    "classroom.lesson-modes"
+  ],
+  "platforms": {
+    "server": {
+      "status": "unchanged",
+      "reason": "기존 assistance.stop·share.stop 명령과 권한을 그대로 사용합니다."
+    },
+    "web": {
+      "status": "implemented",
+      "reason": "웹은 선생님 화면만 해당합니다. 학생 화면 공유 수신은 Android·iOS 앱만 지원합니다."
+    },
+    "android": {
+      "status": "implemented"
+    },
+    "ios": {
+      "status": "implemented",
+      "reason": "공통 Compose 코드(MeetingScreen.kt·SharedStage.kt)를 함께 씁니다. iOS 학생 안내 문구는 PiP용 문구를 씁니다. Linux 환경이라 iOS 빌드·실행은 하지 않았습니다."
+    }
+  },
+  "verification": [
+    "2026-11-25 UTC, 저장소 루트: npm run shared:check -- --changed-files <변경 파일 목록>. web/에서 npm run design:generate, npm run design:check, npm run typecheck. mobile/에서 THINK_MEET_SERVER_ORIGIN=https://115.68.2.13 THINK_MEET_SERVER_CA_FILE=<실행 중인 Caddy 공개 루트 CA> ./gradlew :composeApp:assembleDebug :composeApp:checkDesignTokens :composeApp:testDebugUnitTest(50개 통과) 후 기존 emulator-5554에 설치.",
+    "검증용 수업에서 학생 student1은 emulator-5554 Android 앱(1080×2400), 선생님 teacher1은 Vite 개발 서버(127.0.0.1:8443)의 웹을 Chromium 헤드리스 390×844로 사용했습니다. 미러링 요청 → 학생 승인 → 전체 화면 공유 후 선생님 화면: 안내 막대 0개·공유 상태 막대 1개·공유 화면 안 안내 문구 확인. 학생 앱: 자기 화면 대신 공유 안내 표시 확인. 선생님 공유 상태 막대의 공유 중지 → 세션 종료·학생 MediaProjection 해제·일반 통화 화면 복귀. 다시 요청해 학생 앱 공유 상태 막대의 공유 중지 → 같은 정리 확인. 증거: features/evidence/mirroring-single-bar/android-student-sharing.png, web-phone-teacher-mirroring.png",
+    "검증용 수업은 종료 후 DB에서 삭제했고 에뮬레이터 앱은 teacher1 로그인으로 되돌렸습니다.",
+    "미실행: 선생님 Android 앱 화면(에뮬레이터 1대), 태블릿 폭, iOS 빌드·실행, 실기기, 원격 CI, 학생이 안내 포인터를 받는 화면."
+  ]
+}

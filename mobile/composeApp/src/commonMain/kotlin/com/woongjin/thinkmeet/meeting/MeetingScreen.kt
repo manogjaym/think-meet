@@ -91,6 +91,8 @@ fun MeetingScreen(
     val currentLesson = snapshot?.lesson ?: lesson
     val owner = currentLesson.teacher.id == user.id
     val assistance = snapshot?.assistance
+    // The student's screen is on stage: the share bar alone carries the stop action and the guidance stays on the stage.
+    val mirroredOnStage = assistance?.takeIf { it.status == "active" && snapshot?.share?.id == it.shareId && snapshot?.share?.assistanceId == it.id }
     val phase = snapshot?.instruction?.phase
     val lessonModes = capabilities.supports(ContractProtocol.FeatureIds.ClassroomLessonModes)
     val canShare = snapshot != null && (phase == null || (owner && phase == "classroom"))
@@ -339,7 +341,7 @@ fun MeetingScreen(
                     MeetingLessonModes(activeLessonMode(phase, snapshot?.share, assistance), modeReady && !modeBusy && !busy, assistanceEnabled, onMode = ::selectMode)
                 }
                 // The owner rail's stage guide shows a pending/preparing request and its cancel button itself.
-                if (assistanceEnabled && assistance != null && (owner || assistance.studentId == user.id) && !(teacherRail && snapshot?.share == null)) {
+                if (assistanceEnabled && assistance != null && (owner || assistance.studentId == user.id) && !(teacherRail && snapshot?.share == null) && mirroredOnStage == null) {
                     RemoteAssistanceControls(assistance, user, remoteState.supported && (pipState.supported || !remote.showsPointerOverOtherApps), assistanceBusy,
                         Modifier.fillMaxWidth().padding(horizontal = bodyPadding, vertical = Space.S4),
                         onApprove = { assistanceSession.approve(assistance.id) },
@@ -357,7 +359,9 @@ fun MeetingScreen(
                     Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(Space.S16)) {
                         Box(Modifier.weight(1f).fillMaxHeight()) {
                             val current = snapshot
-                            if (current?.share != null) SharedStage(api, current, user, media, realtime, Modifier.fillMaxSize(), report, screenShare::stop,
+                            if (current?.share != null) SharedStage(api, current, user, media, realtime, Modifier.fillMaxSize(), report,
+                                onStopShare = { id -> val session = mirroredOnStage; if (session != null && session.shareId == id) execute { assistanceSession.stop(session.id) } else screenShare.stop(id) },
+                                assistancePointer = remote.showsPointerOverOtherApps,
                                 captureEnabled = notesEnabled && admission.admissionId != null && !compactSystemPip,
                                 onCapture = capture::capture,
                                 textbookLayout = textbookLayout, dockedParticipants = dockedTextbook || teacherRail)

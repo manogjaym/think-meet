@@ -1,0 +1,31 @@
+{
+  "id": "app-teacher-screen-aspect",
+  "summary": "Android·iOS 앱 선생님이 미러링 중 학생 화면에 포인터를 보내지 못하던 문제를 고칩니다. Android 학생의 화면 공유 트랙은 LiveKit에 크기를 0×0으로 알리는데, 앱 선생님은 이 알려진 크기로 공유 화면 비율을 계산해 16:9로 대체했습니다. 그래서 서버의 학생 화면 크기와 맞지 않아 '화면 방향을 맞추고 있어요'에서 멈췄습니다. 이제 실제로 받아 그린 프레임의 회전 반영 크기를 먼저 쓰고, 크기가 바뀌면 상태를 다시 계산합니다.",
+  "scope": "platform-only",
+  "featureIds": [
+    "meeting.remote-assistance"
+  ],
+  "platforms": {
+    "server": {
+      "status": "not-applicable",
+      "reason": "서버의 승인 세션·geometry 기록은 정상이었고 바뀌지 않았습니다."
+    },
+    "web": {
+      "status": "not-applicable",
+      "reason": "웹 선생님은 이미 video.videoWidth·videoHeight로 실제 영상 크기를 비교합니다."
+    },
+    "android": {
+      "status": "implemented"
+    },
+    "ios": {
+      "status": "implemented"
+    }
+  },
+  "verification": [
+    "2026-11-25 Asia/Seoul. 저장소 루트에서 npm run shared:check 통과. THINK_MEET_SERVER_ORIGIN=https://192.168.12.231 npm run apk(:composeApp:assembleDebug) 통과. mobile/에서 README의 서명 없는 시뮬레이터용 xcodebuild(ARCHS=arm64) 통과.",
+    "원인 확인: LiveKit RoomService listParticipants에서 Android 학생(API 35 에뮬레이터)의 화면 공유 트랙이 0x0, 카메라 트랙은 1280x720으로 알려짐. 서버 assistance.geometry는 1080x2400(version 1). 수정 전 iPad Pro 11형(M5, iOS 26.5) 시뮬레이터 teacher1은 공유 영상 틀을 16:9로 그리고 '화면 방향을 맞추고 있어요'를 3분 넘게 유지했으며 터치에 반응하지 않음.",
+    "수정 후 같은 조합(iPad 시뮬레이터 teacher1, Android 에뮬레이터 student1)으로 미러링 요청·승인·전체 화면 캡처를 다시 실행. iPad 공유 영상 틀이 학생 화면 비율로 바뀌고 '학생 화면을 눌러 위치를 알려주세요'가 표시됨. iPad에서 Android 화면의 Chrome 아이콘을 누르자 Android 홈 화면의 Chrome 아이콘 위에 포인터가 표시되고 1.5초 안에 사라짐(adb screencap 연속 캡처로 확인).",
+    "수업 종료 후 Android의 PiP·하단 바·MediaProjection이 정리됨. 검증용 수업만 종료했습니다.",
+    "미실행: Android 선생님 앱의 실제 미러링 포인터(Android 기기 두 대 필요, 빌드만 확인), 실제 iPhone·iPad, iOS 학생 ReplayKit 미러링, 회전 중 geometry 갱신, 원격 CI."
+  ]
+}

@@ -54,14 +54,16 @@ adb shell am start -n com.woongjin.thinkmeet/.MainActivity
 
 [서버 주소](#서버-연결)를 설정한 뒤 Xcode에서 `iosApp/ThinkMeet.xcodeproj`를 열고 `ThinkMeet` 스킴과 iPhone/iPad를 선택합니다. Swift Package Manager가 LiveKit을 가져오고, Xcode가 공통 Kotlin 프레임워크를 생성합니다. 실기기 설치에는 Apple Development Team과 앱·Broadcast 확장의 App Group 설정이 필요합니다. 자세한 절차는 [iOS 설정 안내](iosApp/README.md)를 따릅니다.
 
-서명 없는 시뮬레이터용 빌드:
+Apple Silicon에서 서명 없는 시뮬레이터용 빌드는 **`mobile/`**에서 실행합니다. Xcode 빌드 단계가 Kotlin 프레임워크를 함께 다시 만듭니다. `ARCHS=arm64`가 없으면 Broadcast 확장의 x86_64 링크가 실패합니다.
 
 ```sh
-./gradlew :composeApp:linkDebugFrameworkIosSimulatorArm64
 xcodebuild -project iosApp/ThinkMeet.xcodeproj -scheme ThinkMeet \
   -configuration Debug -sdk iphonesimulator \
+  -destination 'generic/platform=iOS Simulator' ARCHS=arm64 \
   -derivedDataPath iosApp/build CODE_SIGNING_ALLOWED=NO build
 ```
+
+앱은 `iosApp/build/Build/Products/Debug-iphonesimulator/ThinkMeet.app`에 생성됩니다. 부팅된 시뮬레이터에는 `xcrun simctl install booted <앱 경로>`로 설치합니다.
 
 ## 서버 연결
 

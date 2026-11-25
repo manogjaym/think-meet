@@ -10,6 +10,17 @@ else
   ./gradlew :composeApp:embedAndSignAppleFrameworkForXcode :composeApp:syncComposeResourcesForIos
 fi
 
+# Xcode's linker step does not track the static Kotlin archive, so a Kotlin-only change
+# would keep the previous app binary. A Swift stamp that changes with the archive gives
+# the linker a changed object file in this same build.
+kotlin_archive="${KMP_FRAMEWORK_DIR:?}/ThinkMeet.framework/ThinkMeet"
+kotlin_stamp="${DERIVED_FILE_DIR:?}/KotlinFrameworkStamp.swift"
+stamp_source="public let kotlinFrameworkStamp = \"$(stat -f '%m-%z' "$kotlin_archive")\""
+if [ ! -f "$kotlin_stamp" ] || [ "$(cat "$kotlin_stamp")" != "$stamp_source" ]; then
+  mkdir -p "$DERIVED_FILE_DIR"
+  printf '%s\n' "$stamp_source" > "$kotlin_stamp"
+fi
+
 generated_res_dir="$SRCROOT/../composeApp/build/generated/compose/resourceGenerator/kotlin/commonResClass"
 generated_res_file=$(find "$generated_res_dir" -type f -name Res.kt -print -quit)
 resource_namespace=$(sed -n 's/^package \([A-Za-z0-9_.]*\)$/\1/p' "$generated_res_file")

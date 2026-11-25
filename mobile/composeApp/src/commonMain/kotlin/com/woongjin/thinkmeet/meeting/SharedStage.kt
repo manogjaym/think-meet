@@ -312,10 +312,34 @@ internal fun SharedStage(
                         val down = awaitFirstDown(requireUnconsumed = false)
                         down.consume()
                         val geometry = assistance.geometry ?: return@awaitEachGesture
-                        val point = AssistancePointer(snapshot.lessonId, assistance.id, share.id, geometry.version,
-                            (down.position.x / size.width).toDouble().coerceIn(0.0, 1.0), (down.position.y / size.height).toDouble().coerceIn(0.0, 1.0))
-                        pulse = point
-                        scope.launch { realtime.assistancePointer(point) }
+                        val pacer = AssistancePointerPacer()
+                        var aimed: AssistancePointer? = null
+                        fun aim(position: Offset) {
+                            aimed = assistancePointerPosition(position.x, position.y, size.width, size.height)?.let { (x, y) ->
+                                AssistancePointer(snapshot.lessonId, assistance.id, share.id, geometry.version, x, y)
+                            }
+                        }
+                        fun send() {
+                            val point = aimed ?: return
+                            if (!pacer.admit(Clock.System.now().toEpochMilliseconds())) return
+                            pulse = point
+                            scope.launch { realtime.assistancePointer(point) }
+                        }
+                        aim(down.position)
+                        send()
+                        // A held, stationary finger keeps the student's mark alive like the web teacher.
+                        val heartbeat = scope.launch { while (true) { delay(AssistancePointerHeartbeatMs); send() } }
+                        try {
+                            while (true) {
+                                val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
+                                if (!change.pressed) break
+                                change.consume()
+                                aim(change.position)
+                                send()
+                            }
+                        } finally {
+                            heartbeat.cancel()
+                        }
                     }
                 }
                 val drawModifier = if (!annotationOn || assistance != null) Modifier else Modifier.pointerInput(share.id, share.page, tool, color) {

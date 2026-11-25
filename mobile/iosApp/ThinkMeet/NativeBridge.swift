@@ -10,7 +10,7 @@ import ReplayKit
 import ThinkMeet
 
 /// The platform layer contains media and OS integration only; screens and rules live in KMP.
-final class NativeBridge: NSObject, IosNativeBridge, RoomDelegate, BroadcastManagerDelegate, UIDocumentPickerDelegate, AVAudioPlayerDelegate, @unchecked Sendable {
+final class NativeBridge: NSObject, IosNativeBridge, RoomDelegate, TrackDelegate, BroadcastManagerDelegate, UIDocumentPickerDelegate, AVAudioPlayerDelegate, @unchecked Sendable {
     private let room = Room(roomOptions: RoomOptions(defaultScreenShareCaptureOptions: ScreenShareCaptureOptions(appAudio: true, useBroadcastExtension: true), adaptiveStream: true, dynacast: true, suspendLocalVideoTracksInBackground: false))
     private var listener: ((MediaState) -> Void)?
     private var preview: LocalVideoTrack?
@@ -246,7 +246,10 @@ final class NativeBridge: NSObject, IosNativeBridge, RoomDelegate, BroadcastMana
         let state = MediaState(connected: room.connectionState == .connected, reconnecting: room.connectionState == .reconnecting,
             participants: people.compactMap { p in
                 guard let id = p.identity?.stringValue else { return nil }
-                let dimensions = p.videoTracks.first { $0.source == .screenShareVideo }?.dimensions
+                // Received frames carry the real (rotated) size; the announced size can be 0x0, e.g. Android screen capture.
+                let screenPublication = p.videoTracks.first { $0.source == .screenShareVideo }
+                let rendered = screenPublication?.track?.dimensions
+                let dimensions = rendered.flatMap { $0.width > 0 && $0.height > 0 ? $0 : nil } ?? screenPublication?.dimensions
                 let defaultRatio: Float = 16 / 9
                 var ratio = defaultRatio
                 if let dimensions, dimensions.height > 0 { ratio = Float(dimensions.width) / Float(dimensions.height) }
@@ -696,7 +699,12 @@ final class NativeBridge: NSObject, IosNativeBridge, RoomDelegate, BroadcastMana
     func room(_ room: Room, participantDidDisconnect participant: RemoteParticipant) { emitState() }
     func room(_ room: Room, didUpdateSpeakingParticipants participants: [Participant]) { emitState() }
     func room(_ room: Room, participant: Participant, trackPublication: TrackPublication, didUpdateIsMuted isMuted: Bool) { emitState() }
-    func room(_ room: Room, participant: RemoteParticipant, didSubscribeTrack publication: RemoteTrackPublication) { emitState() }
+    func room(_ room: Room, participant: RemoteParticipant, didSubscribeTrack publication: RemoteTrackPublication) {
+        // The mirroring pointer waits for the shared screen ratio, which is known only once frames render.
+        if publication.source == .screenShareVideo { publication.track?.add(delegate: self) }
+        emitState()
+    }
+    func track(_ track: VideoTrack, didUpdateDimensions dimensions: Dimensions?) { emitState() }
     func room(_ room: Room, participant: RemoteParticipant, didUnsubscribeTrack publication: RemoteTrackPublication) { emitState() }
     func room(_ room: Room, participant: LocalParticipant, didPublishTrack publication: LocalTrackPublication) {
         emitState()

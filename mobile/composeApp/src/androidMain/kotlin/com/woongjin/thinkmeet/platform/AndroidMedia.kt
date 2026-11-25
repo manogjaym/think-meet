@@ -46,6 +46,7 @@ import io.livekit.android.room.track.Track
 import io.livekit.android.room.track.VideoTrack
 import io.livekit.android.room.track.screencapture.ScreenCaptureParams
 import io.livekit.android.util.LoggingLevel
+import livekit.org.webrtc.VideoFrame
 import livekit.org.webrtc.VideoSink
 import livekit.org.webrtc.audio.JavaAudioDeviceModule
 import kotlinx.coroutines.*
@@ -55,6 +56,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.math.sqrt
 import java.nio.ByteBuffer
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -94,6 +96,8 @@ internal class AndroidMediaController(private val context: Context) : MediaContr
     private var screenCaptureId = 0L
     private var regularScreenTrack: LocalVideoTrack? = null
     private val videoRenderers = mutableMapOf<Pair<String, Boolean>, MutableSet<TextureViewRenderer>>()
+    /** Screen ratio from rendered frames; Android screen capture announces its track as 0x0. */
+    private val renderedScreenAspect = ConcurrentHashMap<String, Float>()
     var permissionRequest: ((Array<String>, CompletableDeferred<Map<String, Boolean>>) -> Unit)? = null
     var screenRequest: ((Boolean, CompletableDeferred<Intent?>) -> Unit)? = null
     init {
@@ -137,9 +141,13 @@ internal class AndroidMediaController(private val context: Context) : MediaContr
             connected = room.state == Room.State.CONNECTED,
             reconnecting = room.state == Room.State.RECONNECTING,
             participants = people.mapNotNull { p -> p.identity?.value?.let { id ->
+                val screenPublication = p.getTrackPublication(Track.Source.SCREEN_SHARE)
+                // A new share must measure its own frames instead of reusing an earlier orientation.
+                if (screenPublication == null) renderedScreenAspect.remove(id)
+                val announced = screenPublication?.dimensions?.takeIf { it.width > 0 && it.height > 0 }?.let { it.width.toFloat() / it.height }
                 MediaParticipant(id, p.name.orEmpty(), p.enabled(Track.Source.CAMERA), if (p === room.localParticipant) microphoneDesired else p.enabled(Track.Source.MICROPHONE),
                     p.enabled(Track.Source.SCREEN_SHARE), p.isSpeaking, p === room.localParticipant,
-                    p.getTrackPublication(Track.Source.SCREEN_SHARE)?.dimensions?.let { if (it.height > 0) it.width.toFloat() / it.height else 16f / 9f } ?: 16f / 9f)
+                    screenPublication?.let { renderedScreenAspect[id] } ?: announced ?: 16f / 9f)
             } },
             camera = room.localParticipant.enabled(Track.Source.CAMERA),
             microphone = microphoneDesired,
@@ -494,6 +502,13 @@ internal class AndroidMediaController(private val context: Context) : MediaContr
         }
     }
     internal fun release() { disconnectNow(); videoRenderers.clear(); room.release(); scope.cancel() }
+    /** Called from the WebRTC render thread; republishes state only when the ratio changes. */
+    internal fun reportScreenFrame(identity: String, width: Int, height: Int) {
+        if (width <= 0 || height <= 0) return
+        val ratio = width.toFloat() / height
+        val previous = renderedScreenAspect.put(identity, ratio)
+        if (previous == null || kotlin.math.abs(previous / ratio - 1f) > .001f) scope.launch { refresh() }
+    }
     internal fun registerVideoRenderer(identity: String, screen: Boolean, renderer: TextureViewRenderer) {
         videoRenderers.getOrPut(identity to screen) { mutableSetOf() }.add(renderer)
     }
@@ -555,7 +570,15 @@ internal class AndroidMediaController(private val context: Context) : MediaContr
     return controller
 }
 
-private class NoteTextureView(context: Context) : TextureViewRenderer(context) {
+private open class MeasuredTextureView(context: Context) : TextureViewRenderer(context) {
+    @Volatile var onFrameSize: ((Int, Int) -> Unit)? = null
+    override fun onFrame(frame: VideoFrame) {
+        onFrameSize?.invoke(frame.rotatedWidth, frame.rotatedHeight)
+        super.onFrame(frame)
+    }
+}
+
+private class NoteTextureView(context: Context) : MeasuredTextureView(context) {
     var onFrameReady: ((Boolean) -> Unit)? = null
     override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {
         super.onSurfaceTextureUpdated(surface)
@@ -570,7 +593,11 @@ private class NoteTextureView(context: Context) : TextureViewRenderer(context) {
 @Composable private fun TrackSurface(controller: AndroidMediaController, track: VideoTrack?, mirror: Boolean, modifier: Modifier, identity: String? = null, screen: Boolean = false, noteFrame: NoteFrameSource? = null) {
     val context = LocalContext.current
     val renderer = remember(controller, noteFrame) {
-        (if (noteFrame != null) NoteTextureView(context) else TextureViewRenderer(context)).also { controller.room.initVideoRenderer(it); it.setMirror(mirror) }
+        (if (noteFrame != null) NoteTextureView(context) else MeasuredTextureView(context)).also { controller.room.initVideoRenderer(it); it.setMirror(mirror) }
+    }
+    DisposableEffect(controller, renderer, identity, screen) {
+        renderer.onFrameSize = if (screen && identity != null) ({ width, height -> controller.reportScreenFrame(identity, width, height) }) else null
+        onDispose { renderer.onFrameSize = null }
     }
     if (renderer is NoteTextureView) {
         var frameReady by remember(track, renderer) { mutableStateOf(false) }

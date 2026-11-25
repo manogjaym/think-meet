@@ -18,7 +18,7 @@
     },
     "ios": {
       "status": "implemented",
-      "reason": "Android와 같은 공통 Compose 코드(ParticipantControls.kt)를 사용합니다. Linux 환경이라 iOS 빌드·실행은 하지 않았습니다."
+      "reason": "Android와 같은 공통 Compose 코드(ParticipantControls.kt)를 사용합니다. 2026-11-22에는 Linux 환경이라 iOS 빌드·실행을 하지 않았고, 2026-11-25 시뮬레이터에서 확인했습니다."
     }
   },
   "verification": [
@@ -28,6 +28,7 @@
     "Android 실행: 기존 emulator-5554(1080×2400, 420dpi, 설정 변경 없음)에 adb install -r 후 ParticipantControlsTest 2개 통과. 학생 화면 캡처에서 영상 아래 버튼이 없고, 선생님 테스트는 기존처럼 자기·학생 제어를 확인합니다. 태블릿 크기 Android 실행은 하지 않았습니다.",
     "infra/local에서 웹만 재배포(LIVE 수업 0개 확인) 후 web/에서 BASE_URL=https://115.68.2.13, Chromium 1255로 e2e/participant-controls.spec.ts 2회 통과. 학생 화면에 자기·선생님 참여자 제어 그룹이 없고, 하단 메뉴바 마이크 버튼이 선생님 화면의 실제 상태로 반영되는지 확인합니다. 1024×820·390×844 학생 캡처와 1280×800 선생님 캡처를 확인했습니다.",
     "검증 데이터 정리: 테스트 수업 2개를 삭제해 수업 수를 원래 상태(종료 2, 예정 1)로 돌렸습니다.",
-    "미실행: iOS 빌드·실행(Linux 환경), Android 실기기·태블릿, 원격 CI."
+    "미실행: iOS 빌드·실행(Linux 환경), Android 실기기·태블릿, 원격 CI.",
+    "2026-11-25 Asia/Seoul 추가 확인: main(2fd34e3)을 mobile/에서 THINK_MEET_SERVER_ORIGIN=https://192.168.12.231로 README의 서명 없는 시뮬레이터용 xcodebuild(ARCHS=arm64) 빌드. 같은 수업에서 iPhone 17 Pro(iOS 26.5) 시뮬레이터 학생 화면은 영상 아래 버튼 없이 하단 메뉴바 마이크·카메라만 표시하고, Android API 35 에뮬레이터 학생 화면도 같았습니다. iPad Pro 11형 시뮬레이터 선생님 화면은 자기·학생 영상 아래 마이크·카메라(학생은 판서 허용 포함) 버튼을 유지했습니다. 이전 iOS 앱에서 버튼이 보였다면 Kotlin 변경이 앱에 다시 링크되지 않은 빌드일 수 있습니다(mobile/iosApp/README.md의 링크 보정 참고). 미실행: 실제 iPhone·iPad."
   ]
 }

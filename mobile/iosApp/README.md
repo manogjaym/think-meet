@@ -26,19 +26,12 @@ xcrun simctl keychain booted add-root-cert ../../infra/local/certs/think-meet-ro
 
 Xcode는 `embedAndSignAppleFrameworkForXcode`로 대상에 맞는 KMP 프레임워크를 생성합니다. `Build Kotlin and Compose Resources` 단계는 공식 `syncComposeResourcesForIos`로 공통 리소스를 앱에 넣습니다.
 
-Apple Silicon에서 서명 없이 컴파일을 확인하려면 저장소 루트에서 실행합니다.
+Apple Silicon에서 서명 없이 시뮬레이터용 앱을 빌드하려면 [공통 iOS 실행 안내](../README.md#ios-실행)의 `xcodebuild` 명령을 사용합니다. Xcode 빌드 단계가 Kotlin 프레임워크도 다시 만듭니다.
 
-```sh
-cd mobile
-./gradlew :composeApp:linkDebugFrameworkIosSimulatorArm64
-xcodebuild -project iosApp/ThinkMeet.xcodeproj -scheme ThinkMeet \
-  -configuration Debug -sdk iphonesimulator \
-  -destination 'generic/platform=iOS Simulator' ARCHS=arm64 \
-  SKIP_KOTLIN_BUILD=YES CODE_SIGNING_ALLOWED=NO \
-  KMP_FRAMEWORK_DIR='$(SRCROOT)/../composeApp/build/bin/iosSimulatorArm64/debugFramework' build
-```
+`SKIP_KOTLIN_BUILD=YES`는 Kotlin 컴파일만 생략하고 `generateComposeResClass`와 리소스 동기화는 계속 실행합니다. `KMP_FRAMEWORK_DIR`로 Gradle 프레임워크(`composeApp/build/bin/iosSimulatorArm64/debugFramework`)를 지정하는 방식은 CI처럼 **비어 있는 `-derivedDataPath`**에서만 사용합니다.
 
-`SKIP_KOTLIN_BUILD=YES`는 기존 Kotlin 프레임워크의 재컴파일만 생략합니다. `generateComposeResClass`와 리소스 동기화는 계속 실행됩니다.
+- 이유: Swift는 빌드 폴더(`BUILT_PRODUCTS_DIR`)의 `ThinkMeet.framework`를 먼저 찾습니다. 이전 Xcode 빌드가 남긴 이 링크는 `composeApp/build/xcode-frameworks/`의 예전 프레임워크를 가리킵니다.
+- 증상: Swift가 예전 헤더로 컴파일되어 새 `IosNativeBridge` 메서드가 Objective-C에 노출되지 않습니다. 빌드는 통과하지만 실행 중 `unrecognized selector`로 앱이 종료됩니다.
 
 리소스 규칙:
 

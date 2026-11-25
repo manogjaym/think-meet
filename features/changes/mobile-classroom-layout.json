@@ -1,0 +1,36 @@
+{
+  "id": "mobile-classroom-layout",
+  "summary": "휴대폰 폭 수업 화면에서 공유 화면이 더 크게 보이도록 아래 영역을 줄입니다. (1) 공유 화면 아래 참여자 줄은 고정 142 대신 내용 높이만 쓰고, 참여자가 없으면 '입장 대기 중' 한 줄만 표시합니다. (2) 참여자 영상은 폭 전체로 늘리지 않고 4:3 타일(화면 공유 120×90, 교재 85×64)로 가운데 정렬하며, 선생님의 학생 제어 버튼은 타일 아래 줄 대신 타일 오른쪽에 아이콘으로 쌓습니다. 손들기 표시는 작은 아이콘만 보여 줍니다. (3) 판서 도구는 색상 목록을 현재 색 버튼 하나로 접어 한 줄에 두고, 누르면 버튼 위에 색상 목록을 펼칩니다. 교재 공유에서도 판서 도구가 쪽 이동 막대 옆에 끼지 않고 아래 한 줄로 내려갑니다. (4) 교재 쪽 이동 막대는 짧은 이름(−·＋·맞춤)과 화살표 아이콘으로 한 줄에 두고, 화면 저장은 공유 상태 막대로 옮깁니다. (5) 공유 화면이 있는 동안에는 효과가 없는 머리글의 발표자·바둑판 보기 전환 버튼을 숨깁니다(모든 폭). (6) 웹의 '수업 소리 켜기' 버튼을 없애고, 브라우저가 소리 자동 재생을 막으면 다음 터치·키 입력에서 소리를 켭니다. 태블릿·데스크톱 배치는 그대로입니다.",
+  "scope": "shared",
+  "featureIds": [
+    "classroom.core",
+    "classroom.lesson-modes",
+    "classroom.textbook-picker",
+    "classroom.notes",
+    "meeting.participant-controls"
+  ],
+  "platforms": {
+    "server": {
+      "status": "unchanged",
+      "reason": "화면 배치와 웹 소리 재생 시점만 바꿉니다. API·Socket·권한은 그대로입니다."
+    },
+    "web": {
+      "status": "implemented"
+    },
+    "android": {
+      "status": "implemented",
+      "reason": "'수업 소리 켜기'는 웹 브라우저 자동 재생 제한용이라 앱에는 없었습니다."
+    },
+    "ios": {
+      "status": "implemented",
+      "reason": "공통 Compose 코드(SharedStage.kt·ParticipantControls.kt·ParticipantGallery.kt·MeetingScreen.kt)를 함께 씁니다. Linux 환경이라 iOS 빌드·실행은 하지 않았습니다."
+    }
+  },
+  "verification": [
+    "2026-11-25 UTC, 저장소 루트: npm run shared:check, npm run shared:check -- --changed-files <변경 파일 목록>. web/에서 npm run design:generate, npm run design:check, npm run typecheck. mobile/에서 THINK_MEET_SERVER_ORIGIN=https://115.68.2.13 THINK_MEET_SERVER_CA_FILE=<실행 중인 Caddy 공개 루트 CA> ./gradlew :composeApp:assembleDebug 후 기존 emulator-5554에 설치.",
+    "Android(1080×2400·420dpi): teacher1로 검증용 수업을 만들어 녹화 없이 입장 → 수업방 모드 화면 공유·교재(PDF) 공유에서 확인. student1은 웹 헤드리스로 입장해 손들기. 참여자 없음 한 줄, 4:3 타일과 오른쪽 제어 버튼(교재는 두 열), 판서 도구 한 줄·색상 버튼 위 목록·파란색 선택 후 판서 색 반영, 쪽 이동 한 줄과 다음 쪽 이동(2 / 13쪽), 공유 중 보기 전환 버튼 숨김·공유 중지 후 다시 표시를 확인했습니다. 증거: features/evidence/mobile-classroom-layout/android-phone-textbook.png, android-phone-color-picker.png",
+    "웹: Vite 개발 서버(127.0.0.1:8443)와 infra/local API에서 Chromium 헤드리스로 teacher1·student1을 390×844, teacher1을 1024×768로 확인. 휴대폰: 참여자 줄 40px(없음)·90px(타일 120×90+제어 28px 열)·교재 64px(85×64+58px 두 열), 판서 도구 한 줄(340px), 쪽 이동 한 줄(44px), 화면 저장은 공유 상태 막대에만 표시, 공유 중 .layout-toggle 0개. 태블릿: 기존 배치와 쪽 이동 막대의 화면 저장 유지. 자동 재생을 막은 상태를 흉내 내 첫 터치 전 원격 오디오 정지, 터치 후 재생·리스너 해제를 확인했습니다. 콘솔 오류는 로그인 전 401 외에 없었습니다. 증거: features/evidence/mobile-classroom-layout/web-phone-screen-share.png, web-phone-textbook.png, web-tablet-textbook.png",
+    "검증용 수업은 종료 후 DB에서 삭제했습니다.",
+    "미실행: iOS 빌드·실행, 실기기(특히 iPhone Safari 자동 재생), 원격 CI, 360dp보다 좁은 휴대폰, 학생 3명 이상 쪽 넘김, 앱 태블릿 화면."
+  ]
+}

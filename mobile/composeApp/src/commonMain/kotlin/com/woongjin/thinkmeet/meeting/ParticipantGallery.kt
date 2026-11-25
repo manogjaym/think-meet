@@ -131,11 +131,17 @@ internal fun MeetingPagination(page: Int, pages: Int, start: Int, end: Int, tota
 }
 
 @Composable
-internal fun ParticipantTile(person: User, teacher: Boolean, raised: Boolean, media: MediaController, state: MediaState, modifier: Modifier = Modifier, small: Boolean = false, speakerThumbnail: Boolean = false, cameraStatus: Boolean = !small) {
+internal fun ParticipantTile(person: User, teacher: Boolean, raised: Boolean, media: MediaController, state: MediaState, modifier: Modifier = Modifier, small: Boolean = false, speakerThumbnail: Boolean = false, cameraStatus: Boolean = !small, controlsBeside: Boolean = false) {
     val participant = state.participants.firstOrNull { it.identity == person.id }
     val controls = LocalParticipantControls.current
     val self = participant?.local == true || person.id == controls?.viewerId
-    if (controls != null && controls.visibleFor(person.id, self)) {
+    // The phone strip keeps its 4:3 tile and puts the controls beside it; [modifier] sizes the tile itself.
+    if (controlsBeside && controls != null && controls.visibleFor(person.id, self)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(Space.S4), verticalAlignment = Alignment.CenterVertically) {
+            VideoTileContent(person, teacher, raised, media, participant, modifier, small, speakerThumbnail, cameraStatus)
+            ParticipantControlsRow(person.id, person.name.removeSuffix(" 선생님"), participant, self, controls, iconOnly = true, beside = true)
+        }
+    } else if (controls != null && controls.visibleFor(person.id, self)) {
         // Controls sit below the tile, which keeps the remaining height of the given slot.
         Column(modifier, verticalArrangement = Arrangement.spacedBy(if (LocalMeetingCompact.current) Space.S4 else Space.S8)) {
             VideoTileContent(person, teacher, raised, media, participant, Modifier.weight(1f).fillMaxWidth(), small, speakerThumbnail, cameraStatus)
@@ -181,10 +187,13 @@ private fun VideoTileContent(person: User, teacher: Boolean, raised: Boolean, me
             Text(name + if (participant?.local == true) " (나)" else "", color = Palette.MeetingSubtle,
                 style = MaterialTheme.typography.labelMedium.copy(fontSize = tagSize, lineHeight = tagSize * 1.5f), fontWeight = DesignWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        if (raised) Row(Modifier.align(Alignment.TopStart).padding(Space.S12).background(Palette.MeetingHandBackground, RoundedCornerShape(Corner.R7)).padding(horizontal = Space.S10, vertical = Space.S7),
+        // Small strip tiles keep only the hand icon so the badge stays inside a 4:3 tile.
+        val handIconOnly = strip && compact
+        if (raised) Row(Modifier.align(Alignment.TopStart).padding(if (handIconOnly) Space.S4 else Space.S12).background(Palette.MeetingHandBackground, RoundedCornerShape(Corner.R7))
+            .padding(horizontal = if (handIconOnly) Space.S4 else Space.S10, vertical = if (handIconOnly) Space.S4 else Space.S7),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.S6)) {
-            DesignIcon("hand", Modifier.size(Space.S17), Palette.MeetingHandText, "손듦")
-            Text("손들기", color = Palette.MeetingHandText, style = MaterialTheme.typography.labelSmall.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f))
+            DesignIcon("hand", Modifier.size(if (handIconOnly) Space.S14 else Space.S17), Palette.MeetingHandText, "손듦")
+            if (!handIconOnly) Text("손들기", color = Palette.MeetingHandText, style = MaterialTheme.typography.labelSmall.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f))
         }
         if (!(small && compact)) Box(Modifier.align(Alignment.TopEnd).padding(if (compact || strip) Space.S7 else Space.S12)
             .size(if (strip) Space.S24 else if (compact) Space.S26 else Space.S32)

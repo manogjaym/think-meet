@@ -13,6 +13,7 @@ import com.woongjin.thinkmeet.design.generated.DesignTokens.Typography as Type
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -49,7 +50,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.window.PopupProperties
 import com.woongjin.thinkmeet.data.*
 import com.woongjin.thinkmeet.platform.*
 import kotlinx.coroutines.delay
@@ -102,6 +110,7 @@ internal fun SharedStage(
     val annotationOn = (annotating || alwaysAnnotate) && canAnnotate
     var tool by remember { mutableStateOf("pen") }
     var color by remember { mutableStateOf(penColors[1]) }
+    var colorsOpen by remember { mutableStateOf(false) }
     var aspect by remember(share.id) { mutableFloatStateOf(if (share.type == "document") .7071f else 16f / 9f) }
     var zoom by remember(share.id, share.page) { mutableFloatStateOf(1f) }
     var draft by remember(share.id, share.page) { mutableStateOf<DraftStroke?>(null) }
@@ -190,19 +199,25 @@ internal fun SharedStage(
     val documentControls: @Composable (Modifier) -> Unit = { controlsModifier ->
         Surface(controlsModifier, shape = RoundedCornerShape(Corner.R8), color = Palette.MeetingTile) {
             // Zoom and page controls wrap as groups, so 이전·쪽·다음 never split across lines (same as web).
-            FlowRow(Modifier.padding(Space.S5), horizontalArrangement = Arrangement.spacedBy(Space.S4, Alignment.CenterHorizontally), verticalArrangement = Arrangement.spacedBy(Space.S4)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(Space.S4), verticalAlignment = Alignment.CenterVertically) {
-                    StageButton("− 축소", enabled = zoom > .5f, description = "PDF 축소") { zoom = (zoom - .25f).coerceAtLeast(.5f) }
-                    Text("${(zoom * 100).toInt()}%", Modifier.padding(horizontal = Space.S6), style = MaterialTheme.typography.bodySmall.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f), color = Palette.MeetingMuted)
-                    StageButton("＋ 확대", enabled = zoom < 4f, description = "PDF 확대") { zoom = (zoom + .25f).coerceAtMost(4f) }
-                    StageButton("화면에 맞추기") { zoom = 1f }
+            // Phones use short labels and arrow icons so both groups fit one row; 화면 저장 moves to the share bar (web: .doc-narrow).
+            val gap = if (compact) Space.S2 else Space.S4
+            val labelPadding = if (compact) Space.S2 else Space.S6
+            val buttonHeight = if (compact) Space.S36 else Space.S40
+            CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides if (compact) Space.S44 else LocalMinimumInteractiveComponentSize.current) {
+            FlowRow(Modifier.padding(if (compact) Space.S4 else Space.S5), horizontalArrangement = Arrangement.spacedBy(gap, Alignment.CenterHorizontally), verticalArrangement = Arrangement.spacedBy(Space.S4)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(gap), verticalAlignment = Alignment.CenterVertically) {
+                    StageButton(if (compact) "−" else "− 축소", enabled = zoom > .5f, description = "PDF 축소", minHeight = buttonHeight) { zoom = (zoom - .25f).coerceAtLeast(.5f) }
+                    Text("${(zoom * 100).toInt()}%", Modifier.padding(horizontal = labelPadding), style = MaterialTheme.typography.bodySmall.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f), color = Palette.MeetingMuted)
+                    StageButton(if (compact) "＋" else "＋ 확대", enabled = zoom < 4f, description = "PDF 확대", minHeight = buttonHeight) { zoom = (zoom + .25f).coerceAtMost(4f) }
+                    StageButton(if (compact) "맞춤" else "화면에 맞추기", description = "화면에 맞추기", minHeight = buttonHeight) { zoom = 1f }
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(Space.S4), verticalAlignment = Alignment.CenterVertically) {
-                    StageButton("이전", enabled = owner && !pending && share.page > 1, description = "PDF 이전 페이지") { command(ContractProtocol.Commands.DocumentPage, DocumentPagePayload(share.page - 1)) }
-                    Text("${share.page} / ${share.material?.pages ?: 1}쪽", Modifier.padding(horizontal = Space.S6), style = MaterialTheme.typography.bodySmall.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f), color = Palette.MeetingMuted)
-                    StageButton("다음", enabled = owner && !pending && share.page < (share.material?.pages ?: 1), description = "PDF 다음 페이지") { command(ContractProtocol.Commands.DocumentPage, DocumentPagePayload(share.page + 1)) }
+                Row(horizontalArrangement = Arrangement.spacedBy(gap), verticalAlignment = Alignment.CenterVertically) {
+                    StageButton(if (compact) null else "이전", icon = if (compact) "back" else null, enabled = owner && !pending && share.page > 1, description = "PDF 이전 페이지", minHeight = buttonHeight) { command(ContractProtocol.Commands.DocumentPage, DocumentPagePayload(share.page - 1)) }
+                    Text("${share.page} / ${share.material?.pages ?: 1}쪽", Modifier.padding(horizontal = labelPadding), style = MaterialTheme.typography.bodySmall.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f), color = Palette.MeetingMuted)
+                    StageButton(if (compact) null else "다음", icon = if (compact) "chevron" else null, enabled = owner && !pending && share.page < (share.material?.pages ?: 1), description = "PDF 다음 페이지", minHeight = buttonHeight) { command(ContractProtocol.Commands.DocumentPage, DocumentPagePayload(share.page + 1)) }
                 }
-                if (textbookLayout) captureControl()
+                if (textbookLayout && !compact) captureControl()
+            }
             }
         }
     }
@@ -221,21 +236,52 @@ internal fun SharedStage(
                 listOf("pen" to "펜", "highlighter" to "형광펜", "eraser" to "지우개").forEach { (value, label) ->
                     StageButton(null, icon = value, description = label, selected = tool == value, minHeight = if (compact) Space.S36 else Space.S44) { tool = value }
                 }
-                Row(Modifier.heightIn(min = if (compact) Space.S36 else Space.S44), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(if (compact) Space.S2 else Space.S4)) {
+                val swatches: @Composable (Dp, () -> Unit) -> Unit = { swatch, picked ->
                     penColors.forEach { penColor ->
-                        Box(Modifier.size(if (compact) Space.S22 else Space.S28).clip(CircleShape).background(hexColor(penColor))
-                            .border(Space.S2, if (color == penColor) Palette.White else Color.Transparent, CircleShape).clickable { color = penColor }
+                        Box(Modifier.size(swatch).clip(CircleShape).background(hexColor(penColor))
+                            .border(Space.S2, if (color == penColor) Palette.White else Color.Transparent, CircleShape).clickable { color = penColor; picked() }
                             .semantics { contentDescription = "색상 $penColor" }, contentAlignment = Alignment.Center) {
                             if (color == penColor) DesignIcon("check", Modifier.size(Space.S12), Palette.White)
                         }
                     }
+                }
+                // Phones fold the palette into one current-colour button so the whole bar fits on one line (web: .color-toggle).
+                if (compact) Box {
+                    Surface(onClick = { colorsOpen = true }, shape = RoundedCornerShape(Corner.R6), color = Palette.MeetingControl,
+                        modifier = Modifier.semantics { contentDescription = "판서 색상 선택" }) {
+                        Box(Modifier.heightIn(min = Space.S36).padding(horizontal = Space.S8), contentAlignment = Alignment.Center) {
+                            Box(Modifier.size(Space.S20).clip(CircleShape).background(hexColor(color)).border(Space.S2, Palette.White, CircleShape))
+                        }
+                    }
+                    if (colorsOpen) {
+                        val gap = with(LocalDensity.current) { Space.S8.roundToPx() }
+                        // Opens above the button, centred and kept inside the window, so it never covers the participant strip.
+                        val above = remember(gap) { object : PopupPositionProvider {
+                            override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection, popupContentSize: IntSize) = IntOffset(
+                                (anchorBounds.center.x - popupContentSize.width / 2).coerceIn(0, (windowSize.width - popupContentSize.width).coerceAtLeast(0)),
+                                (anchorBounds.top - popupContentSize.height - gap).coerceAtLeast(0))
+                        } }
+                        Popup(popupPositionProvider = above, onDismissRequest = { colorsOpen = false }, properties = PopupProperties(focusable = true)) {
+                            Surface(shape = RoundedCornerShape(Corner.R9), color = Palette.MeetingTile, border = BorderStroke(Space.S1, Palette.MeetingBorder), shadowElevation = Space.S8) {
+                                Row(Modifier.padding(Space.S8), horizontalArrangement = Arrangement.spacedBy(Space.S8), verticalAlignment = Alignment.CenterVertically) {
+                                    swatches(Space.S32) { colorsOpen = false }
+                                }
+                            }
+                        }
+                    }
+                } else Row(Modifier.heightIn(min = Space.S44), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.S4)) {
+                    swatches(Space.S28) {}
                 }
                 StageButton(null, icon = "undo", description = "실행 취소", enabled = !pending, minHeight = if (compact) Space.S36 else Space.S44) { command(ContractProtocol.Commands.AnnotationUndo, EmptyPayload()) }
                 StageButton(null, icon = "redo", description = "다시 실행", enabled = !pending, minHeight = if (compact) Space.S36 else Space.S44) { command(ContractProtocol.Commands.AnnotationRedo, EmptyPayload()) }
                 StageButton(null, icon = "trash", description = if (owner) "전체 지우기" else "내 판서 지우기", enabled = strokes.any { owner || it.authorId == user.id }, minHeight = if (compact) Space.S36 else Space.S44) { clearConfirm = true }
                 if (!alwaysAnnotate) StageButton("판서 종료", icon = "close", minHeight = if (compact) Space.S36 else Space.S44) { annotating = false; draft = null }
             }
-            if (compact) FlowRow(Modifier.padding(Space.S4), horizontalArrangement = Arrangement.spacedBy(Space.S4, Alignment.End), verticalArrangement = Arrangement.spacedBy(Space.S4)) { tools() }
+            // 44dp touch targets (as on the web) keep all seven tools on one line down to 360dp-wide phones.
+            // A single row also makes the footer move the whole bar below page controls instead of squeezing it beside them.
+            if (compact) CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Space.S44) {
+                Row(Modifier.padding(Space.S4), horizontalArrangement = Arrangement.spacedBy(Space.S2), verticalAlignment = Alignment.CenterVertically) { tools() }
+            }
             else Row(Modifier.padding(Space.S4), horizontalArrangement = Arrangement.spacedBy(Space.S4), verticalAlignment = Alignment.CenterVertically) { tools() }
         }
     }
@@ -341,7 +387,7 @@ internal fun SharedStage(
             val ownerName = snapshot.participants.firstOrNull { it.user.id == share.ownerId }?.user?.name ?: "참여자"
             Text(if (share.type == "screen") "$ownerName 님의 화면 공유 중" else "${share.material?.name ?: "수업 자료"} 공유 중", Modifier.weight(1f),
                 style = MaterialTheme.typography.bodySmall.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f), color = Palette.MeetingShareText, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (!textbookLayout) captureControl()
+            if (!textbookLayout || compact) captureControl()
             if (owner || share.ownerId == user.id) Surface(onClick = { onStopShare(share.id) },
                 enabled = !pending, color = Palette.MeetingShareText, contentColor = Palette.MeetingShareInk, shape = RoundedCornerShape(Corner.R6)) {
                 Box(Modifier.heightIn(min = Space.S36).padding(horizontal = if (compact) Space.S8 else Space.S12), contentAlignment = Alignment.Center) { Text("공유 중지", style = MaterialTheme.typography.labelMedium.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f)) }
@@ -366,8 +412,9 @@ internal fun SharedStage(
         }
         if (compact) Column(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Space.S8)) {
             renderStage(Modifier.weight(1f).fillMaxWidth())
+            // The strip takes only its content height (tiles, plus the pager when needed) so the shared content gets the rest.
             SharedParticipants(snapshot, user, media, mediaState,
-                Modifier.fillMaxWidth().height(if (textbookLayout) Space.S96 else 142.dp), horizontal = true)
+                if (textbookLayout) Modifier.fillMaxWidth().heightIn(max = Space.S96) else Modifier.fillMaxWidth(), horizontal = true)
         } else Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Space.S12)) {
             renderStage(Modifier.weight(1f).fillMaxHeight())
             if (!dockedParticipants) {
@@ -407,7 +454,13 @@ internal fun SharedParticipants(snapshot: MeetingSnapshot, user: User, media: Me
     BoxWithConstraints(modifier) {
         val tileHeight = (maxHeight - 92.dp).coerceIn(Space.S56, if (LocalMeetingViewportWidth.current <= com.woongjin.thinkmeet.design.generated.DesignTokens.Layout.MeetingMediumBreakpoint) 115.dp else 132.dp)
         val stripHeight = if (horizontal && LocalMeetingCompact.current && maxHeight <= Space.S96) Space.S64 else 90.dp
-        val size = if (docked) 2 else if (horizontal) kotlin.math.floor((maxWidth.value + 8) / 120).toInt().coerceIn(1, 4)
+        // Phone strip (below the shared content): 4:3 tiles with the owner's controls beside them, centred, as many as fit.
+        val strip = horizontal && !docked
+        val stripControls = LocalParticipantControls.current?.takeIf { it.viewerId == it.teacherId }
+        val stripTileWidth = stripHeight * 4f / 3f
+        val stripCellWidth = stripTileWidth + (stripControls?.let { Space.S4 + participantControlsColumnWidth(stripHeight, if (it.lessonModes) 3 else 2) } ?: 0.dp)
+        val size = if (docked) 2 else if (strip) kotlin.math.floor((maxWidth + Space.S8) / (stripCellWidth + Space.S8)).toInt().coerceIn(1, 4)
+            else if (horizontal) kotlin.math.floor((maxWidth.value + 8) / 120).toInt().coerceIn(1, 4)
             else kotlin.math.floor((maxHeight.value - 40 - 52 + 12) / (tileHeight.value + 12)).toInt().coerceIn(1, 4)
         var page by remember(size) { mutableIntStateOf(0) }
         val pages = ((people.size + size - 1) / size).coerceAtLeast(1)
@@ -418,9 +471,18 @@ internal fun SharedParticipants(snapshot: MeetingSnapshot, user: User, media: Me
         val compact = LocalMeetingCompact.current
         fun extra(id: String) = if (controls?.visibleFor(id, id == user.id) == true) participantControlsHeight(compact) + (if (compact) Space.S4 else Space.S8) else 0.dp
         val stripExtra = visible.maxOfOrNull { extra(it.user.id) } ?: 0.dp
-        Column(if (docked && !rail) Modifier.fillMaxWidth() else Modifier.fillMaxSize()) {
+        Column(if ((docked && !rail) || horizontal) Modifier.fillMaxWidth() else Modifier.fillMaxSize()) {
             if (!horizontal && !docked) Row(Modifier.padding(bottom = Space.S12), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.S6)) { DesignIcon("users", Modifier.size(Space.S14), Palette.MeetingDim); Text(if (owner) "참여자 ${people.size}명" else "선생님", style = MaterialTheme.typography.bodySmall.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f), color = Palette.MeetingDim) }
-            if (people.isEmpty()) Box(Modifier.fillMaxWidth().height(Space.S96), contentAlignment = Alignment.Center) { Text("입장 대기 중", color = Palette.MeetingDim, style = MaterialTheme.typography.bodySmall.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f)) }
+            // A horizontal strip shows the empty state as one slim line instead of reserving a tile row.
+            if (people.isEmpty() && horizontal && !docked) Row(Modifier.fillMaxWidth().heightIn(min = Space.S40).background(Palette.MeetingTile, RoundedCornerShape(Corner.R8)),
+                horizontalArrangement = Arrangement.spacedBy(Space.S6, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {
+                DesignIcon("users", Modifier.size(Space.S16), Palette.MeetingDim)
+                Text("입장 대기 중", color = Palette.MeetingDim, style = MaterialTheme.typography.bodySmall.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f))
+            }
+            else if (people.isEmpty()) Box(Modifier.fillMaxWidth().height(Space.S96), contentAlignment = Alignment.Center) { Text("입장 대기 중", color = Palette.MeetingDim, style = MaterialTheme.typography.bodySmall.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f)) }
+            else if (strip) Row(Modifier.fillMaxWidth().height(stripHeight), horizontalArrangement = Arrangement.spacedBy(Space.S8, Alignment.CenterHorizontally)) {
+                visible.forEach { entry -> ParticipantTile(entry.user, entry.user.id == snapshot.lesson.teacher.id, entry.raised, media, state, Modifier.width(stripTileWidth).fillMaxHeight(), small = true, controlsBeside = true) }
+            }
             else if (horizontal) Row(Modifier.fillMaxWidth().height(stripHeight + stripExtra), horizontalArrangement = Arrangement.spacedBy(Space.S8)) {
                 visible.forEach { entry -> ParticipantTile(entry.user, entry.user.id == snapshot.lesson.teacher.id, entry.raised, media, state, Modifier.weight(1f).fillMaxHeight(), small = true) }
             // Rail cells (tile + any controls row) split the given height equally; the tile shrinks first, like the web rail.

@@ -1,7 +1,10 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
 package com.woongjin.thinkmeet.meeting
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.FlowColumn
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -69,8 +72,16 @@ internal val LocalParticipantControls = compositionLocalOf<ParticipantControlSta
 
 internal fun participantControlsHeight(compact: Boolean): Dp = if (compact) Space.S28 else Space.S36
 
+/** Width of the phone strip's control column beside a tile of [tileHeight]; buttons wrap into a second column when the tile is short. */
+internal fun participantControlsColumnWidth(tileHeight: Dp, buttons: Int): Dp {
+    val button = participantControlsHeight(true)
+    val perColumn = ((tileHeight + Space.S2) / (button + Space.S2)).toInt().coerceAtLeast(1)
+    val columns = (buttons + perColumn - 1) / perColumn
+    return button * columns + Space.S2 * (columns - 1)
+}
+
 @Composable
-internal fun ParticipantControlsRow(userId: String, name: String, participant: MediaParticipant?, self: Boolean, state: ParticipantControlState, modifier: Modifier = Modifier, iconOnly: Boolean = false) {
+internal fun ParticipantControlsRow(userId: String, name: String, participant: MediaParticipant?, self: Boolean, state: ParticipantControlState, modifier: Modifier = Modifier, iconOnly: Boolean = false, beside: Boolean = false) {
     val compact = LocalMeetingCompact.current
     val scope = rememberCoroutineScope()
     var pending by remember(userId) { mutableStateOf(false) }
@@ -86,21 +97,28 @@ internal fun ParticipantControlsRow(userId: String, name: String, participant: M
     fun toggleMicrophone() = run { if (self) state.setMicrophone(!microphone) else state.control(ParticipantControlPayload(userId, microphone = !microphone)) }
     fun toggleCamera() = run { if (self) state.setCamera(!camera) else state.control(ParticipantControlPayload(userId, camera = !camera)) }
     val height = participantControlsHeight(compact)
-    // Same visual spacing as the web; Material's 48dp minimum would otherwise widen the gaps.
-    CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 0.dp) {
-    Row(modifier.height(height).testTag("participant-controls-$userId").semantics { contentDescription = "$name ${DesignContent.ParticipantControlsLabel}" },
-        horizontalArrangement = Arrangement.spacedBy(if (compact) Space.S4 else Space.S8), verticalAlignment = Alignment.CenterVertically) {
+    val buttons: @Composable (Modifier) -> Unit = { annotationModifier ->
         ControlButton(if (microphone) "mic" else "micOff", null, "$name ${if (microphone) DesignContent.ParticipantMicOff else DesignContent.ParticipantMicOn}",
             off = !microphone, selected = false, enabled = available && !pending, height = height, onClick = ::toggleMicrophone)
         ControlButton(if (camera) "video" else "videoOff", null, "$name ${if (camera) DesignContent.ParticipantCameraOff else DesignContent.ParticipantCameraOn}",
             off = !camera, selected = false, enabled = available && !pending, height = height, onClick = ::toggleCamera)
         if (!self && state.lessonModes) {
             val allowed = state.annotationAllowed(userId)
-            ControlButton("pen", if (compact && iconOnly) null else DesignContent.ParticipantAnnotation, "$name ${DesignContent.ParticipantAnnotation}",
+            ControlButton("pen", if ((compact && iconOnly) || beside) null else DesignContent.ParticipantAnnotation, "$name ${DesignContent.ParticipantAnnotation}",
                 off = false, selected = allowed, enabled = state.online(userId) && !pending, height = height,
-                modifier = Modifier.weight(1f, fill = false)) { run { state.control(ParticipantControlPayload(userId, annotation = !allowed)) } }
+                modifier = annotationModifier) { run { state.control(ParticipantControlPayload(userId, annotation = !allowed)) } }
         }
     }
+    val label = Modifier.testTag("participant-controls-$userId").semantics { contentDescription = "$name ${DesignContent.ParticipantControlsLabel}" }
+    // Same visual spacing as the web; Material's 48dp minimum would otherwise widen the gaps.
+    CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 0.dp) {
+        // Phone strip: icon buttons stack beside the tile (web: .participant-controls column) so the strip keeps the tile's height.
+        // Wraps at the tile height; the tile row centres the whole block, so a lone button in a second column sits at the top like the web grid.
+        if (beside) FlowColumn(modifier.then(label), verticalArrangement = Arrangement.spacedBy(Space.S2),
+            horizontalArrangement = Arrangement.spacedBy(Space.S2)) { buttons(Modifier) }
+        else Row(modifier.height(height).then(label), horizontalArrangement = Arrangement.spacedBy(if (compact) Space.S4 else Space.S8), verticalAlignment = Alignment.CenterVertically) {
+            buttons(Modifier.weight(1f, fill = false))
+        }
     }
 }
 

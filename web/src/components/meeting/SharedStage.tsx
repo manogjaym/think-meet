@@ -8,6 +8,7 @@ import { Confirm, Icon } from "../ui"
 import { AnimatedPresence } from "../AnimatedPresence"
 import { VideoTile } from "./VideoTile"
 import { ParticipantPagination, useParticipantArea, useParticipantPagination } from "./ParticipantPagination"
+import { useParticipantControlState } from "./ParticipantControls"
 import designLayout from "../../generated/design-layout.json"
 import { designContent } from "../../generated/design-content"
 import { useFeature } from "../../lib/useFeature"
@@ -27,6 +28,17 @@ export function SharedStage({ user, snapshot, room, command, previews, sendPrevi
   const [tool, setTool] = useState<"pen" | "highlighter" | "eraser">("pen")
   const [annotating, setAnnotating] = useState(false)
   const [color, setColor] = useState(colors[1])
+  // Phones fold the palette into one current-colour button; the list opens above it.
+  const [colorsOpen, setColorsOpen] = useState(false)
+  const colorsRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!colorsOpen) return
+    const close = (event: Event) => { if (!(event instanceof KeyboardEvent) || event.key === "Escape") setColorsOpen(false) }
+    const outside = (event: PointerEvent) => { if (!colorsRef.current?.contains(event.target as Node)) setColorsOpen(false) }
+    document.addEventListener("pointerdown", outside)
+    document.addEventListener("keydown", close)
+    return () => { document.removeEventListener("pointerdown", outside); document.removeEventListener("keydown", close) }
+  }, [colorsOpen])
   const [zoom, setZoom] = useState(1)
   const [pages, setPages] = useState(share.material?.pages || 1)
   const [natural, setNatural] = useState({ w: 1280, h: 720 })
@@ -248,8 +260,8 @@ export function SharedStage({ user, snapshot, room, command, previews, sendPrevi
     void command("stroke.add", { ...current, id: crypto.randomUUID() }).then(() => setDraft(null)).catch(e => { setDraft(null); onError(friendlyError(e)) }).finally(() => sendPreview({ ...current, points: [] }))
   }
   const draw = (stroke: Pick<Stroke, "tool" | "color" | "points">, key: string, confirmed = false) => <path key={key} data-stroke-id={confirmed ? key : undefined} d={pathFor(stroke.points)} fill="none" stroke={stroke.color} strokeWidth={stroke.tool === "highlighter" ? 18 : 4} strokeOpacity={stroke.tool === "highlighter" ? .38 : 1} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-  const documentControls = <div className="document-controls"><div className="control-group"><button aria-label="PDF 축소" onClick={() => setZoom(value => Math.max(.5, value - .25))}>− 축소</button><span>{Math.round(zoom * 100)}%</span><button aria-label="PDF 확대" onClick={() => setZoom(value => Math.min(4, value + .25))}>＋ 확대</button><button onClick={() => setZoom(1)}>화면에 맞추기</button></div><div className="control-group"><button aria-label="PDF 이전 페이지" disabled={!canControl || share.page <= 1 || controlPending} onClick={() => void execute("document.page", { page: share.page - 1 })}>이전</button><span>{share.page} / {pages}쪽</span><button aria-label="PDF 다음 페이지" disabled={!canControl || share.page >= pages || controlPending} onClick={() => void execute("document.page", { page: share.page + 1 })}>다음</button></div>{captureControl}</div>
-  const annotationControls = !remoteActive && canAnnotate && (annotationOn ? <div className="annotation-bar"><div className="annotation-tools">{(["pen", "highlighter", "eraser"] as const).map(item => <button key={item} className={`annotation-tool ${tool === item ? "active" : ""}`} onClick={() => setTool(item)} aria-label={item === "pen" ? "펜" : item === "highlighter" ? "형광펜" : "지우개"} title={item === "pen" ? "펜" : item === "highlighter" ? "형광펜" : "지우개"}><Icon name={item} size={20} /><span>{item === "pen" ? "펜" : item === "highlighter" ? "형광펜" : "지우개"}</span></button>)}</div><div className="annotation-colors" aria-label="판서 색상"><div className="color-grid">{colors.map(item => <button key={item} className={color === item ? "selected" : ""} style={{ backgroundColor: item }} onClick={() => setColor(item)} aria-label={`색상 ${item}`}>{color === item && <Icon name="check" size={12} />}</button>)}</div></div><div className="annotation-history"><button aria-label="실행 취소" title="실행 취소" disabled={controlPending} onClick={() => void execute("annotation.undo")}><Icon name="undo" size={20} /><span>실행 취소</span></button><button aria-label="다시 실행" title="다시 실행" disabled={controlPending} onClick={() => void execute("annotation.redo")}><Icon name="redo" size={20} /><span>다시 실행</span></button></div><button className="annotation-clear" disabled={!strokes.some(stroke => canControl || stroke.authorId === user.id)} onClick={() => setClearConfirm(true)} aria-label={canControl ? "전체 지우기" : "내 판서 지우기"} title={canControl ? "전체 지우기" : "내 판서 지우기"}><Icon name="trash" size={18} /><span>{canControl ? "전체 지우기" : "내 판서 지우기"}</span></button>{!alwaysAnnotate && <button className="annotation-exit" onClick={() => setAnnotating(false)}><Icon name="close" size={18} />판서 종료</button>}</div> : <button className="annotate-entry" onClick={() => setAnnotating(true)}><Icon name="pen" />판서 시작</button>)
+  const documentControls = <div className="document-controls"><div className="control-group"><button aria-label="PDF 축소" onClick={() => setZoom(value => Math.max(.5, value - .25))}>−<i className="doc-wide"> 축소</i></button><span>{Math.round(zoom * 100)}%</span><button aria-label="PDF 확대" onClick={() => setZoom(value => Math.min(4, value + .25))}>＋<i className="doc-wide"> 확대</i></button><button aria-label="화면에 맞추기" onClick={() => setZoom(1)}><i className="doc-wide">화면에 맞추기</i><i className="doc-narrow">맞춤</i></button></div><div className="control-group"><button aria-label="PDF 이전 페이지" disabled={!canControl || share.page <= 1 || controlPending} onClick={() => void execute("document.page", { page: share.page - 1 })}><i className="doc-wide">이전</i><i className="doc-narrow"><Icon name="back" size={18} /></i></button><span>{share.page} / {pages}쪽</span><button aria-label="PDF 다음 페이지" disabled={!canControl || share.page >= pages || controlPending} onClick={() => void execute("document.page", { page: share.page + 1 })}><i className="doc-wide">다음</i><i className="doc-narrow"><Icon name="chevron" size={18} /></i></button></div>{captureControl}</div>
+  const annotationControls = !remoteActive && canAnnotate && (annotationOn ? <div className="annotation-bar"><div className="annotation-tools">{(["pen", "highlighter", "eraser"] as const).map(item => <button key={item} className={`annotation-tool ${tool === item ? "active" : ""}`} onClick={() => setTool(item)} aria-label={item === "pen" ? "펜" : item === "highlighter" ? "형광펜" : "지우개"} title={item === "pen" ? "펜" : item === "highlighter" ? "형광펜" : "지우개"}><Icon name={item} size={20} /><span>{item === "pen" ? "펜" : item === "highlighter" ? "형광펜" : "지우개"}</span></button>)}</div><div ref={colorsRef} className={`annotation-colors ${colorsOpen ? "open" : ""}`} aria-label="판서 색상"><button className="color-toggle" aria-label="판서 색상 선택" aria-expanded={colorsOpen} onClick={() => setColorsOpen(open => !open)}><i style={{ backgroundColor: color }} /></button><div className="color-grid">{colors.map(item => <button key={item} className={color === item ? "selected" : ""} style={{ backgroundColor: item }} onClick={() => { setColor(item); setColorsOpen(false) }} aria-label={`색상 ${item}`}>{color === item && <Icon name="check" size={12} />}</button>)}</div></div><div className="annotation-history"><button aria-label="실행 취소" title="실행 취소" disabled={controlPending} onClick={() => void execute("annotation.undo")}><Icon name="undo" size={20} /><span>실행 취소</span></button><button aria-label="다시 실행" title="다시 실행" disabled={controlPending} onClick={() => void execute("annotation.redo")}><Icon name="redo" size={20} /><span>다시 실행</span></button></div><button className="annotation-clear" disabled={!strokes.some(stroke => canControl || stroke.authorId === user.id)} onClick={() => setClearConfirm(true)} aria-label={canControl ? "전체 지우기" : "내 판서 지우기"} title={canControl ? "전체 지우기" : "내 판서 지우기"}><Icon name="trash" size={18} /><span>{canControl ? "전체 지우기" : "내 판서 지우기"}</span></button>{!alwaysAnnotate && <button className="annotation-exit" onClick={() => setAnnotating(false)}><Icon name="close" size={18} />판서 종료</button>}</div> : <button className="annotate-entry" onClick={() => setAnnotating(true)}><Icon name="pen" />판서 시작</button>)
 
   const mediaControls = <div className="media-controls"><button aria-label="영상 재생" className={share.playing ? "active" : ""} disabled={!canControl || controlPending} onClick={() => void execute("media.update", { playing: true, position: videoRef.current?.currentTime || 0 })}><Icon name="play" size={17} />재생</button><button aria-label="영상 정지" className={!share.playing ? "active" : ""} disabled={!canControl || controlPending} onClick={() => void execute("media.update", { playing: false, position: videoRef.current?.currentTime || 0 })}><Icon name="pause" size={17} />정지</button><input aria-label="영상 재생 위치" type="range" min={0} max={Number.isFinite(duration) ? duration : 0} step={.1} value={Math.min(position, Number.isFinite(duration) ? duration : 0)} disabled={!canControl || controlPending} onChange={event => void execute("media.update", { playing: share.playing, position: Number(event.target.value) })} /><span>{formatDuration(position)} / {formatDuration(duration)}</span></div>
   return <div className={`shared-stage ${textbookLayout ? "textbook-stage" : ""} ${dockedParticipants ? "textbook-stage-docked" : ""}`}>
@@ -268,7 +280,7 @@ export function SharedStage({ user, snapshot, room, command, previews, sendPrevi
       </div>
     </div>
 
-    {!dockedParticipants && <SharedParticipants snapshot={snapshot} user={user} room={room} />}
+    {!dockedParticipants && <SharedParticipants snapshot={snapshot} user={user} room={room} textbook={textbookLayout} />}
     {/* Page or playback controls on the left and annotation tools on the right, always under the shared content. */}
     <div className="stage-footer">{share.type === "document" && documentControls}{share.type === "media" && mediaControls}{annotationControls}</div>
 
@@ -276,11 +288,13 @@ export function SharedStage({ user, snapshot, room, command, previews, sendPrevi
   </div>
 }
 
-export function SharedParticipants({ snapshot, user, room, docked = false, rail = false }: {
+export function SharedParticipants({ snapshot, user, room, docked = false, rail = false, textbook = false }: {
   snapshot: MeetingSnapshot
   user: User
   room: Room | null
   docked?: boolean
+  /** Phone textbook strips use shorter tiles (see live-meeting.css). */
+  textbook?: boolean
   /** Stack the docked tiles vertically above the owner's materials card. */
   rail?: boolean
 }) {
@@ -307,8 +321,14 @@ export function SharedParticipants({ snapshot, user, room, docked = false, rail 
   const participantTileHeight = docked ? 90 : participantHeight ? Math.max(56, Math.min(participantLayout === "narrow" ? 115 : 132, participantHeight - 92)) : 132
   // Owner rail cells need a 60px tile plus the controls row (~100px) and the pager below; show one per page when two don't fit.
   const railPageSize = participantHeight ? Math.max(1, Math.min(2, Math.floor((participantHeight - 48 + 8) / (100 + 8)))) : 2
+  // Phone strip: 4:3 tiles (120×90, textbook 85×64) with the owner's controls in a column beside each tile.
+  const controlState = useParticipantControlState()
+  const stripTileHeight = textbook ? 64 : 90
+  const stripControlButtons = controlState && controlState.viewerId === controlState.teacherId ? (controlState.lessonModes ? 3 : 2) : 0
+  const stripControlColumns = stripControlButtons && Math.ceil(stripControlButtons / Math.max(1, Math.floor((stripTileHeight + 2) / 30)))
+  const stripCellWidth = Math.round(stripTileHeight * 4 / 3) + (stripControlColumns ? 4 + stripControlColumns * 28 + (stripControlColumns - 1) * 2 : 0)
   const participantPageSize = docked ? (rail && canControl ? railPageSize : 2) : participantLayout === "mobile"
-    ? Math.max(1, Math.min(4, Math.floor((participantWidth + 8) / 120)))
+    ? Math.max(1, Math.min(4, Math.floor((participantWidth + 8) / (stripCellWidth + 8))))
     : Math.max(1, Math.min(4, Math.floor((participantHeight - 40 - 52 + 12) / (participantTileHeight + 12))))
   const participantPages = useParticipantPagination(people.length, participantPageSize)
   const personParticipant = (id: string) => participants.find(person => person.identity === id)

@@ -323,7 +323,7 @@ fun MeetingScreen(
                 MeetingHeader(currentLesson, mediaState, socketConnected, snapshot?.serverTime, grid, compact, windowWidth,
                     instructionPhase = phase, instructionStartedAt = snapshot?.instruction?.startedAt,
                     subjectName = currentLesson.subject?.name.takeIf { capabilities.supports(ContractProtocol.FeatureIds.ClassroomSubjects) },
-                    showLayout = !teacherRail, recording = recordingState.active, onLayout = { grid = !grid })
+                    showLayout = !teacherRail && snapshot?.share == null, recording = recordingState.active, onLayout = { grid = !grid })
                 if (recordingState.active && recordingState.interrupted && recorder != null && !compactSystemPip) {
                     RecordingInterrupted(Modifier.fillMaxWidth().padding(horizontal = bodyPadding, vertical = Space.S4), enabled = !recordingResuming && !mediaState.screenSharing) {
                         recordingResuming = true

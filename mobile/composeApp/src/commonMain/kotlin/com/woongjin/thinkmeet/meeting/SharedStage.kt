@@ -86,6 +86,8 @@ internal fun SharedStage(
     onCapture: (String, Int, ByteArray) -> Unit = { _, _, _ -> },
     textbookLayout: Boolean = false,
     dockedParticipants: Boolean = false,
+    /** False on iOS: a mirroring student follows the teacher's pointer in the PiP window instead of over other apps. */
+    assistancePointer: Boolean = true,
 ) {
     val share = snapshot.share ?: return
     val owner = snapshot.lesson.teacher.id == user.id
@@ -396,7 +398,9 @@ internal fun SharedStage(
         val renderStage: @Composable (Modifier) -> Unit = { stageModifier ->
             // Page or playback controls on the left and annotation tools on the right, always under the shared content (web: .stage-footer).
             Column(stageModifier, verticalArrangement = Arrangement.spacedBy(Space.S8)) {
-                renderContent(Modifier.weight(1f).fillMaxWidth())
+                // A student sharing their own screen sees a notice instead of an endless reflection of it.
+                if (assistance != null && share.ownerId == user.id) SelfMirroringNotice(Modifier.weight(1f).fillMaxWidth(), assistancePointer)
+                else renderContent(Modifier.weight(1f).fillMaxWidth())
                 FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Space.S4), verticalArrangement = Arrangement.spacedBy(Space.S4)) {
                     // Without annotation tools (e.g. a student) the page controls take the whole line instead of leaving a gap.
                     if (share.type == "document") documentControls(Modifier.align(Alignment.CenterVertically).then(if (canAnnotate) Modifier else Modifier.weight(1f)))
@@ -430,6 +434,19 @@ internal fun SharedStage(
             text = { Text("현재 페이지의 판서를 삭제합니다. 이 작업은 되돌릴 수 없습니다.", color = Palette.Muted) },
             confirmButton = { DesignButton("지우기", onClick = { clearConfirm = false; command(ContractProtocol.Commands.AnnotationClear, EmptyPayload()) }) },
             dismissButton = { DesignButton("취소", onClick = { clearConfirm = false }, secondary = true) })
+    }
+}
+
+@Composable
+private fun SelfMirroringNotice(modifier: Modifier, pointer: Boolean) {
+    Box(modifier.clip(RoundedCornerShape(Corner.R10)).background(Palette.MeetingSharedBackground).padding(Space.S24), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(Space.S8)) {
+            DesignIcon("screen", Modifier.size(Space.S40), Palette.MeetingShareText)
+            Text(DesignContent.RemoteAssistSharingSelf, textAlign = androidx.compose.ui.text.style.TextAlign.Center, color = Palette.MeetingText, fontWeight = DesignWeight.SemiBold,
+                style = MaterialTheme.typography.titleMedium.copy(fontSize = Type.Heading, lineHeight = Type.Heading * 1.45f))
+            Text(if (pointer) DesignContent.RemoteAssistActiveStudent else DesignContent.RemoteAssistActiveStudentIos, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                color = Palette.MeetingMuted, style = MaterialTheme.typography.bodySmall.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f))
+        }
     }
 }
 

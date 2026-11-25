@@ -3,6 +3,8 @@
 .video-tile:has(.live-camera) .name-tag { padding:var(--space-1) var(--space-2); border-radius:6px; background:#0008; }
 .live-error { display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); margin:0 var(--tm-spacing-s20) 10px; padding:10px 14px; color:#ffdad6; border:1px solid #a45b55; border-radius:var(--tm-radius-r8); background:#482d2d; font-size:13px; }
 .live-error button { border:0; padding:var(--space-2) var(--space-3); min-height:40px; border-radius:var(--tm-radius-r7); background:var(--mic-muted); color:#601410; }
+/* Teacher's pointing guidance while a student's screen is shared (same place as the app's stage hint). */
+.remote-assist-hint { position:absolute; top:var(--space-3); left:var(--space-3); z-index:5; max-width:calc(100% - 2 * var(--space-3)); margin:0; padding:var(--space-2) var(--tm-spacing-s10); border-radius:var(--tm-radius-r8); background:var(--tile-bg); color:var(--meeting-text); font-size:var(--type-caption); line-height:1.5; pointer-events:none; }
 .live-stage-message { display:grid; place-items:center; height:100%; color:var(--meeting-muted); padding:var(--space-6); text-align:center; }
 .live-shared-content { padding:var(--space-16) var(--space-3) 74px; overflow:auto; display:flex; justify-content:center; align-items:center; }
 .content-surface { position:relative; flex:none; line-height:0; max-width:100%; }

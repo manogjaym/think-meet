@@ -107,6 +107,7 @@ object DesignContent {
     const val RemoteAssistActiveStudent = "다른 앱에서도 선생님의 위치 안내를 받을 수 있어요."
     const val RemoteAssistActiveStudentIos = "다른 앱에서는 화면 속 화면(PiP) 창에서 선생님의 위치 안내를 볼 수 있어요."
     const val RemoteAssistGeometryWaiting = "화면 방향을 맞추고 있어요. 잠시 기다려 주세요."
+    const val RemoteAssistSharingSelf = "내 화면을 선생님께 보여주고 있어요"
     const val RemoteAssistUseApproval = "화면 보기 요청의 승인 버튼으로 공유를 시작해 주세요."
     const val NotesTitle = "수업 노트"
     const val NotesWorksheet = "학습지"

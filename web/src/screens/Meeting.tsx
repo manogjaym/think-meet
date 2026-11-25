@@ -28,7 +28,7 @@ import { useFeature } from "../lib/useFeature"
 import { notesFeature, uploadNote } from "../lib/classNotes"
 import { NoteDialog, NotePreview, type NoteDraft } from "./ClassNotes"
 import type { LessonModeSetPayload } from "../generated/contracts"
-import { currentAssistance } from "../lib/remoteAssistance"
+import { activeAssistance as mirroringOnStage, currentAssistance } from "../lib/remoteAssistance"
 import "../components/meeting/live-meeting.css"
 import "../components/meeting/chat-notifications.css"
 import "../components/meeting/chat-notification-badges.css"
@@ -76,6 +76,8 @@ export function Meeting(props: { lesson: ApiLesson; user: User; initialDevices: 
   const ownScreen = share?.ownerId === user.id && share.type === "screen" && !share.assistanceId
   const assistance = snapshot?.assistance
   const activeAssistance = currentAssistance(assistance) ? assistance : null
+  // The student's screen is on stage (session active and its share showing).
+  const mirroredShare = mirroringOnStage(snapshot)
   const instruction = snapshot?.instruction
   const phase = instruction?.phase
   // The server enters a mode before its popup opens; only highlight a mode once its share or request actually exists.
@@ -250,8 +252,9 @@ export function Meeting(props: { lesson: ApiLesson; user: User; initialDevices: 
     {live.error && <div className="live-error" role="alert"><span>{live.error}</span><button aria-label="알림 닫기" onClick={() => setError("")}>닫기</button></div>}
     <ParticipantControlsContext.Provider value={participantControls}><div className="meeting-body"><div className="meeting-main">
       {/* The owner rail's stage guide shows a pending/preparing request and its cancel button itself. */}
-      {!(teacherRail && !share) && <RemoteAssistanceStatus pointingReady={assistanceReady} snapshot={snapshot} userId={user.id} command={command} onError={setError} />}
-      {share && <div className={`share-status-bar ${textbookLayout ? "is-textbook" : ""}`}><Icon name="screen" size={17} /><span>{share.type === "screen" ? `${roster.find(person => person.id === share.ownerId)?.name || "참여자"} 님의 화면 공유 중` : `${share.material?.name || "수업 자료"} 공유 중`}</span>{captureControl}{(isHost || share.ownerId === user.id) && <button onClick={() => void live.stopShare(share)}>공유 중지</button>}</div>}
+      {/* While the student's screen is shared, the share bar alone carries the stop action; the guidance moves onto the stage. */}
+      {!(teacherRail && !share) && !mirroredShare && <RemoteAssistanceStatus pointingReady={assistanceReady} snapshot={snapshot} userId={user.id} command={command} onError={setError} />}
+      {share && <div className={`share-status-bar ${textbookLayout ? "is-textbook" : ""}`}><Icon name="screen" size={17} /><span>{share.type === "screen" ? `${roster.find(person => person.id === share.ownerId)?.name || "참여자"} 님의 화면 공유 중` : `${share.material?.name || "수업 자료"} 공유 중`}</span>{captureControl}{(isHost || share.ownerId === user.id) && <button onClick={() => { if (mirroredShare) void command("assistance.stop", { sessionId: mirroredShare.id }).catch(error => setError(friendlyError(error))); else void live.stopShare(share) }}>공유 중지</button>}</div>}
       <section className={`stage ${share ? "is-sharing" : ""}`} aria-label="수업 화면">
         {share && snapshot ? <div className="stage-view" key={share.id}><SharedStage textbookLayout={textbookLayout} dockedParticipants={dockedTextbook || teacherRail} captureControl={textbookLayout ? captureControl : undefined} user={user} snapshot={snapshot} room={room} command={command} previews={live.previews} sendPreview={live.sendPreview} remotePointer={live.remotePointer} sendAssistancePointer={live.sendAssistancePointer} assistanceConnected={live.appConnected && live.connection === ConnectionState.Connected} onAssistanceReady={setAssistanceReady} serverOffset={live.serverOffset} outputDevice={outputDevice} onError={setError} frameRef={notesEnabled ? frame : undefined} onFrameReady={notesEnabled ? setFrameReady : undefined} /></div> : teacherRail ? <TeacherStageGuide snapshot={snapshot} disabled={!modeReady || modeBusy} onShare={() => selectMode("classroom")} onPickStudent={() => selectMode("mirroring")} command={command} onError={setError} /> : <ParticipantGallery participants={ordered} layout={layout} gridRef={gridRef} renderParticipant={participant => { const person = roster.find(item => item.id === participant.identity); const entry = snapshot?.participants.find(item => item.user.id === participant.identity); return <VideoTile key={participant.identity} person={person?.name || participant.name || "참여자"} participant={participant} teacher={participant.identity === activeLesson.teacher.id} self={participant.identity === user.id} hand={entry?.raised} /> }} />}
       </section>

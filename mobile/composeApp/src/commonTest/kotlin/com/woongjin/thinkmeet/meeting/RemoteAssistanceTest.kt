@@ -12,6 +12,18 @@ class RemoteAssistanceTest {
     private val snapshot = MeetingSnapshot(lesson.id, lesson, share = Share("share", "screen", student.id, updatedAt = lesson.startsAt, assistanceId = session.id), serverTime = lesson.startsAt, assistance = session)
     private val pulse = AssistancePointer(lesson.id, session.id, "share", geometry.version, .25, .75, teacher.id)
 
+    @Test fun dragPointerPacesLikeWebAndDropsOutsidePositions() {
+        val pacer = AssistancePointerPacer()
+        assertTrue(pacer.admit(1_000))
+        assertFalse(pacer.admit(1_049))
+        assertTrue(pacer.admit(1_050))
+        assertTrue(pacer.admit(1_050 + AssistancePointerHeartbeatMs))
+        assertEquals(.25 to .75, assistancePointerPosition(25f, 150f, 100, 200))
+        assertNull(assistancePointerPosition(-1f, 10f, 100, 200))
+        assertNull(assistancePointerPosition(10f, 201f, 100, 200))
+        assertNull(assistancePointerPosition(10f, 10f, 0, 200))
+    }
+
     @Test fun onlyTheApprovedCurrentStudentScreenCanDisplayAPulse() {
         assertTrue(acceptsAssistancePointer(pulse, snapshot, student.id, geometry))
         for (invalid in listOf(pulse.copy(authorId = "other"), pulse.copy(authorId = null), pulse.copy(sessionId = "old"),

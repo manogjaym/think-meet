@@ -19,6 +19,28 @@ internal fun assistanceAspectMatches(geometry: AssistanceGeometry?, aspect: Floa
     geometry != null && geometry.width > 0 && geometry.height > 0 && aspect != null && aspect.isFinite() &&
         abs(aspect / (geometry.width.toFloat() / geometry.height) - 1f) < .02f
 
+/** Same pacing as the web teacher: moves at most 20/s, a held pointer refreshes the student's mark every 250ms. */
+internal const val AssistancePointerIntervalMs = 50L
+internal const val AssistancePointerHeartbeatMs = 250L
+
+/** Positions outside the shared frame are dropped instead of being pinned to the student's screen edge. */
+internal fun assistancePointerPosition(x: Float, y: Float, width: Int, height: Int): Pair<Double, Double>? {
+    if (width <= 0 || height <= 0 || !x.isFinite() || !y.isFinite()) return null
+    val normalizedX = x.toDouble() / width
+    val normalizedY = y.toDouble() / height
+    return if (normalizedX in 0.0..1.0 && normalizedY in 0.0..1.0) normalizedX to normalizedY else null
+}
+
+internal class AssistancePointerPacer(private val intervalMs: Long = AssistancePointerIntervalMs) {
+    private var sentAt: Long? = null
+    fun admit(now: Long): Boolean {
+        val last = sentAt
+        if (last != null && now - last < intervalMs) return false
+        sentAt = now
+        return true
+    }
+}
+
 internal fun acceptsAssistancePointer(pointer: AssistancePointer, snapshot: MeetingSnapshot?, studentId: String, geometry: AssistanceGeometry?): Boolean {
     val session = snapshot?.assistance ?: return false
     val share = snapshot.share ?: return false

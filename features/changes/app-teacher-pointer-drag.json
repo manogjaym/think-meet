@@ -1,0 +1,31 @@
+{
+  "id": "app-teacher-pointer-drag",
+  "summary": "Android·iOS 앱 선생님도 미러링 중 학생 화면을 누른 채 끌면 포인터가 따라가도록 합니다. 이전에는 처음 누른 지점 하나만 보내 학생 화면에서 1.5초 뒤 사라졌습니다. 웹과 같은 규칙으로 이동 중 최대 20회/초, 누른 채 멈춰 있으면 250ms마다 같은 좌표를 다시 보내고, 공유 영상 밖 좌표는 보내지 않습니다.",
+  "scope": "platform-only",
+  "featureIds": [
+    "meeting.remote-assistance"
+  ],
+  "platforms": {
+    "server": {
+      "status": "not-applicable",
+      "reason": "기존 assistance.pointer 이벤트와 서버 속도 제한(초당 60회)을 그대로 사용합니다."
+    },
+    "web": {
+      "status": "not-applicable",
+      "reason": "웹 선생님은 이미 같은 규칙으로 드래그를 전송합니다."
+    },
+    "android": {
+      "status": "implemented"
+    },
+    "ios": {
+      "status": "implemented"
+    }
+  },
+  "verification": [
+    "2026-11-25 Asia/Seoul. 저장소 루트에서 npm run shared:check 통과. mobile/에서 THINK_MEET_SERVER_ORIGIN=https://192.168.12.231 ./gradlew :composeApp:testDebugUnitTest --tests '*RemoteAssistanceTest' :composeApp:assembleDebug 통과(RemoteAssistanceTest 5개, 실패 0). README의 서명 없는 시뮬레이터용 xcodebuild(ARCHS=arm64) 통과.",
+    "iPad Pro 11형(M5, iOS 26.5) 시뮬레이터 teacher1이 Android API 35 에뮬레이터 student1에게 미러링을 요청·승인받은 뒤 Play Store → 전화 → Chrome 아이콘으로 끌고 Chrome 위에서 3초 유지했습니다. adb screencap 연속 캡처에서 포인터가 전화 아이콘 위, 메시지와 Chrome 사이, Chrome 위(약 4초 유지) 순으로 표시되고 손을 뗀 뒤 사라졌습니다.",
+    "주의: Kotlin 공통 코드만 바뀌고 Swift가 그대로면 Xcode 26.6이 앱(ThinkMeet.debug.dylib)을 다시 링크하지 않아 이전 코드가 실행됐습니다. 빌드 산출물 ThinkMeet.debug.dylib를 지우고 다시 빌드한 뒤 확인했습니다.",
+    "후속 수정: iosApp/scripts/build-kotlin-and-resources.sh가 Kotlin 프레임워크의 수정 시각·크기로 DerivedSources/KotlinFrameworkStamp.swift를 갱신해 같은 빌드에서 다시 링크합니다. 같은 날 README의 xcodebuild로 AssistancePointerHeartbeatMs를 251L로 바꾼 빌드와 250L로 되돌린 빌드에서 각각 Ld ThinkMeet.debug.dylib가 실행됐고, 변경 없는 다음 빌드에서는 링크를 생략했습니다. 사용하지 않는 const 추가처럼 Kotlin 바이너리가 그대로인 변경은 다시 링크하지 않습니다. Xcode 앱 화면의 증분 빌드는 미실행입니다.",
+    "미실행: Android 선생님 앱의 실제 드래그(Android 기기 두 대 필요, 공통 코드·빌드만 확인), 실제 iPhone·iPad, iOS 학생 PiP 안 포인터, 원격 CI."
+  ]
+}

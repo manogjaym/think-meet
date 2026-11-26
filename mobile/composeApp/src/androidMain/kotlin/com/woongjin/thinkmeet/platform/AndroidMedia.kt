@@ -401,6 +401,7 @@ internal class AndroidMediaController(private val context: Context) : MediaContr
         check(!state.value.screenSharing) { "화면 공유를 끝낸 뒤 녹화를 이어갈 수 있어요." }
         recorder.resume(recordingConsent())
     }
+    override suspend fun splitRecording(onFinished: (RecordedFile?) -> Unit) = recorder.split(onFinished)
     override fun stopRecording() = recorder.stop()
 
     @Suppress("DEPRECATION")

@@ -14,7 +14,19 @@ import { ScreenShareSession } from "./screenShare"
 import { FEATURE_IDS } from "../generated/feature-policy"
 import { designContent } from "../generated/design-content"
 
-export function useMeeting({ lesson, user, initialDevices, admission, onEnded, onWaiting }: { lesson: ApiLesson; user: User; initialDevices: JoinDevices; admission?: JoinResult; onEnded: (reason?: string) => void; onWaiting?: () => void }) {
+/**
+ * One admission to a LiveKit room. classroom.subject-switch moves the room to the lesson that continues this one:
+ * `onContinued` runs once the new lesson's snapshot arrives and the media stays connected. If following fails,
+ * `onEnded` receives `nextLessonId` and the caller admits the user again.
+ */
+export function useMeeting({ lesson, user, initialDevices, admission, onEnded, onWaiting, onContinued }: { lesson: ApiLesson; user: User; initialDevices: JoinDevices; admission?: JoinResult; onEnded: (reason?: string, nextLessonId?: string) => void; onWaiting?: () => void; onContinued?: (next: ApiLesson) => void }) {
+  // The admitted lesson keys the room and socket; `lessonId` follows subject changes without reconnecting them.
+  const [admittedId] = useState(lesson.id)
+  const [lessonId, setLessonId] = useState(lesson.id)
+  const lessonIdRef = useRef(lesson.id)
+  const following = useRef<string | null>(null)
+  const followRef = useRef<(nextLessonId: string) => void>(() => {})
+  const resubscribe = useRef<() => void>(() => {})
   const [room, setRoom] = useState<Room | null>(null)
   const [snapshot, setSnapshot] = useState<MeetingSnapshot | null>(null)
   const [connection, setConnection] = useState<ConnectionState>(ConnectionState.Connecting)
@@ -37,7 +49,8 @@ export function useMeeting({ lesson, user, initialDevices, admission, onEnded, o
   const screenRef = useRef<ScreenShareSession | null>(null)
   const onEndedRef = useRef(onEnded)
   const onWaitingRef = useRef(onWaiting)
-  onEndedRef.current = onEnded; onWaitingRef.current = onWaiting
+  const onContinuedRef = useRef(onContinued)
+  onEndedRef.current = onEnded; onWaitingRef.current = onWaiting; onContinuedRef.current = onContinued
   const options = useRef({ initialDevices, admission })
   const clearRemotePointer = useCallback(() => {
     clearTimeout(remotePointerTimer.current)
@@ -49,14 +62,16 @@ export function useMeeting({ lesson, user, initialDevices, admission, onEnded, o
     setNotice(message)
     if (message) noticeTimer.current = setTimeout(() => setNotice(""), 4000)
   }, [])
-  const finish = useCallback((reason?: string) => {
+  const finish = useCallback((reason?: string, nextLessonId?: string) => {
     if (closing.current) return
     closing.current = true
-    onEndedRef.current(reason)
+    onEndedRef.current(reason, nextLessonId)
   }, [])
   const accept = useCallback((value: MeetingSnapshot) => {
-    if (value.lessonId !== lesson.id || !mounted.current) return
+    if (value.lessonId !== lessonIdRef.current || !mounted.current) return
     if (snapshotRef.current && value.seq < snapshotRef.current.seq) return
+    // Continuing into the next lesson: keep the media connection and switch to its snapshot (which has no share).
+    if (value.lesson.status === "ENDED" && value.lesson.nextLessonId) { followRef.current(value.lesson.nextLessonId); return }
     snapshotRef.current = value
     screenRef.current?.observeShare(value.share, !value.instruction ||
       (value.instruction.phase === "classroom" && value.lesson.teacher.id === user.id))
@@ -66,15 +81,32 @@ export function useMeeting({ lesson, user, initialDevices, admission, onEnded, o
     setServerOffset(Date.parse(value.serverTime) - Date.now())
     if (value.lesson.status === "ENDED") finish("ended")
     else if (value.lesson.status === "CANCELLED") finish("cancelled")
-  }, [lesson.id, user.id, finish])
+  }, [user.id, finish])
   const command = useCallback<Command>(async (type, payload = {}, expectedShareId) => {
     const socket = socketRef.current
     if (!socket?.connected) throw new Error("수업 연결을 복구하고 있어요. 연결 후 다시 시도해 주세요.")
-    const ack = await requestSocket<Ack>(socket, Events.Command, { lessonId: lesson.id, type, payload, requestId: crypto.randomUUID(), expectedShareId })
+    const ack = await requestSocket<Ack>(socket, Events.Command, { lessonId: lessonIdRef.current, type, payload, requestId: crypto.randomUUID(), expectedShareId })
     if (!ack?.ok) throw new ApiError(400, ack?.error?.code || "COMMAND_FAILED", ack?.error?.message || "요청에 실패했어요.")
     if (socketRef.current === socket) accept(ack.snapshot)
     return ack.snapshot
-  }, [lesson.id, accept])
+  }, [accept])
+  /** The ended lesson continues as `nextLessonId` in the same LiveKit room: switch the socket and lesson only. */
+  followRef.current = (nextLessonId: string) => {
+    if (following.current === nextLessonId || closing.current || !mounted.current) return
+    following.current = nextLessonId
+    lessonIdRef.current = nextLessonId
+    snapshotRef.current = null
+    void (async () => {
+      // Confirms this participant in the moved room; the server keeps the admission and attendance.
+      await call("connectedLesson", { params: { id: nextLessonId } })
+      const next = await call("getSnapshot", { params: { id: nextLessonId } })
+      if (!mounted.current || lessonIdRef.current !== nextLessonId) return
+      onContinuedRef.current?.(next.lesson)
+      setLessonId(nextLessonId)
+      accept(next)
+      resubscribe.current()
+    })().catch(() => { if (mounted.current) finish("switched", nextLessonId) })
+  }
   useEffect(() => {
     mounted.current = true; closing.current = false
     let cancelled = false
@@ -84,7 +116,7 @@ export function useMeeting({ lesson, user, initialDevices, admission, onEnded, o
     socketRef.current = socket
     const subscribe = () => {
       if (cancelled || !socket.connected) return
-      void requestSocket<Ack>(socket, Events.Subscribe, { lessonId: lesson.id }).then(ack => {
+      void requestSocket<Ack>(socket, Events.Subscribe, { lessonId: lessonIdRef.current }).then(ack => {
         if (cancelled) return
         if (ack?.ok) {
           if (socket.connected) { accept(ack.snapshot); setAppConnected(true); screen?.controlReconnected() }
@@ -92,18 +124,19 @@ export function useMeeting({ lesson, user, initialDevices, admission, onEnded, o
         else if (ack?.error) { if (["KICKED", "NOT_INVITED", "ACCOUNT", "ENDED", "CANCELLED"].includes(ack.error.code)) finish(ack.error.code.toLowerCase()); else setError(ack.error.message) }
       }).catch(error => { if (!cancelled) setError(friendlyError(error)) })
     }
+    resubscribe.current = subscribe
     socket.on("connect", subscribe)
     socket.on("disconnect", () => { if (!cancelled) { setAppConnected(false); clearRemotePointer() } })
     socket.on("connect_error", () => { if (!cancelled) { setAppConnected(false); clearRemotePointer() } })
     socket.on(Events.Snapshot, accept)
-    socket.on(Events.SessionReplaced, (event: { lessonId: string }) => { if (event.lessonId === lesson.id) finish("replaced") })
+    socket.on(Events.SessionReplaced, (event: { lessonId: string }) => { if (event.lessonId === lessonIdRef.current) finish("replaced") })
     socket.on(Events.RoomError, (event: RealtimeError) => {
       if (["KICKED", "ENDED", "CANCELLED", "SESSION_REPLACED", "REPLACED"].includes(event.code)) finish(event.code.toLowerCase())
       else setError(event.message)
     })
     // The server sends this only to the target student's current lesson socket after checking the teacher.
     socket.on(Events.ParticipantMedia, (request: ParticipantMediaRequest) => {
-      if (cancelled || request.lessonId !== lesson.id || request.userId !== user.id || !isFeatureEnabled(FEATURE_IDS.MeetingParticipantControls)) return
+      if (cancelled || request.lessonId !== lessonIdRef.current || request.userId !== user.id || !isFeatureEnabled(FEATURE_IDS.MeetingParticipantControls)) return
       const target = connectedRoom?.localParticipant
       if (!target) return
       const preferences = readDevicePreferences()
@@ -124,12 +157,12 @@ export function useMeeting({ lesson, user, initialDevices, admission, onEnded, o
       })
     })
     socket.on(Events.StrokePreview, (value: StrokePreview) => {
-      if (value.lessonId !== lesson.id || value.authorId === user.id || !value.authorId) return
+      if (value.lessonId !== lessonIdRef.current || value.authorId === user.id || !value.authorId) return
       setPreviews(current => ({ ...current, [value.authorId!]: value }))
     })
     const start = async () => {
       try {
-        const join = options.current.admission || await call("joinLesson", { params: { id: lesson.id } })
+        const join = options.current.admission || await call("joinLesson", { params: { id: admittedId } })
         if (cancelled) return
         if (join.waiting) { onWaitingRef.current?.(); return }
         if (!join.token || !join.livekitUrl) throw new Error("수업 연결 정보를 받지 못했어요.")
@@ -172,7 +205,7 @@ export function useMeeting({ lesson, user, initialDevices, admission, onEnded, o
           : join.livekitUrl
         await nextRoom.connect(livekitUrl, join.token)
         if (cancelled) { await nextRoom.disconnect(); return }
-        await call("connectedLesson", { params: { id: lesson.id } })
+        await call("connectedLesson", { params: { id: lessonIdRef.current } })
         if (!cancelled) setAdmissionId(join.admissionId)
         const results = await Promise.allSettled([
           nextRoom.localParticipant.setMicrophoneEnabled(devices.mic),
@@ -181,7 +214,7 @@ export function useMeeting({ lesson, user, initialDevices, admission, onEnded, o
         if (cancelled) return
         const failed = results.find(result => result.status === "rejected")
         if (failed?.status === "rejected") setError(`카메라 또는 마이크를 켜지 못했어요. 설정에서 다시 선택해 주세요. ${friendlyError(failed.reason)}`)
-        accept(await call("getSnapshot", { params: { id: lesson.id } }))
+        accept(await call("getSnapshot", { params: { id: lessonIdRef.current } }))
       } catch (e) {
         if (cancelled) return
         if (e instanceof ApiError && ["KICKED", "NOT_INVITED", "ACCOUNT", "CANCELLED", "ENDED"].includes(e.code)) finish(e.code.toLowerCase())
@@ -190,7 +223,7 @@ export function useMeeting({ lesson, user, initialDevices, admission, onEnded, o
     }
     void start()
     const poll = window.setInterval(() => {
-      if (!closing.current) void call("getSnapshot", { params: { id: lesson.id } }).then(accept).catch(e => {
+      if (!closing.current) void call("getSnapshot", { params: { id: lessonIdRef.current } }).then(accept).catch(e => {
         if (e instanceof ApiError && e.code === "KICKED") finish("kicked")
       })
     }, 12000)
@@ -200,7 +233,7 @@ export function useMeeting({ lesson, user, initialDevices, admission, onEnded, o
       screen?.close(); screenRef.current = null
       if (connectedRoom) { connectedRoom.removeAllListeners(); void connectedRoom.disconnect(true) }
     }
-  }, [lesson.id, user.id, accept, finish, clearRemotePointer, command, showNotice])
+  }, [admittedId, user.id, accept, finish, clearRemotePointer, command, showNotice])
 
   useEffect(() => { if (!assistanceEnabled) clearRemotePointer() }, [assistanceEnabled, clearRemotePointer])
 
@@ -220,14 +253,15 @@ export function useMeeting({ lesson, user, initialDevices, admission, onEnded, o
     const isHost = (snapshotRef.current?.lesson || lesson).teacher.id === user.id
     intentionalLeave.current = true
     try {
-      await (isHost ? call("endLesson", { params: { id: lesson.id } }) : call("leaveLesson", { params: { id: lesson.id } }))
+      const id = lessonIdRef.current
+      await (isHost ? call("endLesson", { params: { id } }) : call("leaveLesson", { params: { id } }))
       await room?.disconnect(true)
       finish(isHost ? "ended" : "left")
     } catch(e) { intentionalLeave.current = false; setError(friendlyError(e)) }
   }
   const sendPreview = (preview: PreviewStroke) => {
     const socket = socketRef.current
-    if (socket) emitVolatile(socket, Events.StrokePreview, { lessonId: lesson.id, ...preview })
+    if (socket) emitVolatile(socket, Events.StrokePreview, { lessonId: lessonIdRef.current, ...preview })
   }
   const sendAssistancePointer = useCallback((x: number, y: number) => {
     const socket = socketRef.current
@@ -236,7 +270,7 @@ export function useMeeting({ lesson, user, initialDevices, admission, onEnded, o
     if (!socket?.connected || !session?.geometry || session.teacherId !== user.id || !isFeatureEnabled(FEATURE_IDS.MeetingRemoteAssistance)) return
     const now = Date.now()
     if (now - remotePointerSentAt.current < REMOTE_POINTER_INTERVAL_MS) return
-    const frame: AssistancePointer = { lessonId: lesson.id, sessionId: session.id, shareId: session.shareId!, geometryVersion: session.geometry.version, x, y, authorId: user.id }
+    const frame: AssistancePointer = { lessonId: lessonIdRef.current, sessionId: session.id, shareId: session.shareId!, geometryVersion: session.geometry.version, x, y, authorId: user.id }
     if (!matchesAssistancePointer(frame, current)) return
     remotePointerSentAt.current = now
     // Pulse frames never wait for capabilities or reconnect, and never enter the command log.
@@ -244,6 +278,8 @@ export function useMeeting({ lesson, user, initialDevices, admission, onEnded, o
     clearTimeout(remotePointerTimer.current)
     setRemotePointer({ ...frame, receivedAt: now })
     remotePointerTimer.current = setTimeout(() => setRemotePointer(null), REMOTE_POINTER_TTL_MS)
-  }, [lesson.id, user.id])
-  return { room, snapshot, connection, error, setError, notice, showNotice, appConnected, admissionId, previews, remotePointer, sendAssistancePointer, serverOffset, command, setMic, setCam, startScreen, stopShare, leave, sendPreview }
+  }, [user.id])
+  /** The teacher's own subject change: follow the new lesson without waiting for the ENDED snapshot. */
+  const followLesson = useCallback((nextLessonId: string) => followRef.current(nextLessonId), [])
+  return { lessonId, room, snapshot, connection, error, setError, notice, showNotice, appConnected, admissionId, previews, remotePointer, sendAssistancePointer, serverOffset, command, setMic, setCam, startScreen, stopShare, leave, sendPreview, followLesson }
 }

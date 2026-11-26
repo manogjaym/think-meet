@@ -54,8 +54,12 @@ import kotlin.math.min
 class MeetingRealtime internal constructor(
     private val api: ThinkMeetApi,
     private val scope: CoroutineScope,
-    private val lessonId: String?,
+    initialLessonId: String?,
 ) {
+    /** classroom.subject-switch moves this connection to the lesson that continues the admitted one. */
+    @kotlin.concurrent.Volatile private var lessonId: String? = initialLessonId
+    private val activeLesson = MutableStateFlow(initialLessonId)
+    val currentLessonId: StateFlow<String?> = activeLesson.asStateFlow()
     private val state = MutableStateFlow<MeetingSnapshot?>(null)
     val snapshot: StateFlow<MeetingSnapshot?> = state.asStateFlow()
     private val connection = MutableStateFlow(false)
@@ -161,14 +165,7 @@ class MeetingRealtime internal constructor(
                     SocketIoCodec.Packet.Connected -> {
                         connection.value = true
                         onReady()
-                        if (lessonId != null) launch {
-                            try {
-                                val ack = request(ContractProtocol.Events.Subscribe, ThinkMeetJson.encodeToJsonElement(SubscribeInput(lessonId)))
-                                accept(readAck(ack))
-                                subscription.value = true
-                            } catch (error: CancellationException) { throw error }
-                            catch (error: Exception) { report(error) }
-                        }
+                        lessonId?.let { id -> launch { subscribe(id) } }
                     }
                     is SocketIoCodec.Packet.Ping -> sendPacket("3${packet.data}")
                     is SocketIoCodec.Packet.Ack -> ackLock.withLock { pending.remove(packet.id) }?.complete(packet.arguments.firstOrNull() ?: JsonObject(emptyMap()))
@@ -178,6 +175,27 @@ class MeetingRealtime internal constructor(
                 }
             }
         }
+    }
+
+    private suspend fun subscribe(id: String) {
+        try {
+            val ack = request(ContractProtocol.Events.Subscribe, ThinkMeetJson.encodeToJsonElement(SubscribeInput(id)))
+            if (lessonId != id) return
+            accept(readAck(ack))
+            subscription.value = true
+        } catch (error: CancellationException) { throw error }
+        catch (error: Exception) { if (lessonId == id) report(error) }
+    }
+
+    /**
+     * Switches commands, previews and snapshots to [nextLessonId] on the same socket; the server leaves the old lesson's
+     * room on subscribe. The ended lesson's snapshot stays until the new lesson's first snapshot replaces it.
+     */
+    suspend fun follow(nextLessonId: String) {
+        if (lessonId == nextLessonId) return
+        lessonId = nextLessonId
+        activeLesson.value = nextLessonId
+        if (connection.value) subscribe(nextLessonId)
     }
 
     private fun handleEvent(name: String, payload: JsonElement?) {

@@ -18,6 +18,10 @@ export class LessonsController {
     if (body?.subjectId !== undefined) this.features.assertHttpFeature('classroom.subjects', req.headers)
     return this.lessons.create(user, body, this.requiresSubject(req))
   }
+  // Route feature gating (classroom.repeat-schedule) runs in HttpFeatureGuard.
+  @Post('lesson-series') createSeries(@CurrentUser() user: PublicUser, @Req() req: Request, @Body() body: unknown) {
+    return this.lessons.createSeries(user, body, this.requiresSubject(req))
+  }
   @Get('join/:code') resolve(@CurrentUser() user: PublicUser, @Param('code') code: string) { return this.lessons.resolve(code, user) }
   @Get('lessons/:id') async detail(@CurrentUser() user: PublicUser, @Param('id') id: string) { return this.lessons.dto(await this.lessons.access(id, user)) }
   @Patch('lessons/:id') edit(@CurrentUser() user: PublicUser, @Req() req: Request, @Param('id') id: string, @Body() body: LessonInput) {
@@ -36,6 +40,8 @@ export class LessonsController {
   @Post('lessons/:id/connected') connected(@CurrentUser() user: PublicUser, @Param('id') id: string) { return this.lessons.connected(id, user) }
   @Post('lessons/:id/leave') leave(@CurrentUser() user: PublicUser, @Param('id') id: string) { return this.lessons.leave(id, user) }
   @Post('lessons/:id/end') end(@CurrentUser() user: PublicUser, @Param('id') id: string) { return this.lessons.end(id, user) }
+  // Route feature gating (classroom.subject-switch) runs in HttpFeatureGuard.
+  @Post('lessons/:id/subject-switch') switchSubject(@CurrentUser() user: PublicUser, @Param('id') id: string, @Body() body: unknown) { return this.lessons.switchSubject(id, user, body) }
   @Post('lessons/:id/kick') kick(@CurrentUser() user: PublicUser, @Param('id') id: string, @Body() body: KickInput) { return this.lessons.kick(id, user, body) }
   @Post('lessons/:id/invites') invite(@CurrentUser() user: PublicUser, @Param('id') id: string, @Body() body: InviteInput) { return this.lessons.invite(id, user, body) }
   @Get('lessons/:id/snapshot') snapshot(@CurrentUser() user: PublicUser, @Param('id') id: string) { return this.lessons.snapshot(id, user) }

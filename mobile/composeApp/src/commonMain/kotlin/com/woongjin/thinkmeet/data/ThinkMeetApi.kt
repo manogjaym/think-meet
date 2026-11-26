@@ -181,6 +181,12 @@ class ThinkMeetApi(internal val client: HttpClient, origin: String) {
             body.toString(),
         )
     }
+    /** classroom.repeat-schedule: books every repeat date at once; the server creates all or none. */
+    suspend fun createLessonSeries(input: LessonSeriesInput): LessonSeries =
+        json("createLessonSeries", body = ThinkMeetJson.encodeToString(input))
+    /** classroom.subject-switch: ends this live lesson and returns the new live lesson in [subjectId]. */
+    suspend fun switchSubject(id: String, subjectId: String): Lesson =
+        json("switchLessonSubject", mapOf("id" to id), ThinkMeetJson.encodeToString(LessonSubjectSwitchInput(subjectId)))
     suspend fun cancel(id: String): Lesson = json("cancelLesson", mapOf("id" to id))
     suspend fun join(id: String): JoinResult = json("joinLesson", mapOf("id" to id))
     suspend fun prejoinStatus(id: String): PrejoinStatus = json("getPrejoinStatus", mapOf("id" to id))

@@ -6,7 +6,7 @@ export const OPENAPI_DOCUMENT = {
     "version": "1.0.0",
     "description": "Canonical REST schemas shared by NestJS, React and KMP. Socket.IO is defined in realtime.json."
   },
-  "x-contract-revision": 16,
+  "x-contract-revision": 17,
   "servers": [
     {
       "url": "/api/v1"
@@ -473,6 +473,53 @@ export const OPENAPI_DOCUMENT = {
         "x-feature": "classroom.core"
       }
     },
+    "/lesson-series": {
+      "post": {
+        "operationId": "createLessonSeries",
+        "tags": [
+          "lessons"
+        ],
+        "description": "선생님이 반복 규칙으로 여러 수업을 한 번에 예약합니다. 하나라도 저장하지 못하면 아무 수업도 만들지 않습니다.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LessonSeriesInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created lessons in start order",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LessonSeries"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "x-feature": "classroom.repeat-schedule"
+      }
+    },
     "/join/{code}": {
       "get": {
         "operationId": "resolveLesson",
@@ -756,6 +803,63 @@ export const OPENAPI_DOCUMENT = {
           }
         ],
         "x-cleanup": true
+      }
+    },
+    "/lessons/{id}/subject-switch": {
+      "post": {
+        "operationId": "switchLessonSubject",
+        "tags": [
+          "lessons"
+        ],
+        "description": "진행 중인 수업의 과목을 바꿉니다. 현재 수업을 종료하고 같은 제목·참여자로 새 과목의 진행 중 수업을 만듭니다. 종료한 수업의 nextLessonId가 새 수업을 가리킵니다.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LessonSubjectSwitchInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The new live lesson",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Lesson"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "x-feature": "classroom.subject-switch"
       }
     },
     "/lessons/{id}/join": {
@@ -2263,6 +2367,11 @@ export const OPENAPI_DOCUMENT = {
             "format": "date-time",
             "nullable": true,
             "default": null
+          },
+          "nextLessonId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "과목 변경으로 종료된 수업이면 이어지는 새 수업 ID(classroom.subject-switch)"
           },
           "participants": {
             "type": "array",
@@ -3899,6 +4008,91 @@ export const OPENAPI_DOCUMENT = {
           "startedAt",
           "createdAt",
           "expiresAt"
+        ]
+      },
+      "LessonRepeatFrequency": {
+        "type": "string",
+        "x-feature": "classroom.repeat-schedule",
+        "description": "WEEKLY: 매주, BIWEEKLY: 첫 수업 주부터 2주 간격",
+        "enum": [
+          "WEEKLY",
+          "BIWEEKLY"
+        ]
+      },
+      "LessonRepeat": {
+        "type": "object",
+        "x-feature": "classroom.repeat-schedule",
+        "description": "반복 규칙. 날짜와 요일은 Asia/Seoul 기준입니다.",
+        "properties": {
+          "frequency": {
+            "$ref": "#/components/schemas/LessonRepeatFrequency"
+          },
+          "weekdays": {
+            "type": "array",
+            "description": "ISO 요일(1=월요일 … 7=일요일)",
+            "items": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 7
+            },
+            "minItems": 1,
+            "maxItems": 7
+          },
+          "until": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "마지막 수업 날짜(YYYY-MM-DD, 포함)"
+          }
+        },
+        "required": [
+          "frequency",
+          "weekdays",
+          "until"
+        ]
+      },
+      "LessonSeriesInput": {
+        "type": "object",
+        "x-feature": "classroom.repeat-schedule",
+        "description": "lesson.startsAt·endsAt은 첫 날짜와 수업 시각입니다. 첫 날짜부터 until까지 선택한 요일마다 같은 시각의 수업을 만듭니다.",
+        "properties": {
+          "lesson": {
+            "$ref": "#/components/schemas/LessonInput"
+          },
+          "repeat": {
+            "$ref": "#/components/schemas/LessonRepeat"
+          }
+        },
+        "required": [
+          "lesson",
+          "repeat"
+        ]
+      },
+      "LessonSeries": {
+        "type": "object",
+        "x-feature": "classroom.repeat-schedule",
+        "properties": {
+          "lessons": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Lesson"
+            }
+          }
+        },
+        "required": [
+          "lessons"
+        ]
+      },
+      "LessonSubjectSwitchInput": {
+        "type": "object",
+        "x-feature": "classroom.subject-switch",
+        "properties": {
+          "subjectId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "subjectId"
         ]
       }
     }

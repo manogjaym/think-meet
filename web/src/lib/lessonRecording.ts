@@ -9,7 +9,8 @@ const MIME_TYPES = [
 ]
 
 export type RecordingSnapshot = { active: boolean; startedAt: number; notice?: string }
-type Capture = { lessonId: string; userId: string; stream: MediaStream }
+/** `handoff`: the running tab capture moved to the next lesson after a subject change (no new share picker). */
+type Capture = { lessonId: string; userId: string; stream: MediaStream; handoff?: boolean }
 type Session = Capture & {
   recorder: MediaRecorder; context: AudioContext; microphone?: { track: MediaStreamTrack; node: MediaStreamAudioSourceNode }
   destination: MediaStreamAudioDestinationNode; file: FileSystemFileHandle; writable: FileSystemWritableFileStream
@@ -63,11 +64,32 @@ export async function requestRecordingCapture(lessonId: string, userId: string):
 export function hasPendingCapture(lessonId: string) { return pending?.lessonId === lessonId }
 export function discardPendingCapture() { pending?.stream.getTracks().forEach(track => track.stop()); pending = undefined }
 
+/** A handed-off capture that no meeting picks up (for example a failed join) must not keep sharing the tab. */
+const HANDOFF_TIMEOUT_MS = 60_000
+
+/**
+ * classroom.subject-switch: closes the current file for its lesson and keeps the same tab capture for `nextLessonId`.
+ * The next meeting's startRecording() continues without a share picker. Returns whether a recording was handed off.
+ */
+export function handoffRecording(nextLessonId: string) {
+  const current = session
+  const video = current?.stream.getVideoTracks()[0]
+  if (!current || !video || video.readyState === "ended") return false
+  // Synchronous before any await: the old meeting's release must already see the handoff.
+  session = undefined
+  const next: Capture = { lessonId: nextLessonId, userId: current.userId, stream: current.stream, handoff: true }
+  pending = next
+  void finishSession(current, false)
+  window.setTimeout(() => { if (pending === next) discardPendingCapture() }, HANDOFF_TIMEOUT_MS)
+  return true
+}
+
 /** Starts writing once the lesson media is connected, mixing tab sound (participants, shared videos) with the teacher microphone. */
 export async function startRecording(lessonId: string, microphone?: MediaStreamTrack) {
   const capture = pending
   if (!capture || capture.lessonId !== lessonId || session) return
   pending = undefined
+  // A handed-off stream is still the tab capture of the previous file; only its "ended" listener is new.
   const type = mimeType()
   const video = capture.stream.getVideoTracks()[0]
   // Screen text: ask the encoder to keep detail (resolution) rather than motion smoothness.
@@ -121,19 +143,24 @@ export function setRecordingMicrophone(track?: MediaStreamTrack) {
   current.microphone = { track, node }
 }
 
-/** Finalizes the file and queues it for upload. Safe to call repeatedly. */
+/** Finalizes the file and queues it for upload. Safe to call repeatedly; keeps a capture handed off to the next lesson. */
 export async function stopRecording(notice?: string) {
-  discardPendingCapture()
+  if (!pending?.handoff) discardPendingCapture()
   const current = session
   if (!current) return
   session = undefined
-  const stoppedAt = Date.now()
   publish({ active: false, startedAt: 0, notice })
+  await finishSession(current, true)
+}
+
+async function finishSession(current: Session, stopCapture: boolean) {
+  const stoppedAt = Date.now()
+  if (!stopCapture) publish({ ...snapshot, active: false, startedAt: 0 })
   const stopped = new Promise<void>(resolve => { current.recorder.onstop = () => resolve() })
   if (current.recorder.state !== "inactive") current.recorder.stop()
   else current.recorder.onstop?.(new Event("stop"))
   await stopped
-  current.stream.getTracks().forEach(track => track.stop())
+  if (stopCapture) current.stream.getTracks().forEach(track => track.stop())
   current.microphone?.node.disconnect()
   void current.context.close().catch(() => undefined)
   try {

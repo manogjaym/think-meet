@@ -33,7 +33,11 @@ import kotlinx.coroutines.delay
 
 /** Lesson owner's materials card under the participant videos in the right rail (web: TeacherRail.tsx). */
 @Composable
-internal fun MaterialsCard(textbookEnabled: Boolean, onTextbook: () -> Unit, modifier: Modifier = Modifier) {
+internal fun MaterialsCard(
+    textbookEnabled: Boolean, onTextbook: () -> Unit, modifier: Modifier = Modifier,
+    /** classroom.subject-switch; without it the subject button only shows the coming-soon notice. */
+    subjectEnabled: Boolean = true, onSubject: (() -> Unit)? = null,
+) {
     var notice by remember { mutableStateOf(0) }
     LaunchedEffect(notice) { if (notice > 0) { delay(2_500); notice = 0 } }
     val comingSoon: () -> Unit = { notice += 1 }
@@ -43,7 +47,8 @@ internal fun MaterialsCard(textbookEnabled: Boolean, onTextbook: () -> Unit, mod
                 style = MaterialTheme.typography.titleSmall.copy(fontSize = Type.Body, lineHeight = Type.Body * 1.5f), fontWeight = DesignWeight.Bold, color = Palette.Ink)
             MaterialsButton(DesignContent.MeetingMaterialsTextbook, "grid", Palette.ControlInactive, Palette.Ink, enabled = textbookEnabled, onClick = onTextbook)
             MaterialsButton(DesignContent.MeetingMaterialsWorksheet, "file", Palette.ControlInactive, Palette.Ink, onClick = comingSoon)
-            MaterialsButton(DesignContent.MeetingMaterialsSubject, null, Palette.White, Palette.Primary, border = BorderStroke(Space.S2, Palette.Primary), onClick = comingSoon)
+            MaterialsButton(DesignContent.MeetingMaterialsSubject, null, Palette.White, Palette.Primary, border = BorderStroke(Space.S2, Palette.Primary),
+                enabled = onSubject == null || subjectEnabled, onClick = onSubject ?: comingSoon)
             MaterialsButton(DesignContent.MeetingMaterialsHomework, "calendar", Palette.HomeworkAction, Palette.White, Modifier.padding(top = Space.S4), onClick = comingSoon)
             Text(if (notice > 0) DesignContent.MeetingMaterialsComingSoon else "", Modifier.heightIn(min = 20.dp).semantics { liveRegion = LiveRegionMode.Polite },
                 style = MaterialTheme.typography.bodySmall.copy(fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f), color = Palette.Muted)

@@ -105,3 +105,21 @@
   .form-save-summary { justify-content: center; font-size: var(--type-caption); }
   .form-page .form-actions > div { display: grid; grid-template-columns: 1fr 2fr; gap: 10px; }
 }
+/* classroom.repeat-schedule: repeat options under the lesson date and time. */
+.lesson-repeat { margin-top: var(--space-6); margin-bottom: 0; }
+.lesson-repeat-modes { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.lesson-repeat-modes button,
+.lesson-repeat-weekdays button { border: 1px solid var(--line); background: var(--tm-color-white); color: var(--text); font-size: var(--type-support); font-weight: var(--weight-semibold); transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease; }
+.lesson-repeat-modes button { min-height: var(--tm-spacing-s44); padding: 0 var(--tm-spacing-s20); border-radius: 999px; }
+.lesson-repeat-weekdays { display: grid; grid-template-columns: repeat(7, minmax(0, var(--tm-spacing-s44))); gap: var(--space-2); margin-top: var(--space-2); }
+.lesson-repeat-weekdays button { aspect-ratio: 1; padding: 0; border-radius: 50%; }
+.lesson-repeat-modes button:hover:not([aria-checked="true"]),
+.lesson-repeat-weekdays button:hover:not([aria-pressed="true"]) { border-color: var(--line-input); background: var(--surface-3); }
+.lesson-repeat-modes button[aria-checked="true"],
+.lesson-repeat-weekdays button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent); color: var(--tm-color-white); }
+.lesson-repeat-modes button:focus-visible,
+.lesson-repeat-weekdays button:focus-visible { outline: 3px solid var(--accent-soft); outline-offset: 2px; }
+.lesson-repeat-until { display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-2); }
+.lesson-repeat-until input { width: 100%; min-width: 0; }
+.lesson-repeat-summary { color: var(--muted); font-size: var(--type-support); font-weight: var(--weight-regular); }
+.created-series-count { margin-bottom: var(--space-2); color: var(--accent); font-weight: var(--weight-semibold); }

@@ -158,7 +158,36 @@ class MeetingSessionTest {
         }
     }
 
-    private class Fixture(scheduler: TestCoroutineScheduler) {
+    @Test
+    fun subjectChangeContinuesInPlaceWithoutReleasingMedia() = runTest {
+        val fixture = Fixture(testScheduler, follows = true)
+        runCurrent()
+        fixture.link.switchSubject("next")
+        runCurrent()
+        assertEquals(listOf("next"), fixture.link.follows)
+        assertEquals(listOf("next"), fixture.continued.map { it.id })
+        assertEquals(0, fixture.media.disconnects)
+        assertTrue(fixture.exits.isEmpty())
+        assertFalse(fixture.session.state.value.busy)
+        fixture.session.close(); runCurrent()
+    }
+
+    @Test
+    fun failedSubjectFollowEndsTheSessionForANewAdmission() = runTest {
+        val fixture = Fixture(testScheduler, follows = true)
+        fixture.link.followFails = true
+        runCurrent()
+        fixture.link.switchSubject("next")
+        runCurrent()
+        fixture.media.disconnected.complete(Unit)
+        runCurrent()
+        assertTrue(fixture.continued.isEmpty())
+        assertEquals(listOf(true), fixture.exits)
+        assertEquals(1, fixture.media.disconnects)
+        fixture.session.close(); runCurrent()
+    }
+
+    private class Fixture(scheduler: TestCoroutineScheduler, follows: Boolean = false) {
         val connectionEvents = mutableListOf<String>()
         val link = FakeLink(connectionEvents)
         val media = FakeMedia(connectionEvents)
@@ -166,7 +195,9 @@ class MeetingSessionTest {
         val remote = FakeRemote()
         val exits = mutableListOf<Boolean>()
         val errors = mutableListOf<String>()
-        val session = MeetingSession(link, media, pip, remote, { exits += it }, { errors += it }, StandardTestDispatcher(scheduler))
+        val continued = mutableListOf<Lesson>()
+        val session = MeetingSession(link, media, pip, remote, { exits += it }, { errors += it }, StandardTestDispatcher(scheduler),
+            onContinued = if (follows) { next -> continued += next } else null)
 
         init { session.start(JoinResult(false, lesson, "token", "wss://media.test"), camera = true, microphone = false) }
 
@@ -190,6 +221,16 @@ class MeetingSessionTest {
         var closes = 0
 
         fun endLesson() { snapshot.value = snapshot.value!!.copy(lesson = lesson.copy(status = "ENDED"), seq = 1) }
+        val follows = mutableListOf<String>()
+        var followFails = false
+        fun switchSubject(next: String) { snapshot.value = snapshot.value!!.copy(lesson = lesson.copy(status = "ENDED", nextLessonId = next), seq = 1) }
+        override suspend fun follow(nextLessonId: String): Lesson {
+            follows += nextLessonId
+            if (followFails) error("room did not move")
+            val next = lesson.copy(id = nextLessonId)
+            snapshot.value = MeetingSnapshot(nextLessonId, next, serverTime = startsAt)
+            return next
+        }
         override fun start() { connectionEvents += "realtime.start" }
         override suspend fun refreshSnapshot() { connectionEvents += "snapshot" }
         override suspend fun confirmConnection() { connectionEvents += "server.connected" }

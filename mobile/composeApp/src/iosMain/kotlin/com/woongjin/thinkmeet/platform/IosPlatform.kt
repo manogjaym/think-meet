@@ -78,6 +78,8 @@ interface IosNativeBridge {
     fun startRecording(path: String, completion: (String?) -> Unit)
     /** Completion receives a `{size,durationMs,width,height}` JSON string or an error message. */
     fun stopRecording(completion: (String?, String?) -> Unit)
+    /** Closes the current file like [stopRecording] and keeps capturing into [path]; error "NOT_RECORDING" when idle. */
+    fun splitRecording(path: String, completion: (String?, String?) -> Unit)
     fun playRecording(url: String, cookie: String, onClose: () -> Unit)
 }
 object IosPlatform {
@@ -122,6 +124,32 @@ private class IosMediaController : MediaController, PreviewAudio, LessonRecorder
     }
     /** In-app ReplayKit capture is not ended by a broadcast screen share, so there is nothing to resume. */
     override suspend fun resumeRecording() = Unit
+    override suspend fun splitRecording(onFinished: (RecordedFile?) -> Unit) = suspendCancellableCoroutine<Unit> { continuation ->
+        val done = recordingDone
+        val name = recordingName
+        if (done == null || name == null || disconnection != null) { continuation.resumeWithException(IllegalStateException("녹화 중이 아니에요.")); return@suspendCancellableCoroutine }
+        val startedAt = recordingState.value.startedAtMillis
+        val nextName = "lesson-${NSUUID().UUIDString}.mp4"
+        recordingDone = onFinished; recordingName = nextName
+        recordingState.value = RecordingState(active = true, startedAtMillis = kotlin.time.Clock.System.now().toEpochMilliseconds())
+        native().splitRecording(recordingPath(nextName)) { result, error ->
+            if (error == "NOT_RECORDING") {
+                if (recordingName == nextName) { recordingDone = null; recordingName = null; recordingState.value = RecordingState() }
+                done(null)
+                if (continuation.isActive) continuation.resumeWithException(IllegalStateException("녹화 중이 아니에요."))
+                return@splitRecording
+            }
+            val file = recordedFile(name, result, startedAt)
+            if (file == null) deleteRecordingFile(name)
+            done(file)
+            if (continuation.isActive) continuation.resume(Unit)
+        }
+    }
+    private fun recordedFile(name: String, result: String?, startedAt: Long): RecordedFile? = result?.let { json -> runCatching {
+        val values = kotlinx.serialization.json.Json.parseToJsonElement(json) as kotlinx.serialization.json.JsonObject
+        fun number(key: String) = (values[key] as kotlinx.serialization.json.JsonPrimitive).content.toLong()
+        RecordedFile(name, number("size"), number("durationMs"), number("width").toInt(), number("height").toInt(), startedAt)
+    }.getOrNull() }
     override fun stopRecording() {
         val done = recordingDone ?: return
         val name = recordingName ?: return
@@ -129,11 +157,7 @@ private class IosMediaController : MediaController, PreviewAudio, LessonRecorder
         recordingDone = null; recordingName = null
         recordingState.value = RecordingState()
         native().stopRecording { result, _ ->
-            val file = result?.let { json -> runCatching {
-                val values = kotlinx.serialization.json.Json.parseToJsonElement(json) as kotlinx.serialization.json.JsonObject
-                fun number(key: String) = (values[key] as kotlinx.serialization.json.JsonPrimitive).content.toLong()
-                RecordedFile(name, number("size"), number("durationMs"), number("width").toInt(), number("height").toInt(), startedAt)
-            }.getOrNull() }
+            val file = recordedFile(name, result, startedAt)
             if (file == null) deleteRecordingFile(name)
             done(file)
         }

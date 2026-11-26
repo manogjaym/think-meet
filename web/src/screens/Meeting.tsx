@@ -17,6 +17,7 @@ import { SharedParticipants, SharedStage, type SharedFrame } from "../components
 import designLayout from "../generated/design-layout.json"
 import { SidePanel } from "../components/meeting/SidePanel"
 import { MaterialsCard, TeacherStageGuide } from "../components/meeting/TeacherRail"
+import { fillSubject, SubjectSwitch } from "../components/meeting/SubjectSwitch"
 import { VideoTile } from "../components/meeting/VideoTile"
 import { ParticipantControlsContext, type ParticipantControlState } from "../components/meeting/ParticipantControls"
 import { ParticipantGallery } from "../components/meeting/ParticipantGallery"
@@ -33,11 +34,35 @@ import "../components/meeting/live-meeting.css"
 import "../components/meeting/chat-notifications.css"
 import "../components/meeting/chat-notification-badges.css"
 import { FEATURE_IDS } from "../generated/feature-policy"
-import { recordingSnapshot, releaseRecording, retainRecording, setRecordingMicrophone, startRecording, subscribeRecording, takeRecordingNotice } from "../lib/lessonRecording"
+import { handoffRecording, recordingSnapshot, releaseRecording, retainRecording, setRecordingMicrophone, startRecording, subscribeRecording, takeRecordingNotice } from "../lib/lessonRecording"
 
-export function Meeting(props: { lesson: ApiLesson; user: User; initialDevices: JoinDevices; admission?: JoinResult; onEnded: (reason?: string) => void; onWaiting?: () => void }) {
+export type FollowMedia = { mic: boolean; cam: boolean }
+
+export function Meeting(props: {
+  lesson: ApiLesson; user: User; initialDevices: JoinDevices; admission?: JoinResult; onEnded: (reason?: string) => void; onWaiting?: () => void
+  /** classroom.subject-switch: open `nextLessonId` with the current microphone and camera state. */
+  onFollow?: (nextLessonId: string, media: FollowMedia) => void
+  /** classroom.subject-switch: the same room now belongs to `next`; update the address without remounting. */
+  onContinued?: (next: ApiLesson) => void
+  /** This admission continues a lesson whose subject the teacher just changed. */
+  switched?: boolean
+}) {
   const { lesson, user } = props
-  const live = useMeeting(props)
+  const media = useRef<FollowMedia>({ mic: props.initialDevices.mic, cam: props.initialDevices.cam })
+  const onEnded = useCallback((reason?: string, nextLessonId?: string) => {
+    if (!nextLessonId || !props.onFollow) { props.onEnded(reason === "switched" ? "ended" : reason); return }
+    // The tab capture moves on; the finished file uploads for this lesson.
+    handoffRecording(nextLessonId)
+    props.onFollow(nextLessonId, media.current)
+  }, [props.onEnded, props.onFollow])
+  const notify = useRef<(message: string) => void>(() => {})
+  const onContinued = useCallback((next: ApiLesson) => {
+    // Before the lesson id changes: the running tab capture continues as the next lesson's file.
+    handoffRecording(next.id)
+    props.onContinued?.(next)
+    if (next.subject) notify.current(fillSubject(designContent.meetingSubjectSwitched, next.subject.name))
+  }, [props.onContinued])
+  const live = useMeeting({ ...props, onEnded, onContinued })
   const [panel, setPanel] = useState<Panel>(null)
   const [lastPanel, setLastPanel] = useState<Panel>(null)
   const [end, setEnd] = useState(false)
@@ -55,6 +80,8 @@ export function Meeting(props: { lesson: ApiLesson; user: User; initialDevices: 
   const { room, snapshot, command, setError } = live
   const mic = useParticipantTrack(room?.localParticipant, Track.Source.Microphone).enabled
   const cam = useParticipantTrack(room?.localParticipant, Track.Source.Camera).enabled
+  // Before the first publish the tracks report off; keep the prejoin choice until media is connected.
+  useEffect(() => { if (live.connection === ConnectionState.Connected) media.current = { mic, cam } }, [mic, cam, live.connection])
   const audioBlocked = useAudioPlaybackBlocked(room)
   // When the browser blocks autoplay, the lesson sound starts on the next tap or key press instead of a separate button.
   useEffect(() => {
@@ -64,7 +91,7 @@ export function Meeting(props: { lesson: ApiLesson; user: User; initialDevices: 
     window.addEventListener("keydown", unlock, true)
     return () => { window.removeEventListener("pointerdown", unlock, true); window.removeEventListener("keydown", unlock, true) }
   }, [room, audioBlocked, audioUnlock])
-  const { unreadCount, notification, dismissNotification } = useChatNotifications({ lessonId: lesson.id, userId: user.id, messages: snapshot?.messages, chatOpen: panel === "chat" })
+  const { unreadCount, notification, dismissNotification } = useChatNotifications({ lessonId: live.lessonId, userId: user.id, messages: snapshot?.messages, chatOpen: panel === "chat" })
   const activeLesson = snapshot?.lesson || lesson
   const subjectsEnabled = useFeature(FEATURE_IDS.ClassroomSubjects)
   const subjectName = subjectsEnabled ? activeLesson.subject?.name : undefined
@@ -89,6 +116,10 @@ export function Meeting(props: { lesson: ApiLesson; user: User; initialDevices: 
     snapshot?.participants.some(member => member.user.id === user.id && member.online)
   const canShare = !!snapshot && (phase === undefined || (isHost && phase === "classroom"))
   const showMaterials = isHost && canShare
+  const subjectSwitchSupported = useFeature(FEATURE_IDS.ClassroomSubjectSwitch) && subjectsEnabled
+  const [subjectPicker, setSubjectPicker] = useState(false)
+  const { followLesson } = live
+  const switchedNotice = useRef(props.switched)
   const textbookSupported = useFeature(FEATURE_IDS.ClassroomTextbookPicker)
   const textbookEnabled = showMaterials && textbookSupported
   const textbookLayout = textbookEnabled && share?.type === "document"
@@ -130,7 +161,7 @@ export function Meeting(props: { lesson: ApiLesson; user: User; initialDevices: 
     captureUpload.current = request
     setCaptureBusy(true); setCaptureError("")
     try {
-      await uploadNote("saveClassNoteCapture", lesson.id, capture.draft.file, capture.draft.requestId, {
+      await uploadNote("saveClassNoteCapture", live.lessonId, capture.draft.file, capture.draft.requestId, {
         shareId: capture.shareId, page: String(capture.page), admissionId: live.admissionId,
       }, request.signal)
       setCapture(undefined); setCaptureNotice("화면을 저장했어요.")
@@ -208,6 +239,7 @@ export function Meeting(props: { lesson: ApiLesson; user: User; initialDevices: 
   const ownAnnotation = snapshotParticipants?.find(entry => entry.user.id === user.id)?.annotationAllowed
   const previousAnnotation = useRef(ownAnnotation)
   const { showNotice } = live
+  notify.current = showNotice
   useEffect(() => {
     const previous = previousAnnotation.current
     previousAnnotation.current = ownAnnotation
@@ -221,11 +253,16 @@ export function Meeting(props: { lesson: ApiLesson; user: User; initialDevices: 
     if (!room || !isHost) return
     const microphone = () => room.localParticipant.getTrackPublication(Track.Source.Microphone)?.track?.mediaStreamTrack
     const sync = () => setRecordingMicrophone(microphone())
-    if (live.connection === ConnectionState.Connected) void startRecording(lesson.id, microphone())
+    if (live.connection === ConnectionState.Connected) void startRecording(live.lessonId, microphone())
     room.on(RoomEvent.LocalTrackPublished, sync).on(RoomEvent.LocalTrackUnpublished, sync)
     return () => { room.off(RoomEvent.LocalTrackPublished, sync).off(RoomEvent.LocalTrackUnpublished, sync) }
-  }, [room, isHost, live.connection, lesson.id])
+  }, [room, isHost, live.connection, live.lessonId])
   useEffect(() => { const notice = takeRecordingNotice(); if (notice) showNotice(notice) }, [recording.notice, showNotice])
+  useEffect(() => {
+    if (!switchedNotice.current || !activeLesson.subject) return
+    switchedNotice.current = false
+    showNotice(fillSubject(designContent.meetingSubjectSwitched, activeLesson.subject.name))
+  }, [activeLesson.subject, showNotice])
   useEffect(() => {
     if (!recording.active) return
     const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = "" }
@@ -260,9 +297,11 @@ export function Meeting(props: { lesson: ApiLesson; user: User; initialDevices: 
       </section>
     </div><button className="panel-backdrop" aria-hidden={!panel} tabIndex={panel ? 0 : -1} aria-label="패널 닫기" onClick={() => changePanel(null)} /><div ref={panelRef} id="meeting-side-panel" className={`meeting-panel-container ${dockedTextbook || teacherRail ? "textbook-dock" : ""} ${teacherRail ? "teacher-rail" : ""} ${teacherRail && !panel ? "shows-materials" : ""}`} inert={!panel && !teacherRail} aria-hidden={!panel && !teacherRail}>
       {(dockedTextbook || teacherRail) && snapshot && <SharedParticipants snapshot={snapshot} user={user} room={room} docked rail={teacherRail && !panel} />}
-      {teacherRail && !panel && <MaterialsCard textbookDisabled={!modeReady || modeBusy} onTextbook={() => selectMode("classroom", true)} />}
+      {teacherRail && !panel && <MaterialsCard textbookDisabled={!modeReady || modeBusy} onTextbook={() => selectMode("classroom", true)}
+        subjectDisabled={!live.appConnected || activeLesson.status !== "LIVE"} onSubject={subjectSwitchSupported && props.onFollow ? () => setSubjectPicker(true) : undefined} />}
       <SidePanel panel={panel || lastPanel} activePanel={panel} textbookEnabled={textbookEnabled} textbookConnected={Boolean(modeReady)}
-        onTextbookOpened={() => { if (window.matchMedia(overlayQuery).matches) changePanel(null) }} setPanel={changePanel} user={user} lesson={activeLesson} room={room} snapshot={snapshot} command={command} onOutputChange={setOutputDevice} unreadChatCount={unreadCount} /></div></div>
+        onTextbookOpened={() => { if (window.matchMedia(overlayQuery).matches) changePanel(null) }}
+        onSubject={isHost && subjectSwitchSupported && props.onFollow ? () => { changePanel(null); setSubjectPicker(true) } : undefined} setPanel={changePanel} user={user} lesson={activeLesson} room={room} snapshot={snapshot} command={command} onOutputChange={setOutputDevice} unreadChatCount={unreadCount} /></div></div>
     </ParticipantControlsContext.Provider>
     {notification && <ChatNotification message={notification} onOpen={() => changePanel("chat")} onDismiss={dismissNotification} />}
     <CallControls role={isHost ? "teacher" : "student"} raised={raised} setRaised={value => { void command("hand.set", { raised: value }).catch(e => setError(friendlyError(e))) }} panel={panel} setPanel={changePanel} mic={mic} cam={cam} setMic={value => void live.setMic(value)} setCam={value => void live.setCam(value)} participantCount={participants.length} screenSharing={ownScreen} showShare={phase === undefined && (canShare || ownScreen)} showMaterials={showMaterials && !teacherRail} onShareScreen={() => { if (ownScreen) void live.stopShare(share); else { changePanel(null); setShareConfirm(true) } }} onEnd={() => setEnd(true)} unreadChatCount={unreadCount} />
@@ -278,6 +317,9 @@ export function Meeting(props: { lesson: ApiLesson; user: User; initialDevices: 
     <AnimatedPresence show={modeConfirm !== null}><Confirm title={designContent.meetingLessonSwitchTitle} copy={designContent.meetingLessonSwitchCopy}
       cancel={() => setModeConfirm(null)} confirm={() => { if (modeConfirm) void updateInstruction(modeConfirm.change.mode, modeConfirm.change, modeConfirm.materials); setModeConfirm(null) }}
       confirmText={designContent.meetingLessonSwitchAction} /></AnimatedPresence>
+    {subjectSwitchSupported && isHost && <SubjectSwitch lesson={activeLesson} open={subjectPicker} recording={recording.active} sharing={!!share || !!activeAssistance}
+      onClose={() => setSubjectPicker(false)} onError={setError}
+      onSwitched={next => { setSubjectPicker(false); showNotice(designContent.meetingSubjectSwitching); followLesson(next.id) }} />}
     <AnimatedPresence show={shareConfirm && canShare}><ScreenShareDialog cancel={() => setShareConfirm(false)} confirm={target => { setShareConfirm(false); void live.startScreen(target) }} /></AnimatedPresence>
     {showMirroringStudents && isHost && phase === "mirroring" && snapshot && <MirroringStudentDialog
       students={snapshot.participants.filter(member => member.online && member.user.role === "student" && member.user.id !== user.id).map(member => member.user)}

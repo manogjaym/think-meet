@@ -46,6 +46,8 @@ import com.woongjin.thinkmeet.data.*
 import com.woongjin.thinkmeet.platform.*
 import com.woongjin.thinkmeet.ui.NoteDialog
 import com.woongjin.thinkmeet.ui.NotePreview
+import com.woongjin.thinkmeet.ui.LessonSubjectPickerDialog
+import com.woongjin.thinkmeet.ui.RecordingPromptDialog
 import kotlinx.datetime.toLocalDateTime
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
@@ -73,7 +75,17 @@ fun MeetingScreen(
     microphone: Boolean,
     onExit: (ended: Boolean) -> Unit,
     record: Boolean = false,
-    onRecorded: (RecordedFile) -> Unit = {},
+    /** A finished recording file and the lesson it belongs to (recordings split when the subject changes). */
+    onRecorded: (lessonId: String, RecordedFile) -> Unit = { _, _ -> },
+    /**
+     * classroom.subject-switch: the meeting continued in place as [Lesson] (same media room); updates the route.
+     * [lesson] stays the admitted lesson and keys this screen.
+     */
+    onContinued: (Lesson) -> Unit = {},
+    /** classroom.subject-switch fallback when continuing in place failed: admit again to [nextLessonId]. */
+    onFollow: ((nextLessonId: String, askRecording: Boolean, camera: Boolean, microphone: Boolean) -> Unit)? = null,
+    /** This admission continues a lesson whose subject the teacher just changed. */
+    switched: Boolean = false,
 ) {
     val scope = rememberCoroutineScope()
     val media = rememberMediaController()
@@ -85,6 +97,7 @@ fun MeetingScreen(
     val capabilities by api.capabilities.collectAsState()
     val realtime = remember(api, lesson.id) { MeetingRealtime(api, scope, lesson.id) }
     val liveSnapshot by realtime.snapshot.collectAsState()
+    val activeLessonId = realtime.currentLessonId.collectAsState().value ?: lesson.id
     val socketConnected by realtime.connected.collectAsState()
     val subscribed by realtime.subscribed.collectAsState()
     val snapshot = liveSnapshot
@@ -103,7 +116,7 @@ fun MeetingScreen(
         snapshot?.participants?.any { it.user.id == user.id && it.online } == true
     var showMirroringStudents by remember { mutableStateOf(false) }
     val notesEnabled = capabilities.supports(ContractProtocol.FeatureIds.ClassroomNotes) && (owner || user.role == "student")
-    val capture = remember(api, lesson.id) { NoteCaptureController(api, lesson.id, scope) }
+    val capture = remember(api, activeLessonId) { NoteCaptureController(api, activeLessonId, scope) }
     val assistanceEnabled = capabilities.supports(ContractProtocol.FeatureIds.MeetingRemoteAssistance)
     val snackbar = remember { SnackbarHostState() }
     var panel by remember { mutableStateOf<Panel?>(null) }
@@ -130,6 +143,15 @@ fun MeetingScreen(
         ?: mediaState.participants.firstOrNull { it.identity == target?.identity }?.name?.takeIf { it.isNotBlank() }
         ?: "수업 영상"
     val latestExit by rememberUpdatedState(onExit)
+    val latestFollow by rememberUpdatedState(onFollow)
+    // Read after media is released, so keep the last connected microphone/camera state and the recording at the switch.
+    val followMedia = remember { mutableStateOf(camera to microphone) }
+    val followRecording = remember { mutableStateOf(false) }
+    // Assigned below, once the recorder exists; the session calls it after continuing in the next lesson.
+    val continued = remember { arrayOf<(Lesson) -> Unit>({}) }
+    LaunchedEffect(mediaState.connected, mediaState.camera, mediaState.microphone) {
+        if (mediaState.connected) followMedia.value = mediaState.camera to mediaState.microphone
+    }
     val showMessage: (String) -> Unit = { message -> scope.launch { snackbar.showSnackbar(message) } }
     val report: (Throwable) -> Unit = { error ->
         if (error is CancellationException) throw error
@@ -138,7 +160,13 @@ fun MeetingScreen(
     val latestReport by rememberUpdatedState(report)
     val session = remember(realtime, media, pip, remote) {
         MeetingSession(ApiMeetingSessionTransport(api, realtime, lesson.id), media, pip, remote,
-            onExit = { latestExit(it) }, report = showMessage)
+            onExit = { ended ->
+                val next = realtime.snapshot.value?.lesson?.nextLessonId
+                val follow = latestFollow
+                if (ended && next != null && follow != null) follow(next, followRecording.value, followMedia.value.first, followMedia.value.second)
+                else latestExit(ended)
+            }, report = showMessage,
+            onContinued = if (onFollow != null) { next -> continued[0](next) } else null)
     }
     val sessionState by session.state.collectAsState()
     val (busy, exited, fatalError) = sessionState
@@ -148,15 +176,32 @@ fun MeetingScreen(
     val latestRecorded by rememberUpdatedState(onRecorded)
     var recordingRequested by remember(admission) { mutableStateOf(false) }
     var recordingResuming by remember(admission) { mutableStateOf(false) }
-    LaunchedEffect(record, owner, mediaState.connected, recorder) {
-        if (!record || !owner || recorder == null || !mediaState.connected || recordingRequested) return@LaunchedEffect
-        recordingRequested = true
-        // Not tied to this effect: a reconnect must not cancel the pending OS consent dialog.
+    var recordAgain by remember(admission) { mutableStateOf(false) }
+    fun beginRecording(recorder: LessonRecorder) {
+        val lessonId = realtime.currentLessonId.value ?: lesson.id
+        // Not tied to an effect: a reconnect must not cancel the pending OS consent dialog.
         scope.launch {
-            try { recorder.startRecording { file -> if (file != null) latestRecorded(file) } }
+            try { recorder.startRecording { file -> if (file != null) latestRecorded(lessonId, file) } }
             catch (error: CancellationException) { throw error }
             catch (error: Exception) { showMessage(error.message ?: "화면 녹화를 시작하지 못했어요.") }
         }
+    }
+    LaunchedEffect(record, owner, mediaState.connected, recorder) {
+        if (!record || !owner || recorder == null || !mediaState.connected || recordingRequested) return@LaunchedEffect
+        recordingRequested = true
+        beginRecording(recorder)
+    }
+    val latestContinued by rememberUpdatedState(onContinued)
+    continued[0] = { next ->
+        // The recording continues as the next lesson's file; if the capture cannot continue, ask again.
+        val active = recorder?.takeIf { it.recording.value.active }
+        if (active != null) scope.launch {
+            try { active.splitRecording { file -> if (file != null) latestRecorded(next.id, file) } }
+            catch (error: CancellationException) { throw error }
+            catch (_: Exception) { active.stopRecording(); recordAgain = true }
+        }
+        latestContinued(next)
+        next.subject?.let { showMessage(DesignContent.MeetingSubjectSwitched.replace("{subject}", it.name)) }
     }
     DisposableEffect(recorder) { onDispose { recorder?.stopRecording() } }
     val screenShare = remember(api, realtime, media, user.id) {
@@ -186,6 +231,49 @@ fun MeetingScreen(
     val modeBusy = modes.busy
     /** `materials` opens the textbook panel instead of the mode's own popup once the mode is entered. */
     fun selectMode(mode: String, materials: Boolean = false) = modes.select(mode, phase, modeReady, snapshot?.share?.id, assistance?.id, materials)
+
+    val subjectSwitch = onFollow != null && owner && capabilities.supports(ContractProtocol.FeatureIds.ClassroomSubjectSwitch) &&
+        capabilities.supports(ContractProtocol.FeatureIds.ClassroomSubjects)
+    var subjectPicker by remember { mutableStateOf(false) }
+    // Phone width (opened from the more menu) shows the subject cards in one column, as in the lesson form.
+    var subjectPickerCompact by remember { mutableStateOf(false) }
+    var subjectTarget by remember { mutableStateOf<TeacherSubject?>(null) }
+    var subjectBusy by remember { mutableStateOf(false) }
+    var subjects by remember { mutableStateOf<List<TeacherSubject>?>(null) }
+    var subjectsFailed by remember { mutableStateOf(false) }
+    var subjectRetry by remember { mutableIntStateOf(0) }
+    var subjectLessons by remember { mutableStateOf<List<Lesson>>(emptyList()) }
+    LaunchedEffect(subjectPicker, subjectRetry) {
+        if (!subjectPicker) return@LaunchedEffect
+        subjectsFailed = false
+        try { subjects = api.subjects() }
+        catch (error: CancellationException) { throw error }
+        catch (_: Exception) { subjectsFailed = true }
+        // Only for each subject's latest completed lesson on the cards.
+        try { subjectLessons = api.lessons() }
+        catch (error: CancellationException) { throw error }
+        catch (_: Exception) { }
+    }
+    fun switchSubject(target: TeacherSubject) {
+        if (subjectBusy) return
+        subjectBusy = true
+        scope.launch {
+            try {
+                followRecording.value = recorder?.recording?.value?.active == true
+                api.switchSubject(currentLesson.id, target.id)
+                subjectTarget = null
+                subjectPicker = false
+                showMessage(DesignContent.MeetingSubjectSwitching)
+                // The ENDED snapshot with nextLessonId moves this session to the new lesson.
+                realtime.accept(api.snapshot(currentLesson.id))
+            } catch (error: CancellationException) { throw error }
+            catch (error: Exception) { subjectTarget = null; showMessage(error.message ?: "과목을 바꾸지 못했어요.") }
+            finally { subjectBusy = false }
+        }
+    }
+    LaunchedEffect(Unit) {
+        if (switched) currentLesson.subject?.let { showMessage(DesignContent.MeetingSubjectSwitched.replace("{subject}", it.name)) }
+    }
 
     LaunchedEffect(showMaterials, panel) {
         if (!showMaterials && panel == Panel.Materials) panel = null
@@ -237,7 +325,7 @@ fun MeetingScreen(
                         try {
                             val admissionId = admission.admissionId ?: error(DesignContent.MirroringCaptureFailed)
                             val image = remote.captureScreenFrame() ?: error(DesignContent.MirroringCaptureFailed)
-                            api.saveNoteCapture(lesson.id, image, uniqueId(), share.id, share.page, admissionId)
+                            api.saveNoteCapture(activeLessonId, image, uniqueId(), share.id, share.page, admissionId)
                             notice(DesignContent.NotesCaptureSaved)
                         } catch (error: CancellationException) { throw error }
                         catch (error: Throwable) { notice(error.message ?: DesignContent.MirroringCaptureFailed) }
@@ -296,6 +384,7 @@ fun MeetingScreen(
                 chatDraft = chatDraft, media = media, mediaState = mediaState, onPanel = { panel = it }, unread = unread,
                 miniVisible = miniVisible, onMini = { miniPreference = !miniVisible }, pipState = pipState, pipEnabled = pipEnabled,
                 textbookEnabled = textbookEnabled, textbookConnected = modeReady, closeAfterTextbook = closeAfterTextbook,
+                onSubject = if (subjectSwitch) ({ panel = null; subjectPicker = true }) else null,
                 onPip = { execute { api.requireFeature(ContractProtocol.FeatureIds.MeetingPip); try { pip.enter() } catch (error: Throwable) { if (error is CancellationException || pip.state.value.error == null) throw error } } })
         }
     }
@@ -313,6 +402,7 @@ fun MeetingScreen(
         BoxWithConstraints(mainSize.then(presentation).background(Palette.MeetingCanvas).safeDrawingPadding()) {
             val windowWidth = maxWidth
             val compact = windowWidth <= LayoutToken.MeetingCompactBreakpoint
+            SideEffect { subjectPickerCompact = compact }
             val overlayPanel = maxWidth <= LayoutToken.MeetingOverlayBreakpoint
             val dockedTextbook = !overlayPanel && textbookLayout && panel == Panel.Materials
             // Wide owner screens keep participant videos and the materials card in a right rail; a panel replaces the card.
@@ -389,7 +479,8 @@ fun MeetingScreen(
                                 if (panel != null) MeetingLightPanel(Modifier.weight(1f).fillMaxWidth()) {
                                     panelContent(false)
                                 } else MaterialsCard(textbookEnabled = modeReady && !modeBusy && !busy, onTextbook = { selectMode("classroom", materials = true) },
-                                    modifier = Modifier.weight(1f).fillMaxWidth())
+                                    modifier = Modifier.weight(1f).fillMaxWidth(), subjectEnabled = socketConnected && !busy && !subjectBusy && currentLesson.status == "LIVE",
+                                    onSubject = if (subjectSwitch) ({ subjectPicker = true }) else null)
                             }
                             }
                         }
@@ -475,6 +566,30 @@ fun MeetingScreen(
                 },
             )
         }
+    }
+    if (subjectSwitch && subjectPicker && subjectTarget == null && !compactSystemPip) MeetingLightTheme {
+        LessonSubjectPickerDialog(subjects, subjectsFailed, { subjectRetry++ }, currentLesson.subject?.id, subjectLessons, currentLesson.teacher.id,
+            wide = !subjectPickerCompact, required = true, onClose = { subjectPicker = false }) { selected ->
+            if (selected != null && selected.id != currentLesson.subject?.id) subjectTarget = selected
+        }
+    }
+    subjectTarget?.takeUnless { compactSystemPip }?.let { target ->
+        MeetingLightTheme {
+            AlertDialog(onDismissRequest = { if (!subjectBusy) subjectTarget = null },
+                title = { Text(DesignContent.MeetingSubjectSwitchTitle.replace("{subject}", target.name)) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(Space.S8)) {
+                        Text(DesignContent.MeetingSubjectSwitchCopy.replace("{subject}", target.name))
+                        if (snapshot?.share != null || assistance != null) Text(DesignContent.MeetingSubjectSwitchShareCopy, color = Palette.Muted)
+                        if (recordingState.active) Text(DesignContent.MeetingSubjectSwitchRecordingCopy, color = Palette.Muted)
+                    }
+                },
+                confirmButton = { TextButton(enabled = !subjectBusy && socketConnected, onClick = { switchSubject(target) }) { Text(if (subjectBusy) "바꾸는 중…" else DesignContent.MeetingSubjectSwitchAction) } },
+                dismissButton = { TextButton(enabled = !subjectBusy, onClick = { subjectTarget = null }) { Text("취소") } })
+        }
+    }
+    if (recordAgain && recorder != null && !compactSystemPip) MeetingLightTheme {
+        RecordingPromptDialog(onChoice = { record -> recordAgain = false; if (record) beginRecording(recorder) }, onDismiss = { recordAgain = false })
     }
     if (confirmLeave && !compactSystemPip) AlertDialog(
         onDismissRequest = { if (!busy) confirmLeave = false },

@@ -31,6 +31,18 @@ export const designContent = {
   "lessonSubjectRequired": "과목 (필수)",
   "lessonSubjectRequiredError": "과목을 선택해 주세요.",
   "lessonSubjectsEmptyRequired": "등록된 과목이 없어 수업을 만들 수 없어요. 관리자에게 과목 등록을 요청해 주세요.",
+  "lessonRepeatLabel": "반복",
+  "lessonRepeatNone": "반복 없음",
+  "lessonRepeatWeekly": "매주",
+  "lessonRepeatBiweekly": "격주",
+  "lessonRepeatWeekdays": "반복 요일",
+  "lessonRepeatUntil": "반복 종료일",
+  "lessonRepeatSummary": "{start}부터 {until}까지 총 {count}회 예약돼요.",
+  "lessonRepeatWeekdaysError": "반복할 요일을 한 개 이상 선택해 주세요.",
+  "lessonRepeatUntilError": "반복 종료일은 수업 날짜와 같거나 이후로 선택해 주세요.",
+  "lessonRepeatEmptyError": "선택한 기간에 예약할 수업 날짜가 없어요.",
+  "lessonRepeatLimitError": "반복 수업은 한 번에 최대 {max}회까지 예약할 수 있어요.",
+  "lessonRepeatCreated": "반복 수업 {count}개를 예약했어요.",
   "subjectUnclassified": "미분류",
   "subjectAll": "전체 과목",
   "meetingEnter": "화상미팅 입장",
@@ -64,6 +76,15 @@ export const designContent = {
   "meetingMaterialsSubject": "과목 선택",
   "meetingMaterialsHomework": "숙제계획",
   "meetingMaterialsComingSoon": "준비 중인 기능이에요.",
+  "meetingSubjectSwitchTitle": "{subject} 수업으로 바꿀까요?",
+  "meetingSubjectSwitchCopy": "지금 수업을 마치고 같은 학생들과 {subject} 수업을 새로 시작해요. 이후 저장하는 화면과 녹화는 {subject} 과목에 보관돼요.",
+  "meetingSubjectSwitchRecordingCopy": "녹화는 멈추지 않고 이전 수업과 새 수업 영상으로 나눠 저장해요.",
+  "meetingSubjectSwitchAction": "과목 바꾸기",
+  "meetingSubjectSwitchShareCopy": "진행 중인 화면 공유와 학생 화면 보기(미러링)는 끝나요.",
+  "meetingSubjectSwitchMenuDetail": "다른 과목으로 바꿔 수업을 이어가요",
+  "meetingSubjectSwitchCurrent": "지금 진행 중인 과목이에요.",
+  "meetingSubjectSwitching": "새 과목 수업으로 이동하고 있어요.",
+  "meetingSubjectSwitched": "{subject} 수업을 시작했어요.",
   "meetingStagePreparing": "수업방 모드나 미러링 모드를 선택하면 수업이 시작돼요.",
   "meetingStageClassroom": "화면을 공유하거나 교재를 불러와 수업을 진행해 주세요.",
   "meetingStageClassroomAction": "화면 공유하기",
@@ -265,6 +286,7 @@ export const screenContract = {
       "hierarchical-appbar",
       "lesson-or-form-card-with-required-subject",
       "subject-button-and-picker-dialog-with-latest-completed-lesson",
+      "new-booking-repeat-mode-weekdays-and-end-date-under-time",
       "roster-or-invitation",
       "primary-action",
       "teacher-worksheet-list",
@@ -274,7 +296,7 @@ export const screenContract = {
       "layout.pageMaxWidth",
       "layout.formWide"
     ],
-    "interaction": "과목별 자료 보관을 지원하면 과목 라벨을 '과목 (필수)'로 표시하고 과목 팝업의 '선택 안 함'을 숨깁니다. 과목 없이 저장하면 과목 버튼 아래에 오류를 표시하고 요청을 보내지 않습니다. 등록된 과목이 없으면 과목 등록 요청 안내를 표시합니다."
+    "interaction": "과목별 자료 보관을 지원하면 과목 라벨을 '과목 (필수)'로 표시하고 과목 팝업의 '선택 안 함'을 숨깁니다. 과목 없이 저장하면 과목 버튼 아래에 오류를 표시하고 요청을 보내지 않습니다. 등록된 과목이 없으면 과목 등록 요청 안내를 표시합니다. 반복 수업 예약을 지원하면 새 수업 예약의 시간 아래에 반복 없음·매주·격주 알약 버튼을 두고, 반복을 고르면 첫 수업 요일을 선택한 원형 월~일 버튼, 반복 종료일(기본 4주), 예약 횟수 요약을 표시합니다. 저장 버튼은 수업 N회 예약으로 바뀝니다. 수정 화면에는 표시하지 않습니다."
   },
   "prejoin": {
     "web": "web/src/screens/Join.tsx",
@@ -342,7 +364,7 @@ export const screenContract = {
     },
     "lessonModes": {
       "teacherRail": "수업 소유자는 패널을 겹쳐 띄우지 않는 넓은 화면에서 왼쪽 수업 화면과 오른쪽 열을 사용합니다. 오른쪽 열은 참여자 영상과 수업 자료 카드를 표시하고, 패널을 열면 카드 자리에 패널을 표시합니다. 높이가 부족하면 참여자는 한 쪽에 한 명만 표시하되 최소 한 명은 보이게 하고 수업 자료 카드는 스크롤합니다. 열린 패널은 입력·주요 버튼이 보이도록 최소 높이를 유지하고 참여자 영상이 대신 스크롤됩니다. 낮은 타일은 이름표와 겹치지 않게 아바타를 줄이거나 숨깁니다. 공유가 없으면 수업 화면에 모드별 안내를 표시합니다. 미러링 요청이 승인되기 전에는 수업 화면에 학생 이름과 수락 대기 문구, 요청 취소 버튼을 크게 표시하고 위쪽 상태 막대는 숨깁니다. 좁은 화면은 하단 수업 자료 버튼과 위쪽 상태 막대를 유지합니다.",
-      "materialsCard": "교재 불러오기는 수업방 모드로 전환한 뒤 교재 패널을 엽니다. 공유나 요청이 있으면 전환을 확인합니다. 학생 학습지 불러오기·과목 선택·숙제계획은 준비 중 안내만 표시합니다.",
+      "materialsCard": "교재 불러오기는 수업방 모드로 전환한 뒤 교재 패널을 엽니다. 공유나 요청이 있으면 전환을 확인합니다. 과목 선택은 수업 예약과 같은 과목 팝업(현재 과목 선택 표시)을 열고, 다른 과목을 고르면 확인 창을 거쳐 현재 수업을 종료하고 같은 참여자로 새 과목 수업을 시작합니다. 영상 연결과 녹화는 끊지 않고 새 수업으로 이어지며 화면 공유와 미러링은 끝납니다. 화면은 새로 그리지 않고 과목 표시와 안내만 바뀝니다. 선생님 더보기 메뉴에도 과목 선택이 있어 휴대폰 폭에서도 바꿀 수 있습니다. 학생 학습지 불러오기·숙제계획은 준비 중 안내만 표시합니다.",
       "interaction": "수업 소유자가 누른 모드는 서버에 바로 저장되지만, 버튼 선택 표시는 수업방 모드의 공유나 미러링 모드의 학생 화면 요청·공유가 있을 때만 켭니다. 공유 선택창이나 학생 선택 모달을 취소하면 선택 표시 없이 같은 모드를 다시 열 수 있습니다."
     },
     "stageFooter": {

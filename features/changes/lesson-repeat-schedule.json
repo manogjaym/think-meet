@@ -1,0 +1,33 @@
+{
+  "id": "lesson-repeat-schedule",
+  "summary": "선생님이 새 수업 예약 화면의 날짜·시간 아래에서 반복 없음·매주·격주, 요일, 반복 종료일을 골라 같은 시각의 수업을 최대 100개까지 한 번에 예약합니다. 서버는 새 createLessonSeries(revision 16)로 날짜를 다시 계산해 한 트랜잭션으로 만듭니다.",
+  "scope": "shared",
+  "featureIds": [
+    "classroom.repeat-schedule"
+  ],
+  "platforms": {
+    "server": {
+      "status": "implemented"
+    },
+    "web": {
+      "status": "implemented"
+    },
+    "android": {
+      "status": "implemented"
+    },
+    "ios": {
+      "status": "implemented",
+      "reason": "Android와 같은 공통 Compose 코드(LessonRepeat.kt, LessonScreens.kt)를 사용합니다."
+    }
+  },
+  "verification": [
+    "2026-11-25 Asia/Seoul, 저장소 루트: npm run shared:generate 후 npm run shared:check, npm run verify 통과(공통 13, 서버 78, 웹 19, 타입 검사, Vite 빌드). 변경 파일 목록을 전달한 shared:check 통과.",
+    "server/: npx tsx --test test/lesson-series.test.ts 3개 통과(매주·격주 날짜, 일요일 시작 격주, 100회 한도, 한 트랜잭션 생성, 학생 거부).",
+    "API 통합: 공용 API에 LIVE 수업이 있어 재배포하지 않고 새 이미지를 별도 컨테이너(think-meet-api-repeat, 같은 PostgreSQL)로 실행. 임시 선생님·학생·수학 과목으로 revision 16 매주 화·금 4회 생성(같은 시각·과목·학생, 참여 코드 4개), revision 15 요청 426, 해당 날짜 없음 400, 학생 403, 담당 외 학생 403 후 수업 미생성 확인.",
+    "web: Vite 개발 서버(http://127.0.0.1:8443, THINK_MEET_API_ORIGIN=새 API)와 Playwright Chromium으로 390×844·834×1194·1280×800에서 반복 버튼·요일·종료일·요약, 요일 없음 오류(요청 미전송), 격주 화·목 4회 실제 예약과 완료 화면, 수정 화면에 반복 미표시 확인. DB 저장 시각 16:00–16:50(Asia/Seoul) 확인. 콘솔 오류는 로그인 전 auth/me 401뿐.",
+    "mobile/: JDK 17, THINK_MEET_SERVER_ORIGIN=https://115.68.2.13, THINK_MEET_SERVER_CA_FILE=<Caddy 공개 루트 CA>로 ./gradlew :composeApp:checkDesignTokens :composeApp:checkContracts :composeApp:testDebugUnitTest :composeApp:assembleDebug :composeApp:compileKotlinIosSimulatorArm64 --offline 통과(LessonRepeatTest 2개 포함).",
+    "Android 실행: 같은 CA로 임시 Caddy(https://10.0.2.2:8444 → 새 API)를 띄우고 그 주소로 빌드한 debug APK를 기존 emulator-5554(1080×2400, 420dpi)에 설치. 웹과 같은 계정·데이터로 매주 목·금 8회 요약과 실제 예약·완료 화면 확인, 임시 180dpi(태블릿 폭)에서 2열 폼 확인. 검증 후 밀도 420 복원, 원래 설치본(release-test APK, SHA-256 d19a2f75…)을 다시 설치해 teacher1 로그인 유지 확인.",
+    "정리: 검증용 수업 16개와 임시 계정 2개(과목·담당 관계 포함) 삭제 후 수업 수가 원래(종료 7, 진행 중 1, 예정 1)와 같음을 확인. 임시 API·Caddy 컨테이너와 이미지 삭제.",
+    "미실행: iOS Swift 호스트 빌드와 iPhone·iPad 실행(Linux 환경), Android 실기기, 원격 CI. 공용 로컬 API(think-meet-api-1)는 아직 새 이미지로 재배포하지 않았습니다."
+  ]
+}

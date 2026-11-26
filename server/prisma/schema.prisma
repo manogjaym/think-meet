@@ -104,6 +104,10 @@ model Lesson {
   instructionPhase LessonInstructionPhase?
   instructionStartedAt DateTime?
   endedAt DateTime?
+  /// classroom.subject-switch: the live lesson that replaced this one when the teacher changed the subject.
+  nextLessonId String? @unique @db.Uuid
+  nextLesson Lesson? @relation("LessonSubjectSwitch", fields: [nextLessonId], references: [id], onDelete: SetNull)
+  previousLesson Lesson? @relation("LessonSubjectSwitch")
   roomName String @unique
   seq Int @default(0)
   share Json?

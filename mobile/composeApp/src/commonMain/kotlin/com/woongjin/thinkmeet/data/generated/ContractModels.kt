@@ -57,6 +57,8 @@ data class Lesson(
     val code: String,
     val startedAt: String? = null,
     val endedAt: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val nextLessonId: String? = null,
     val participants: List<LessonParticipant> = emptyList(),
     val attendance: List<Attendance> = emptyList(),
 ) {
@@ -533,4 +535,29 @@ data class LessonRecording(
     val expiresAt: String,
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     val lesson: ClassNoteLesson? = null,
+)
+
+typealias LessonRepeatFrequency = String
+
+@Serializable
+data class LessonRepeat(
+    val frequency: LessonRepeatFrequency,
+    val weekdays: List<Int>,
+    val until: String,
+)
+
+@Serializable
+data class LessonSeriesInput(
+    val lesson: LessonInput,
+    val repeat: LessonRepeat,
+)
+
+@Serializable
+data class LessonSeries(
+    val lessons: List<Lesson>,
+)
+
+@Serializable
+data class LessonSubjectSwitchInput(
+    val subjectId: String,
 )

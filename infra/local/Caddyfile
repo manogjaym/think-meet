@@ -24,6 +24,13 @@ https://{$LAN_IP}, https://localhost, https://127.0.0.1 {
   }
   @internal path /api/v1/internal/* /internal/*
   respond @internal 404
+  handle_path /downloads/* {
+    root * /downloads
+    @apk path *.apk
+    header @apk Content-Type application/vnd.android.package-archive
+    header Cache-Control no-cache
+    file_server
+  }
   handle /local-ca.crt {
     root * /data/caddy/pki/authorities/local
     rewrite * /root.crt

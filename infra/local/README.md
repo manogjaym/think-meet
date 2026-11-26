@@ -106,6 +106,17 @@ IP가 바뀐 환경에서 잠시 실행하려면 `./scripts/start.sh --lan`을 �
 
 `LAN_IP`는 브라우저가 접근할 수 있는 미디어 서버 주소여야 합니다. 인터넷 접속에는 공인 IP를 지정합니다. LiveKit은 실행 시 `--rtc.node_ip.ipv4`로 적용된 주소를 읽습니다. `.env`의 주소만 바꿨다면 이 폴더에서 `docker compose up -d --no-build --force-recreate livekit api web`으로 세 서비스를 함께 재생성할 수 있습니다.
 
+### Android 앱 내려받기
+
+`artifacts/downloads/`의 파일을 `https://<LAN_IP>/downloads/<파일명>`으로 내려받을 수 있습니다(목록은 보이지 않음). 이 폴더는 Git에서 제외되며 web 컨테이너에 읽기 전용으로 연결됩니다. 파일만 바꾸면 재시작 없이 반영됩니다.
+
+```sh
+# 저장소 루트에서, release APK를 빌드·서명한 뒤
+cp mobile/composeApp/build/outputs/apk/release/<서명된 APK> infra/local/artifacts/downloads/think-meet.apk
+```
+
+배포용 APK에는 `THINK_MEET_SERVER_ORIGIN`과 현재 Caddy CA를 포함해야 합니다. CA가 없으면 앱이 "서버에 연결하지 못했어요"를 표시하고, CA 볼륨을 새로 만들면 APK도 다시 빌드해야 합니다. 휴대폰에서는 출처를 알 수 없는 앱 설치를 허용해야 합니다.
+
 ## 계정 관리
 
 `infra/local/`에서 실행합니다. 비밀번호는 7~200자입니다.

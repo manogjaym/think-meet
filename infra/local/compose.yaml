@@ -68,6 +68,7 @@ services:
       PROXY_AUTH_SECRET: ${PROXY_AUTH_SECRET}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./artifacts/downloads:/downloads:ro
       - caddy_data:/data
       - caddy_config:/config
     ports:

@@ -66,6 +66,8 @@ interface PictureInPictureController {
     fun restore() {}
     /** A short system message that stays visible while the app is only a PiP window. */
     fun showNotice(message: String) {}
+    /** Moves the over-other-apps action bar to the bottom start so the student's annotation toolbar can take the centre. */
+    fun setActionBarAtStart(start: Boolean) {}
 }
 
 @Composable

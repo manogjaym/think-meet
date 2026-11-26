@@ -10,7 +10,7 @@
 |---|---|
 | `tokens.json` | 색상·글자·행간·굵기·간격·모서리·컴포넌트 크기·반응형 분기 |
 | `web-aliases.json` | 웹 CSS 이름과 공통 토큰 연결 |
-| `assets/vectors.json` | 책 로고와 45개 아이콘 도형 |
+| `assets/vectors.json` | 책 로고와 46개 아이콘 도형 |
 | `fonts/manifest.json` | Pretendard 버전·굵기·웹/앱 파일명·SHA-256 |
 | `fonts/*.{woff2,otf}`·`fonts/LICENSE.txt` | 배포할 글꼴과 라이선스 |
 | `system.json` | 공통 문구, 화면 구현 파일·영역 순서·레이아웃 토큰, 네이티브 조정 범위 |

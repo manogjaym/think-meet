@@ -367,6 +367,8 @@ data class AssistanceSession(
     val shareId: String? = null,
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     val geometry: AssistanceGeometry? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val annotation: Boolean? = null,
 )
 
 @Serializable

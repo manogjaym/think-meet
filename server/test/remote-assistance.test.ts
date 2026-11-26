@@ -429,3 +429,70 @@ test('only the connected teacher controls student media and lesson-mode annotati
   assert.equal(code(await stroke()), 'ANNOTATION_NOT_ALLOWED')
   assert.deepEqual(mediaEvents(f.studentSocket).length, 1)
 })
+
+test('remote annotation: only an Android student app session accepts the teacher strokes, and a new layout starts a fresh page', async () => {
+  const f = await fixture()
+  const db: any = f.lessons.db
+  const strokes: any[] = []
+  db.stroke.findUnique = async ({ where }: any) => strokes.find(stroke => stroke.id === where.id) ?? null
+  db.stroke.create = async ({ data }: any) => { strokes.push(data); return data }
+  db.annotationOperation = { deleteMany: async () => ({ count: 0 }), create: async ({ data }: any) => data }
+  const stroke = (overrides = {}) => ({ id: randomUUID(), shareId: f.lesson.share.id, page: f.lesson.share.page, tool: 'pen', color: '#ef6461', points: [{ x: .1, y: .2 }, { x: .3, y: .4 }], ...overrides })
+  const previews = (socket: { events: Array<{ event: string; payload: any }> }) => socket.events.filter(entry => entry.event === 'stroke.preview')
+
+  // Revision 4 Android app (before this feature) keeps pointer-only assistance.
+  let session = await f.activate()
+  assert.equal(session.annotation, false)
+  assert.equal(code(await f.command(f.teacherSocket, 'stroke.add', stroke())), 'ANNOTATION_NOT_ALLOWED')
+  assert.equal((await f.command(f.teacherSocket, 'assistance.stop', { sessionId: session.id })).ok, true)
+
+  // iOS shares through ReplayKit and cannot draw over other apps, even on the newest revision.
+  for (const socket of [f.teacherSocket, f.studentSocket, f.otherSocket]) socket.handshake.auth.contractRevision = 16
+  f.studentSocket.handshake.auth.platform = 'ios'
+  session = await f.activate()
+  assert.equal(session.annotation, false)
+  assert.equal(code(await f.command(f.teacherSocket, 'stroke.add', stroke())), 'ANNOTATION_NOT_ALLOWED')
+  assert.equal(code(await f.command(f.teacherSocket, 'annotation.clear', {})), 'ANNOTATION_NOT_ALLOWED')
+  await f.gateway.preview(f.teacherSocket as any, { lessonId: f.id, ...stroke(), id: undefined })
+  assert.equal(previews(f.studentSocket).length, 0)
+  assert.equal((await f.command(f.teacherSocket, 'assistance.stop', { sessionId: session.id })).ok, true)
+
+  f.studentSocket.handshake.auth.platform = 'android'
+  session = await f.activate()
+  assert.equal(session.annotation, true)
+  const first = stroke()
+  assert.equal((await f.command(f.teacherSocket, 'stroke.add', first)).ok, true)
+  assert.equal(strokes.length, 1)
+  // Viewers other than the session teacher cannot draw on another student's device.
+  assert.equal(code(await f.command(f.otherSocket, 'stroke.add', stroke())), 'ANNOTATION_NOT_ALLOWED')
+  // Legacy rooms (no lesson mode) never let the sharing student draw over their own device.
+  assert.equal(code(await f.command(f.studentSocket, 'stroke.add', stroke())), 'ANNOTATION_NOT_ALLOWED')
+  await f.gateway.preview(f.otherSocket as any, { lessonId: f.id, ...stroke(), id: undefined })
+  assert.equal(previews(f.studentSocket).length, 0)
+  // In a lesson mode the sharing student draws only while the teacher allows it; other students still cannot.
+  f.lesson.instructionPhase = 'mirroring'
+  assert.equal(code(await f.command(f.studentSocket, 'stroke.add', stroke())), 'ANNOTATION_NOT_ALLOWED')
+  f.lesson.members[1].annotationAllowed = true
+  f.lesson.members[2].annotationAllowed = true
+  assert.equal((await f.command(f.studentSocket, 'stroke.add', stroke())).ok, true)
+  assert.equal(code(await f.command(f.otherSocket, 'stroke.add', stroke())), 'ANNOTATION_NOT_ALLOWED')
+  await f.gateway.preview(f.studentSocket as any, { lessonId: f.id, ...stroke(), id: undefined })
+  assert.equal(previews(f.teacherSocket).length, 1)
+  f.lesson.members[1].annotationAllowed = false
+  assert.equal(code(await f.command(f.studentSocket, 'stroke.add', stroke())), 'ANNOTATION_NOT_ALLOWED')
+  f.lesson.instructionPhase = null; f.lesson.members[2].annotationAllowed = false
+  strokes.length = 1
+  await f.gateway.preview(f.teacherSocket as any, { lessonId: f.id, ...stroke(), id: undefined })
+  assert.equal(previews(f.studentSocket).length, 1)
+
+  // Same layout with a newer version keeps the page; a rotation moves strokes to a fresh page.
+  assert.equal(f.lesson.share.page, 1)
+  assert.equal((await f.command(f.studentSocket, 'assistance.geometry', { sessionId: session.id, geometry: { ...geometry, version: 2 } })).ok, true)
+  assert.equal(f.lesson.share.page, 1)
+  const rotated = await f.command(f.studentSocket, 'assistance.geometry', { sessionId: session.id, geometry: { width: 2400, height: 1080, rotation: 90, version: 3 } })
+  assert.equal(rotated.ok, true, JSON.stringify(rotated))
+  assert.equal(f.lesson.share.page, 2)
+  assert.equal((rotated as any).snapshot.share.page, 2)
+  assert.equal(code(await f.command(f.teacherSocket, 'stroke.add', stroke({ page: 1 }))), 'STALE_SHARE')
+  assert.equal((await f.command(f.teacherSocket, 'stroke.add', stroke())).ok, true)
+})

@@ -10,11 +10,13 @@ import { readShare } from './lesson/share'
 import type { LessonRealtimeSink } from './realtime-port'
 import { FeaturePolicy } from './features'
 import { socketFeatureClient } from './feature-policy'
+import { FEATURE_IDS } from './generated/feature-policy'
 import type { AssistanceBinding, AssistanceCommandContext } from './assistance'
 import { SOCKET_EVENTS } from './generated/contracts'
 import type { CommandEnvelope, SubscribeInput, StrokePreview, AssistancePointer, ParticipantMediaRequest } from './generated/contracts'
 import { parseParticipantControl } from './lesson/commands'
 import { annotationAllowed } from './lesson/dto'
+import { remoteAnnotationAllowed } from './lesson/annotations'
 import type { PublicUser } from './types'
 const commandSchema = z.object({ lessonId: z.string().uuid(), type: z.string().min(1).max(100), payload: z.any().default({}), requestId: z.string().max(100).optional(), expectedShareId: z.string().uuid().optional() })
 /** Socket acks use the same code/message mapping as HTTP responses. */
@@ -105,6 +107,11 @@ export class Gateway implements OnGatewayConnection, OnGatewayDisconnect, OnModu
     if (client.platform !== 'android' && client.platform !== 'ios') throw new ApiError('ASSISTANCE_UNAVAILABLE', '학생의 Android·iOS 앱에서 화면 보기를 사용할 수 있어요.', 409)
     this.features.assertEvent(SOCKET_EVENTS.AssistancePointer, {}, socket.handshake.headers, socket.handshake.auth)
   }
+  /** Only the Android app draws the teacher's strokes over other apps; iOS shows the pointer in PiP only. */
+  private annotationRecipient(socket: Socket) {
+    return socketFeatureClient(socket.handshake.headers, socket.handshake.auth).platform === 'android'
+      && this.features.socketSupports(FEATURE_IDS.MeetingRemoteAnnotation, socket.handshake.headers, socket.handshake.auth)
+  }
   allowedOrigin(origin: string) { return [process.env.PUBLIC_ORIGIN, 'https://localhost', 'https://127.0.0.1', ...(process.env.DEV_ORIGINS || 'http://localhost:8443,http://127.0.0.1:8443').split(',')].includes(origin) }
   rate(socket: Socket, maximum = 60) {
     let hit = this.rates.get(socket.id)
@@ -154,6 +161,7 @@ export class Gateway implements OnGatewayConnection, OnGatewayDisconnect, OnModu
           if (targetUser.id !== studentId || targetUser.role !== 'student') throw new ApiError('FORBIDDEN', '수업에 참여한 학생에게 요청해 주세요.', 403)
           this.assertAppRecipient(target)
           context.studentSocketId = target.id
+          context.studentAnnotation = this.annotationRecipient(target)
         }
       }
       const snapshot = await this.lessons.command(user, { ...command, payload: command.payload || {} }, context)
@@ -193,6 +201,7 @@ export class Gateway implements OnGatewayConnection, OnGatewayDisconnect, OnModu
       const lesson = await this.lessons.access(body.lessonId, user, true)
       const share = readShare(lesson.share)
       if (!share || share.id !== body.shareId || share.page !== body.page || !annotationAllowed(lesson, user.id)) return
+      if (!remoteAnnotationAllowed(this.lessons.currentAssistance(body.lessonId), share, user.id, lesson)) return
       await this.emitAuthorized(body.lessonId, SOCKET_EVENTS.StrokePreview, { ...body, authorId: user.id }, undefined, socket.id)
     } catch (error) {
       if (error instanceof ApiError && ['FEATURE_UNAVAILABLE', 'CLIENT_UPDATE_REQUIRED'].includes((error.getResponse() as { code: string }).code)) socket.emit(SOCKET_EVENTS.RoomError, socketError(error))

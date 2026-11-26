@@ -680,6 +680,24 @@ export const designIcons: Record<string, SharedVectorPart[]> = {
         "d": "m8 12 3 3 5-6"
       }
     }
+  ],
+  "pointer": [
+    {
+      "type": "circle",
+      "attributes": {
+        "cx": "12",
+        "cy": "12",
+        "r": "8"
+      }
+    },
+    {
+      "type": "circle",
+      "attributes": {
+        "cx": "12",
+        "cy": "12",
+        "r": "2.5"
+      }
+    }
   ]
 };
 export const brandPaths = ["M4 4.5c2.8 0 5.1.8 7 2.3v13c-1.9-1.5-4.2-2.3-7-2.3a1 1 0 0 1-1-1v-11a1 1 0 0 1 1-1Z","M20 4.5c-2.8 0-5.1.8-7 2.3v13c1.9-1.5 4.2-2.3 7-2.3a1 1 0 0 0 1-1v-11a1 1 0 0 0-1-1Z"];

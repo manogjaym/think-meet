@@ -176,3 +176,54 @@ for (const [name, size] of Object.entries({ phone: { width: 390, height: 844 }, 
     expect(rect.x + rect.width).toBeLessThanOrEqual(size.width)
   })
 }
+
+async function activateDevice(page: Page, platform: "Android" | "iOS") {
+  await page.route("**/api/v1/capabilities", route => route.fulfill({ json: { contractRevision: 16, features: { "classroom.core": true, "meeting.remote-assistance": true, "meeting.remote-annotation": true } } }))
+  await page.getByRole("button", { name: "지원 새로고침", exact: true }).click()
+  await page.getByRole("button", { name: "김학생 화면 보기 요청", exact: true }).click()
+  await page.getByRole("button", { name: "학생 승인", exact: true }).click()
+  await page.getByRole("button", { name: `${platform} 학생 공유 시작`, exact: true }).click()
+  await page.getByRole("button", { name: "참석자 전환", exact: true }).click()
+  await expect(page.locator(".annotation-overlay")).toHaveClass(/is-drawing/)
+}
+
+test("Android student session starts with the pointer and saves pen strokes for the student's screen", async ({ page }) => {
+  await activateDevice(page, "Android")
+  await expect(page.locator(".remote-assist-hint")).toHaveText("포인터로 위치를 알리거나 펜으로 학생 화면에 판서해 주세요")
+  await expect(page.getByRole("button", { name: "포인터", exact: true })).toHaveAttribute("aria-pressed", "true")
+  await expect(page.getByRole("button", { name: "판서 종료", exact: true })).toHaveCount(0)
+  const surface = page.locator(".content-surface")
+  const rect = (await surface.boundingBox())!
+  await surface.click({ position: { x: rect.width * .5, y: rect.height * .5 } })
+  expect(JSON.parse((await page.getByTestId("frames").textContent())!)).toHaveLength(1)
+
+  await page.getByRole("button", { name: "펜", exact: true }).click()
+  await page.mouse.move(rect.x + rect.width * .2, rect.y + rect.height * .3)
+  await page.mouse.down()
+  await page.mouse.move(rect.x + rect.width * .8, rect.y + rect.height * .4, { steps: 8 })
+  await page.mouse.up()
+  await expect(page.locator("path[data-stroke-id]")).toHaveCount(1)
+  expect(JSON.parse((await page.getByTestId("commands").textContent())!)).toEqual(["assistance.request", "stroke.add"])
+  expect(JSON.parse((await page.getByTestId("frames").textContent())!)).toHaveLength(1)
+  expect(Number(await page.getByTestId("previews").textContent())).toBeGreaterThan(0)
+  if (process.env.ASSISTANCE_EVIDENCE_DIR) await page.screenshot({ path: path.join(process.env.ASSISTANCE_EVIDENCE_DIR, `web-${page.viewportSize()!.width}-teacher-android-annotation.png`) })
+
+  await page.getByRole("button", { name: "전체 지우기", exact: true }).click()
+  await page.getByRole("button", { name: "지우기", exact: true }).click()
+  await expect(page.locator("path[data-stroke-id]")).toHaveCount(0)
+})
+
+test("iOS student session hides annotation tools and keeps only the pointer", async ({ page }) => {
+  await activateDevice(page, "iOS")
+  await expect(page.locator(".remote-assist-hint")).toContainText("판서할 수 없어요")
+  await expect(page.getByRole("button", { name: "펜", exact: true })).toHaveCount(0)
+  await expect(page.getByRole("button", { name: "포인터", exact: true })).toHaveCount(0)
+  const rect = (await page.locator(".content-surface").boundingBox())!
+  await page.mouse.move(rect.x + rect.width * .2, rect.y + rect.height * .3)
+  await page.mouse.down()
+  await page.mouse.move(rect.x + rect.width * .8, rect.y + rect.height * .4, { steps: 4 })
+  await page.mouse.up()
+  expect(JSON.parse((await page.getByTestId("frames").textContent())!).length).toBeGreaterThan(1)
+  expect(await page.getByTestId("commands").textContent()).toBe('["assistance.request"]')
+  if (process.env.ASSISTANCE_EVIDENCE_DIR) await page.screenshot({ path: path.join(process.env.ASSISTANCE_EVIDENCE_DIR, `web-${page.viewportSize()!.width}-teacher-ios-pointer-only.png`) })
+})

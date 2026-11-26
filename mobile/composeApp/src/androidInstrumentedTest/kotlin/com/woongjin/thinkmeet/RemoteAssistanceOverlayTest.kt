@@ -32,10 +32,15 @@ import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
 import com.woongjin.thinkmeet.data.AssistanceGeometry
 import com.woongjin.thinkmeet.data.AssistancePointer
+import com.woongjin.thinkmeet.data.Point
 import com.woongjin.thinkmeet.design.ThinkMeetTheme
 import com.woongjin.thinkmeet.design.generated.DesignTokens
 import com.woongjin.thinkmeet.platform.AndroidRemoteAssistanceController
 import com.woongjin.thinkmeet.platform.RemoteAssistanceState
+import com.woongjin.thinkmeet.platform.RemoteStroke
+import com.woongjin.thinkmeet.platform.StudentAnnotationInput
+import kotlinx.coroutines.launch
+import org.junit.Assert.assertEquals
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertFalse
@@ -86,20 +91,14 @@ class RemoteAssistanceOverlayTest {
             assertTrue(device.wait(Until.hasObject(By.text("연속 포인터 위치 검증")), 15_000))
             setGeometry(controller)
             instrumentation.runOnMainSync { sender.run() }
-            val field = controller.javaClass.getDeclaredField("marker").apply { isAccessible = true }
+            val field = controller.javaClass.getDeclaredField("overlay").apply { isAccessible = true }
+            // The pointer is drawn inside one full-display window; check the composited pixels at the target.
             fun awaitPosition(targetX: Int): Boolean {
                 val deadline = SystemClock.uptimeMillis() + 5_000
                 do {
-                    var positioned = false
-                    instrumentation.runOnMainSync {
-                        val view = field.get(controller) as? View
-                        if (view?.isAttachedToWindow == true) {
-                            val location = IntArray(2); view.getLocationOnScreen(location)
-                            positioned = kotlin.math.abs(location[0] + view.width / 2 - targetX) <= 2 &&
-                                kotlin.math.abs(location[1] + view.height / 2 - y) <= 2
-                        }
-                    }
-                    if (positioned) return true
+                    var attached = false
+                    instrumentation.runOnMainSync { attached = (field.get(controller) as? View)?.isAttachedToWindow == true }
+                    if (attached && isRedAt(targetX, y)) return true
                     SystemClock.sleep(25)
                 } while (SystemClock.uptimeMillis() < deadline)
                 return false
@@ -119,7 +118,7 @@ class RemoteAssistanceOverlayTest {
             assertTrue("The continuously refreshed window must actually be drawn", isRedAt(x + 48, y))
             instrumentation.runOnMainSync { handler.removeCallbacks(sender) }
             SystemClock.sleep(1_600)
-            instrumentation.runOnMainSync { assertNull("Packets stopped: the window must expire", field.get(controller)) }
+            instrumentation.runOnMainSync { assertNull("Packets stopped without strokes: the window must be removed", field.get(controller)) }
         } finally {
             instrumentation.runOnMainSync { handler.removeCallbacks(sender); controller.close() }
             scenario.close()
@@ -149,19 +148,87 @@ class RemoteAssistanceOverlayTest {
             val target = row.visibleBounds
             val x = target.centerX(); val y = target.centerY()
             setGeometry(controller)
+            // A teacher stroke crosses the same row, so the pointer and strokes overlap on the touched point.
+            val strokeY = y + target.height() / 4
+            val stroke = RemoteStroke("pen", "#4386d8", listOf(
+                Point((target.left + 8).toDouble() / (device.displayWidth - 1), strokeY.toDouble() / (device.displayHeight - 1)),
+                Point((target.right - 8).toDouble() / (device.displayWidth - 1), strokeY.toDouble() / (device.displayHeight - 1))))
+            instrumentation.runOnMainSync { controller.showAnnotations(listOf(stroke)) }
             show(controller, pointer(x, y))
             assertTrue("A real application-overlay mark must appear over another app", awaitRedAt(x, y, expected = true))
+            assertTrue("The teacher's stroke must be drawn over another app", isBlueAt(target.left + target.width() / 4, strokeY))
             screenshot("other-app-pointer-pip")
             show(controller, pointer(x, y))
             assertTrue(device.click(x, y))
             assertTrue("FLAG_NOT_TOUCHABLE must leave the other UID's app interactive", device.wait(Until.hasObject(By.text("터치 확인 1")), 10_000))
             SystemClock.sleep(1_600)
             assertFalse("The OS overlay expires without another pointer packet", isRedAt(x, y))
+            assertTrue("Strokes stay after the pointer expires", isBlueAt(target.left + target.width() / 4, strokeY))
+            assertTrue(device.click(x, strokeY))
+            assertTrue("The stroke window must leave the other UID's app interactive", device.wait(Until.hasObject(By.text("터치 확인 2")), 10_000))
             screenshot("other-app-pointer-expired")
+            instrumentation.runOnMainSync { controller.showAnnotations(emptyList()) }
+            assertTrue("Clearing strokes removes them", (0 until 10).any { SystemClock.sleep(50); !isBlueAt(target.left + target.width() / 4, strokeY) })
         } catch (error: Throwable) {
             runCatching { screenshot("failure-other-app-pointer") }
             throw error
         } finally {
+            instrumentation.runOnMainSync { controller.close() }
+            device.pressBack()
+            scenario.close()
+        }
+    }
+
+    @Test
+    fun allowedStudentDrawsOverAnotherAppAndReleasingThePenPassesTouches() = withOverlayPermission {
+        assumeTrue(context.packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE))
+        val scenario = ActivityScenario.launch(MainActivity::class.java)
+        val controller = AndroidRemoteAssistanceController(context, null)
+        val inputs = java.util.concurrent.CopyOnWriteArrayList<StudentAnnotationInput>()
+        val collector = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default).launch { controller.studentInput.collect { inputs += it } }
+        try {
+            renderFixture(scenario, "학생 판서 OS 검증")
+            assertTrue(device.wait(Until.hasObject(By.text("학생 판서 OS 검증")), 15_000))
+            scenario.onActivity { activity ->
+                controller.toolbarHost = activity
+                activity.enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16, 9)).build())
+            }
+            context.startActivity(Intent().setComponent(ComponentName(instrumentation.context.packageName, "com.woongjin.thinkmeet.RemoteAssistanceTouchActivity"))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            val target = (device.wait(Until.findObject(By.text("터치 확인 0")), 15_000) ?: error("Cannot open the touch target fixture.")).visibleBounds
+            setGeometry(controller)
+            instrumentation.runOnMainSync { controller.setStudentAnnotation(true) }
+            assertTrue("The toolbar must appear over another app", device.wait(Until.hasObject(By.desc("펜")), 10_000))
+            // The selected pen takes touches: a drag above the button becomes the student's stroke, not a tap.
+            val y = target.top - target.height() * 2
+            assertTrue(device.swipe(device.displayWidth / 5, y, device.displayWidth * 4 / 5, y, 20))
+            val deadline = SystemClock.uptimeMillis() + 5_000
+            while (inputs.none { it is StudentAnnotationInput.Stroke } && SystemClock.uptimeMillis() < deadline) SystemClock.sleep(50)
+            val stroke = inputs.filterIsInstance<StudentAnnotationInput.Stroke>().single()
+            assertEquals("#4386d8", stroke.color)
+            assertTrue("A drag must send several points", stroke.points.size > 3)
+            assertEquals(y.toDouble() / (device.displayHeight - 1), stroke.points.first().y, .01)
+            assertTrue(inputs.any { it is StudentAnnotationInput.Preview })
+            // The session echoes the saved stroke back; it is drawn over the other app.
+            instrumentation.runOnMainSync { controller.showAnnotations(listOf(RemoteStroke(stroke.tool, stroke.color, stroke.points))) }
+            assertTrue(isBlueAt(device.displayWidth / 2, y))
+            screenshot("student-annotation-toolbar")
+            assertTrue(device.hasObject(By.text("터치 확인 0")))
+            // Tapping the selected pen releases it, so the app underneath gets touches again.
+            device.findObject(By.desc("펜")).click()
+            SystemClock.sleep(300)
+            assertTrue(device.click(target.centerX(), target.centerY()))
+            assertTrue("Without a selected tool touches pass through", device.wait(Until.hasObject(By.text("터치 확인 1")), 10_000))
+            device.findObject(By.desc("실행 취소")).click()
+            assertTrue((0 until 40).any { SystemClock.sleep(50); inputs.any { it == StudentAnnotationInput.Undo } })
+            // Only the teacher's permission change ends the mode; the toolbar has no close button.
+            instrumentation.runOnMainSync { controller.setStudentAnnotation(false) }
+            assertTrue("Revoking removes the toolbar", device.wait(Until.gone(By.desc("펜")), 5_000))
+        } catch (error: Throwable) {
+            runCatching { screenshot("failure-student-annotation") }
+            throw error
+        } finally {
+            collector.cancel()
             instrumentation.runOnMainSync { controller.close() }
             device.pressBack()
             scenario.close()
@@ -231,6 +298,16 @@ class RemoteAssistanceOverlayTest {
             (-2..2).any { dx -> (-2..2).any { dy ->
                 val color = image.getPixel((x + dx).coerceIn(0, image.width - 1), (y + dy).coerceIn(0, image.height - 1))
                 Color.red(color) > Color.green(color) + 70 && Color.red(color) > Color.blue(color) + 70
+            } }
+        } finally { image.recycle() }
+    }
+
+    private fun isBlueAt(x: Int, y: Int): Boolean {
+        val image = checkNotNull(instrumentation.uiAutomation.takeScreenshot())
+        return try {
+            (-3..3).any { dx -> (-3..3).any { dy ->
+                val color = image.getPixel((x + dx).coerceIn(0, image.width - 1), (y + dy).coerceIn(0, image.height - 1))
+                Color.blue(color) > Color.red(color) + 60 && Color.blue(color) > Color.green(color) + 20
             } }
         } finally { image.recycle() }
     }

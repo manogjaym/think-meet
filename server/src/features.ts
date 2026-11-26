@@ -22,6 +22,12 @@ export class FeaturePolicy {
     throw new ApiError(decision.code, '현재 사용할 수 없는 기능입니다.', 409)
   }
 
+  /** Whether this socket's client implements a feature; never a permission check. */
+  socketSupports(id: string, headers: ClientHeaders, auth?: unknown) {
+    const feature = this.definitions.get(id)
+    return Boolean(feature && featureDecision(feature, socketFeatureClient(headers, auth)).available)
+  }
+
   assertHttpFeature(id: string, headers: ClientHeaders) {
     this.assertFeature(id, featureClient(headers))
   }

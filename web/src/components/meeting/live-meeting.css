@@ -178,6 +178,8 @@
   .annotation-colors .color-grid { display: none; position: absolute; bottom: calc(100% + var(--space-2)); left: 50%; z-index: 20; transform: translateX(-50%); gap: var(--space-2); padding: var(--space-2); background: var(--tile-bg); border: 1px solid var(--meeting-border); border-radius: 9px; box-shadow: 0 8px 24px #0006; }
   .annotation-colors.open .color-grid { display: flex; }
   .annotation-colors .color-grid button { width: var(--tm-spacing-s32); min-height: var(--tm-spacing-s32); }
+  /* Mirroring adds the pointer tool; 40px targets keep its eight buttons on one phone line (app: Space.S40). */
+  .stage-footer .annotation-bar.is-remote button { min-width: var(--tm-spacing-s40); }
   /* The participant strip takes only its content height (tiles, plus the pager when needed) so the shared content gets the rest. */
   .meeting .shared-stage { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto auto; }
   .meeting .shared-stage.textbook-stage { grid-template-rows: minmax(0, 1fr) auto auto; }

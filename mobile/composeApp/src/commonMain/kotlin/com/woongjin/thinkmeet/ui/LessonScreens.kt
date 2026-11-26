@@ -224,6 +224,24 @@ internal val LocalLessonWidth = staticCompositionLocalOf { LayoutToken.PageMaxWi
     var search by remember { mutableStateOf("") }
     var validation by remember { mutableStateOf<String?>(null) }
     var datePicker by remember { mutableStateOf(false) }
+    // Repeat applies to new bookings only; editing changes one lesson.
+    val repeatEnabled = existing == null && formCapabilities.supports(ContractProtocol.FeatureIds.ClassroomRepeatSchedule)
+    var repeatMode by remember { mutableStateOf(LessonRepeatMode.None) }
+    var repeatWeekdays by remember { mutableStateOf(emptySet<Int>()) }
+    var repeatUntil by remember { mutableStateOf("") }
+    var repeatChecked by remember { mutableStateOf(false) }
+    var untilPicker by remember { mutableStateOf(false) }
+    val repeating = repeatEnabled && repeatMode != LessonRepeatMode.None
+    val startDate = runCatching { LocalDate.parse(date) }.getOrNull()
+    val untilDate = runCatching { LocalDate.parse(repeatUntil) }.getOrNull()
+    val repeatDays = if (repeating && startDate != null && untilDate != null) repeatDates(startDate, untilDate, repeatMode, repeatWeekdays) else emptyList()
+    val repeatProblem = if (repeating) repeatError(startDate, untilDate, repeatWeekdays, repeatDays) else null
+    fun changeRepeatMode(mode: LessonRepeatMode) {
+        repeatMode = mode
+        if (mode == LessonRepeatMode.None || startDate == null) return
+        if (repeatWeekdays.isEmpty()) repeatWeekdays = setOf(startDate.dayOfWeek.isoDayNumber)
+        if (untilDate == null || untilDate < startDate) repeatUntil = defaultRepeatUntil(startDate).toString()
+    }
     fun toggle(id: String) { selected = if (id in selected) selected - id else selected + id }
     fun save() {
         validation = null
@@ -237,20 +255,21 @@ internal val LocalLessonWidth = staticCompositionLocalOf { LayoutToken.PageMaxWi
             require(startInstant > Clock.System.now()) { "현재 시간 이후의 시작 시간을 선택해 주세요." }
             val endInstant = if (noEnd) null else LocalDateTime.parse("${date}T${end}:00").toInstant(Seoul)
             require(endInstant == null || endInstant > startInstant) { "종료 시간은 시작 시간보다 늦어야 해요." }
-            if (subjectError != null) return
+            repeatChecked = true
+            if (subjectError != null || repeatProblem != null) return
             val subjectChanged = subjectsEnabled && subject?.id != savedSubject?.id
-            controller.save(
-                LessonInput(
-                    title = title.trim(),
-                    description = description.trim(),
-                    startsAt = startInstant.toString(),
-                    endsAt = endInstant?.toString(),
-                    accessMode = if (open) "OPEN" else "INVITE_ONLY",
-                    studentIds = if (open) emptyList() else selected.toList(),
-                    subjectId = subject?.id.takeIf { subjectChanged },
-                ),
-                clearSubject = subjectChanged && subject == null,
+            val input = LessonInput(
+                title = title.trim(),
+                description = description.trim(),
+                startsAt = startInstant.toString(),
+                endsAt = endInstant?.toString(),
+                accessMode = if (open) "OPEN" else "INVITE_ONLY",
+                studentIds = if (open) emptyList() else selected.toList(),
+                subjectId = subject?.id.takeIf { subjectChanged },
             )
+            val frequency = repeatMode.frequency
+            if (repeating && frequency != null) controller.saveSeries(input, LessonRepeat(frequency, repeatWeekdays.sorted(), repeatUntil))
+            else controller.save(input, clearSubject = subjectChanged && subject == null)
         } catch (e: IllegalArgumentException) { validation = e.message?.takeIf { !it.contains("parse", true) } ?: "날짜와 시간을 확인해 주세요. 시간은 HH:mm 형식이에요." }
     }
     PageColumn(verticalArrangement = Arrangement.Top) {
@@ -292,6 +311,8 @@ internal val LocalLessonWidth = staticCompositionLocalOf { LayoutToken.PageMaxWi
                     Spacer(Modifier.width(Space.S8)); LessonText("종료 시간 없음", color = Palette.TextSecondary, fontSize = 14.sp, lineHeight = 21.sp)
                 }
                 if (noEnd) { Spacer(Modifier.height(Space.S8)); LessonText("선생님이 수업 종료를 누를 때까지 계속 참여할 수 있어요.", color = Muted, fontSize = Type.Caption, lineHeight = Type.Caption * 1.5f) }
+                if (repeatEnabled) LessonRepeatField(repeatMode, repeatWeekdays, repeatUntil, repeatDays, repeatProblem.takeIf { repeatChecked }, !state.busy,
+                    ::changeRepeatMode, { repeatWeekdays = it }, { repeatUntil = it }, { untilPicker = true })
                 (validation ?: state.error)?.let { Spacer(Modifier.height(Space.S16)); ErrorCard(it) }
             }
         }
@@ -347,13 +368,17 @@ internal val LocalLessonWidth = staticCompositionLocalOf { LayoutToken.PageMaxWi
         HorizontalDivider(color = Palette.Line)
         Spacer(Modifier.height(Space.S24))
         val summary = if (open) "누구나 참여할 수 있는 공개 수업" else if (selected.isNotEmpty()) "선택한 학생 ${selected.size}명만 참여" else "참여할 학생을 선택해 주세요"
-        val actions: @Composable (Modifier) -> Unit = { m -> Row(m, horizontalArrangement = Arrangement.spacedBy(Space.S10)) { DesignButton("취소", controller::home, if (phone) Modifier.weight(1f) else Modifier, enabled = !state.busy, secondary = true); DesignButton(if (state.busy) "저장 중" else if (existing == null) "수업 예약" else "변경사항 저장", ::save, if (phone) Modifier.weight(2f) else Modifier, enabled = !state.busy) } }
+        val actions: @Composable (Modifier) -> Unit = { m -> Row(m, horizontalArrangement = Arrangement.spacedBy(Space.S10)) { DesignButton("취소", controller::home, if (phone) Modifier.weight(1f) else Modifier, enabled = !state.busy, secondary = true); DesignButton(if (state.busy) "저장 중" else if (existing != null) "변경사항 저장" else if (repeating && repeatProblem == null) "수업 ${repeatDays.size}회 예약" else "수업 예약", ::save, if (phone) Modifier.weight(2f) else Modifier, enabled = !state.busy) } }
         if (phone) Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Space.S16), horizontalAlignment = Alignment.CenterHorizontally) { LessonText(summary, color = Muted, fontSize = Type.Caption); actions(Modifier.fillMaxWidth()) }
         else Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.S20)) { LessonText(summary, Modifier.weight(1f), color = Muted, fontSize = Type.Support); actions(Modifier) }
     }
     if (datePicker) {
         val picker = rememberDatePickerState(initialSelectedDateMillis = runCatching { LocalDate.parse(date).atStartOfDayIn(TimeZone.UTC).toEpochMilliseconds() }.getOrNull())
         DatePickerDialog(onDismissRequest = { datePicker = false }, confirmButton = { TextButton({ picker.selectedDateMillis?.let { date = Instant.fromEpochMilliseconds(it).toLocalDateTime(TimeZone.UTC).date.toString() }; datePicker = false }) { LessonText("선택") } }, dismissButton = { TextButton({ datePicker = false }) { LessonText("취소") } }) { DatePicker(picker) }
+    }
+    if (untilPicker) {
+        val picker = rememberDatePickerState(initialSelectedDateMillis = untilDate?.atStartOfDayIn(TimeZone.UTC)?.toEpochMilliseconds())
+        DatePickerDialog(onDismissRequest = { untilPicker = false }, confirmButton = { TextButton({ picker.selectedDateMillis?.let { repeatUntil = Instant.fromEpochMilliseconds(it).toLocalDateTime(TimeZone.UTC).date.toString() }; untilPicker = false }) { LessonText("선택") } }, dismissButton = { TextButton({ untilPicker = false }) { LessonText("취소") } }) { DatePicker(picker) }
     }
 }
 
@@ -378,12 +403,6 @@ private fun LessonSubjectField(
         }
     }
     val rows = subjects
-    val message = when {
-        failed -> DesignContent.LessonSubjectsError
-        rows == null -> DesignContent.LessonSubjectsLoading
-        rows.isEmpty() -> DesignContent.LessonSubjectsEmpty
-        else -> null
-    }
     Column(verticalArrangement = Arrangement.spacedBy(Space.S8)) {
         LessonText(if (required) DesignContent.LessonSubjectRequired else DesignContent.LessonSubjectOptional,
             color = Palette.TextSecondary, fontSize = Type.Support, fontWeight = DesignWeight.Medium)
@@ -397,49 +416,65 @@ private fun LessonSubjectField(
         val notice = error ?: DesignContent.LessonSubjectsEmptyRequired.takeIf { required && selected == null && rows?.isEmpty() == true }
         notice?.let { LessonText(it, color = Palette.DangerText, fontSize = Type.Support, lineHeight = Type.Support * 1.5f) }
     }
-    if (open) {
-        val records = remember(lessons, teacherId) {
-            lessons.asSequence().filter { it.teacher.id == teacherId && it.subject != null }
-                .mapNotNull { lesson -> completedLessonTime(lesson)?.let { Triple(lesson, it, lesson.endedAt) } }
-                .sortedByDescending { it.third }.distinctBy { it.first.subject?.id }
-                .associate { it.first.subject?.id to (it.first.title to it.second) }
-        }
-        NoteDialog(DesignContent.LessonSubjectPickerTitle, onClose = { open = false }) {
-            if (message != null) LessonText(message, color = Muted, fontSize = Type.Support)
-            if (failed) DesignButton(DesignContent.LessonSubjectsRetry, { retry++ }, secondary = true)
-            rows.orEmpty().chunked(if (wide) 2 else 1).forEach { row ->
-                Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(Space.S12)) {
-                    row.forEach { subject ->
-                        val isSelected = selected?.id == subject.id
-                        Surface(onClick = { onSelect(subject); open = false },
-                            modifier = Modifier.weight(1f).fillMaxHeight().semantics { this.selected = isSelected },
-                            color = if (isSelected) Palette.Selection else Palette.White,
-                            shape = RoundedCornerShape(ComponentToken.CardRadius),
-                            border = BorderStroke(Space.S1, if (isSelected) Brand else Palette.Line)) {
-                            Column(Modifier.padding(Space.S16), verticalArrangement = Arrangement.spacedBy(Space.S12)) {
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.S8)) {
-                                    LessonText(subject.name, Modifier.weight(1f), fontSize = Type.Heading, fontWeight = DesignWeight.Bold)
-                                    if (isSelected) DesignIcon("check", Modifier.size(Space.S18), tint = Brand)
-                                }
-                                Column(Modifier.fillMaxWidth().background(Palette.Canvas, RoundedCornerShape(Corner.R8)).padding(Space.S12),
-                                    verticalArrangement = Arrangement.spacedBy(Space.S4)) {
-                                    LessonText(DesignContent.LessonSubjectRecord, color = Muted, fontSize = Type.Support)
-                                    val record = records[subject.id]
-                                    if (record == null) LessonText(DesignContent.LessonSubjectRecordEmpty, color = Muted, fontSize = Type.Support)
-                                    else {
-                                        LessonText(record.first, fontSize = Type.Support, fontWeight = DesignWeight.Bold)
-                                        LessonText(record.second, color = Muted, fontSize = Type.Support)
-                                    }
+    if (open) LessonSubjectPickerDialog(rows, failed, { retry++ }, selected?.id, lessons, teacherId, wide, required,
+        onClose = { open = false }) { onSelect(it); open = false }
+}
+
+/** Subject cards with each subject's latest completed lesson; shared by the lesson form and the meeting's subject change. */
+@Composable
+internal fun LessonSubjectPickerDialog(
+    rows: List<TeacherSubject>?, failed: Boolean, onRetry: () -> Unit, selectedId: String?,
+    lessons: List<Lesson>, teacherId: String?, wide: Boolean, required: Boolean,
+    onClose: () -> Unit, onSelect: (TeacherSubject?) -> Unit,
+) {
+    val message = when {
+        failed -> DesignContent.LessonSubjectsError
+        rows == null -> DesignContent.LessonSubjectsLoading
+        rows.isEmpty() -> DesignContent.LessonSubjectsEmpty
+        else -> null
+    }
+    val records = remember(lessons, teacherId) {
+        lessons.asSequence().filter { it.teacher.id == teacherId && it.subject != null }
+            .mapNotNull { lesson -> completedLessonTime(lesson)?.let { Triple(lesson, it, lesson.endedAt) } }
+            .sortedByDescending { it.third }.distinctBy { it.first.subject?.id }
+            .associate { it.first.subject?.id to (it.first.title to it.second) }
+    }
+    NoteDialog(DesignContent.LessonSubjectPickerTitle, onClose = onClose) {
+        if (message != null) LessonText(message, color = Muted, fontSize = Type.Support)
+        if (failed) DesignButton(DesignContent.LessonSubjectsRetry, onRetry, secondary = true)
+        rows.orEmpty().chunked(if (wide) 2 else 1).forEach { row ->
+            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(Space.S12)) {
+                row.forEach { subject ->
+                    val isSelected = selectedId == subject.id
+                    Surface(onClick = { onSelect(subject) },
+                        modifier = Modifier.weight(1f).fillMaxHeight().semantics { this.selected = isSelected },
+                        color = if (isSelected) Palette.Selection else Palette.White,
+                        shape = RoundedCornerShape(ComponentToken.CardRadius),
+                        border = BorderStroke(Space.S1, if (isSelected) Brand else Palette.Line)) {
+                        Column(Modifier.padding(Space.S16), verticalArrangement = Arrangement.spacedBy(Space.S12)) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.S8)) {
+                                LessonText(subject.name, Modifier.weight(1f), fontSize = Type.Heading, fontWeight = DesignWeight.Bold)
+                                if (isSelected) DesignIcon("check", Modifier.size(Space.S18), tint = Brand)
+                            }
+                            Column(Modifier.fillMaxWidth().background(Palette.Canvas, RoundedCornerShape(Corner.R8)).padding(Space.S12),
+                                verticalArrangement = Arrangement.spacedBy(Space.S4)) {
+                                LessonText(DesignContent.LessonSubjectRecord, color = Muted, fontSize = Type.Support)
+                                val record = records[subject.id]
+                                if (record == null) LessonText(DesignContent.LessonSubjectRecordEmpty, color = Muted, fontSize = Type.Support)
+                                else {
+                                    LessonText(record.first, fontSize = Type.Support, fontWeight = DesignWeight.Bold)
+                                    LessonText(record.second, color = Muted, fontSize = Type.Support)
                                 }
                             }
                         }
                     }
-                    if (wide && row.size == 1) Spacer(Modifier.weight(1f))
                 }
+                if (wide && row.size == 1) Spacer(Modifier.weight(1f))
             }
-            if (rows != null && !required) DesignButton(DesignContent.LessonSubjectNone, { onSelect(null); open = false }, Modifier.align(Alignment.End), secondary = true)
         }
+        if (rows != null && !required) DesignButton(DesignContent.LessonSubjectNone, { onSelect(null) }, Modifier.align(Alignment.End), secondary = true)
     }
+
 }
 
 @Composable private fun AccessOption(icon: String, title: String, copy: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier, phone: Boolean) {
@@ -587,13 +622,14 @@ private fun LessonSubjectField(
     }
 }
 
-@Composable fun CreatedLesson(lesson: Lesson, controller: AppState, origin: String) {
+@Composable fun CreatedLesson(lesson: Lesson, controller: AppState, origin: String, seriesCount: Int = 1) {
     var copied by remember(lesson.id) { mutableStateOf(false) }
     val link = "$origin/join/${lesson.code}"
     CenteredLessonCard {
         Surface(Modifier.size(Space.S48), color = Palette.SuccessSurface, shape = CircleShape) { Box(contentAlignment = Alignment.Center) { DesignIcon("check", Modifier.size(Space.S32), tint = Palette.Success) } }
         Spacer(Modifier.height(Space.S24)); LessonText("예약 완료", color = Brand, fontSize = Type.Caption, fontWeight = DesignWeight.SemiBold); Spacer(Modifier.height(Space.S16))
         LessonText("수업 일정이 저장되었어요", fontSize = Type.Title, fontWeight = DesignWeight.Bold, lineHeight = Type.Title * 1.3462f, textAlign = TextAlign.Center); Spacer(Modifier.height(Space.S8))
+        if (seriesCount > 1) { LessonText(DesignContent.LessonRepeatCreated.replace("{count}", seriesCount.toString()), color = Brand, fontSize = Type.Body, fontWeight = DesignWeight.SemiBold, textAlign = TextAlign.Center); Spacer(Modifier.height(Space.S8)) }
         LessonText(if (lesson.isOpen) "함께 배우고 싶은 누구나 참여할 수 있어요." else "${invitedPeople(lesson)} 학생을 수업에 초대했어요.", color = Muted, fontSize = Type.Body, lineHeight = Type.Body * 1.5f, textAlign = TextAlign.Center); Spacer(Modifier.height(Space.S32))
         Surface(Modifier.fillMaxWidth(), color = Palette.Canvas, shape = RoundedCornerShape(Corner.R8)) {
             Column(Modifier.padding(horizontal = Space.S20, vertical = Space.S16), verticalArrangement = Arrangement.spacedBy(Space.S8)) {

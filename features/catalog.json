@@ -774,6 +774,48 @@
         "ios": {"status": "done", "files": ["mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/meeting/SharedStage.kt", "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/meeting/RemoteAssistanceSession.kt"]}
       },
       "verification": {}
+    },
+    {
+      "id": "classroom.repeat-schedule",
+      "title": "반복 수업 예약",
+      "stage": "in-progress",
+      "requiresRevision": 16,
+      "defaultEnabled": true,
+      "platforms": ["web", "android", "ios"],
+      "spec": "lesson-repeat-schedule.md",
+      "contracts": {
+        "operations": ["createLessonSeries"],
+        "events": [],
+        "commands": []
+      },
+      "implementation": {
+        "server": {"status": "done", "files": ["server/src/lesson-series.ts", "server/src/http/lessons.controller.ts"]},
+        "web": {"status": "done", "files": ["web/src/lib/lessonRepeat.ts", "web/src/components/LessonRepeatField.tsx", "web/src/screens/Lessons.tsx"]},
+        "android": {"status": "done", "files": ["mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/ui/LessonRepeat.kt", "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/ui/LessonScreens.kt"]},
+        "ios": {"status": "done", "files": ["mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/ui/LessonRepeat.kt", "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/ui/LessonScreens.kt"]}
+      },
+      "verification": {}
+    },
+    {
+      "id": "classroom.subject-switch",
+      "title": "수업 중 과목 변경",
+      "stage": "in-progress",
+      "requiresRevision": 17,
+      "defaultEnabled": true,
+      "platforms": ["web", "android", "ios"],
+      "spec": "lesson-subject-switch.md",
+      "contracts": {
+        "operations": ["switchLessonSubject"],
+        "events": [],
+        "commands": []
+      },
+      "implementation": {
+        "server": {"status": "done", "files": ["server/src/lessons.ts", "server/src/http/lessons.controller.ts", "server/src/lesson/dto.ts"]},
+        "web": {"status": "done", "files": ["web/src/components/meeting/SubjectSwitch.tsx", "web/src/lib/useMeeting.ts", "web/src/screens/Meeting.tsx", "web/src/app/AppScreen.tsx", "web/src/lib/lessonRecording.ts"]},
+        "android": {"status": "done", "files": ["mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/meeting/MeetingScreen.kt", "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/meeting/MeetingSession.kt", "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/data/MeetingRealtime.kt", "mobile/composeApp/src/androidMain/kotlin/com/woongjin/thinkmeet/platform/AndroidRecording.kt"]},
+        "ios": {"status": "done", "files": ["mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/meeting/MeetingScreen.kt", "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/meeting/MeetingSession.kt", "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/data/MeetingRealtime.kt", "mobile/composeApp/src/iosMain/kotlin/com/woongjin/thinkmeet/platform/IosPlatform.kt", "mobile/iosApp/ThinkMeet/LessonRecorder.swift"]}
+      },
+      "verification": {}
     }
   ]
 }

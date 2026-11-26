@@ -232,11 +232,30 @@ final class LessonRecorder: @unchecked Sendable {
         }
     }
 
+    /// classroom.subject-switch: closes the current file (completion as in stop()) and keeps the same ReplayKit capture
+    /// writing into `path`; the next video frame starts the new file. Completion gets "NOT_RECORDING" when idle.
+    func split(path: String, completion: @escaping (String?, String?) -> Void) {
+        queue.async {
+            guard self.recording else { completion(nil, "NOT_RECORDING"); return }
+            let target = URL(fileURLWithPath: path)
+            try? FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? FileManager.default.removeItem(at: target)
+            self.closeWriter(completion)
+            self.url = target
+        }
+    }
+
     private func finish(_ completion: @escaping (String?, String?) -> Void) {
         recording = false
+        closeWriter(completion)
+    }
+
+    /// Runs on `queue`. Resets the writer state synchronously so a following split can start the next file.
+    private func closeWriter(_ completion: @escaping (String?, String?) -> Void) {
         timer?.cancel(); timer = nil
         guard let writer, let start = sessionStart, let url else {
             if let url { try? FileManager.default.removeItem(at: url) }
+            writer = nil; videoInput = nil; audioInput = nil; sessionStart = nil; lastVideo = .invalid; audioFrames = 0
             completion(nil, "녹화된 화면이 없어요."); return
         }
         appendAudio(final: true)
@@ -244,9 +263,9 @@ final class LessonRecorder: @unchecked Sendable {
         let audioEnd = CMTimeGetSeconds(CMTime(value: audioFrames, timescale: CMTimeScale(PcmRing.rate)))
         let videoEnd = lastVideo.isValid ? CMTimeGetSeconds(CMTimeSubtract(lastVideo, start)) : 0
         let (width, height) = size
+        self.writer = nil; videoInput = nil; audioInput = nil; sessionStart = nil; lastVideo = .invalid; audioFrames = 0
         writer.finishWriting { [weak self] in
             self?.queue.async {
-                self?.writer = nil; self?.videoInput = nil; self?.audioInput = nil; self?.sessionStart = nil
                 let bytes = ((try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? NSNumber)?.int64Value ?? 0
                 guard writer.status == .completed, bytes > 0 else {
                     try? FileManager.default.removeItem(at: url)

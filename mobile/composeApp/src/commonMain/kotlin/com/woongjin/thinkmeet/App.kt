@@ -32,6 +32,7 @@ import com.woongjin.thinkmeet.design.generated.DesignTokens.Layout as LayoutToke
 import com.woongjin.thinkmeet.design.generated.DesignTokens.Typography as Type
 import com.woongjin.thinkmeet.design.generated.DesignTokens.LineHeight as Leading
 import com.woongjin.thinkmeet.meeting.MeetingScreen
+import com.woongjin.thinkmeet.meeting.MeetingLightTheme
 import com.woongjin.thinkmeet.platform.*
 import com.woongjin.thinkmeet.ui.*
 
@@ -97,9 +98,17 @@ fun App() {
                     closeWorksheetCamera()
                     controller.notes(NotesTab.Worksheets)
                 }
-                route is Route.Meeting ->
-                    MeetingScreen(api, route.lesson, user, route.admission, state.camera, state.microphone, controller::meetingExit,
-                        record = state.recordLesson, onRecorded = { file -> controller.recordings.enqueue(user.id, route.lesson.id, file) })
+                // Keyed by lesson: after a subject change the old screen's recorder finishes and enqueues for the old lesson.
+                // Keyed by the admitted lesson: continuing in place after a subject change keeps the screen and media,
+                // while a new admission recreates it (its recorder finishes for the old lesson).
+                route is Route.Meeting -> key(route.admission.lesson.id) {
+                    MeetingScreen(api, route.admission.lesson, user, route.admission, state.camera, state.microphone, controller::meetingExit,
+                        record = state.recordLesson, onRecorded = { lessonId, file -> controller.recordings.enqueue(user.id, lessonId, file) },
+                        onContinued = controller::continueLesson, onFollow = controller::followLesson, switched = route.switched)
+                    if (state.recordPrompt) MeetingLightTheme {
+                        RecordingPromptDialog(onChoice = controller::answerRecordPrompt, onDismiss = { controller.answerRecordPrompt(false) })
+                    }
+                }
                 else -> BoxWithConstraints(Modifier.fillMaxSize()) {
                     val mobile = maxWidth <= LayoutToken.RootNavigationMobile
                     val compact = maxWidth <= LayoutToken.RootHeaderCompact
@@ -125,7 +134,7 @@ fun App() {
                                 Route.Create -> LessonForm(state, controller, existing = null)
                                 is Route.Edit -> LessonForm(state, controller, existing = route.lesson)
                                 is Route.Detail -> LessonDetail(route.lesson, state, controller, api.origin)
-                                is Route.Created -> CreatedLesson(route.lesson, controller, api.origin)
+                                is Route.Created -> CreatedLesson(route.lesson, controller, api.origin, route.seriesCount)
                                 is Route.Prejoin -> PrejoinScreen(route.lesson, user, state, controller)
                                 is Route.Waiting -> WaitingScreen(route.lesson, user, state, controller)
                                 is Route.Ended -> EndedScreen(route.lesson, user, state, controller)

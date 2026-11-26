@@ -1,6 +1,6 @@
 import { Suspense, useCallback, useEffect, useState } from "react"
 import { BrowserRouter, useLocation, useNavigate } from "react-router-dom"
-import { AppScreen } from "./app/AppScreen"
+import { AppScreen, meetingKey } from "./app/AppScreen"
 import { Status } from "./app/Status"
 import { useAuthRedirect } from "./app/useAuthRedirect"
 import { useLessonDetail } from "./app/useLessonDetail"
@@ -77,6 +77,18 @@ function Application() {
     }
   }, [navigate, detail.setSelected])
 
+  const followLesson = useCallback(async (nextLessonId: string, media: { mic: boolean; cam: boolean }) => {
+    setDevices(current => ({ ...current, ...media }))
+    try {
+      const result = await call("joinLesson", { params: { id: nextLessonId } })
+      setAdmission(result)
+      detail.setSelected(result.lesson)
+      navigate(`/lessons/${nextLessonId}/${result.waiting ? "waiting" : "meeting"}`, { replace: true, state: result.waiting ? { waitConfirmed: true } : { switched: true } })
+    } catch (e) {
+      navigate(`/error/${exceptionType(e)}?lesson=${nextLessonId}`, { replace: true, state: { message: e instanceof Error ? e.message : undefined } })
+    }
+  }, [navigate, detail.setSelected])
+
   if (auth.loading) return <Status />
   if (auth.error) return <Status error={auth.error} retry={auth.retry} />
   if (!user) return <Login />
@@ -104,11 +116,11 @@ function Application() {
         }}
       />}
       <Suspense fallback={<Status />}>
-        <ScreenTransition key={location.pathname} screen={screen} motion={motion} scrollTop={scrollTop}>
+        <ScreenTransition key={screen === "meeting" ? `meeting:${meetingKey(location, lessonId)}` : location.pathname} screen={screen} motion={motion} scrollTop={scrollTop}>
           <AppScreen
             route={route} user={user} location={location} navigate={navigate} setScreen={setScreen} rememberScroll={rememberScroll}
             onLogout={() => void auth.logout()} features={features} directory={directory} detail={detail}
-            homeView={homeView} setHomeView={setHomeView} devices={devices} startJoin={startJoin}
+            homeView={homeView} setHomeView={setHomeView} devices={devices} startJoin={startJoin} followLesson={followLesson}
             admission={admission} setAdmission={setAdmission} waitingError={waitingError}
           />
         </ScreenTransition>

@@ -5,7 +5,13 @@ import { currentAssistance } from "../../lib/remoteAssistance"
 import { Icon } from "../ui"
 
 /** Lesson owner's materials card under the participant videos in the right rail. */
-export function MaterialsCard({ textbookDisabled, onTextbook }: { textbookDisabled: boolean; onTextbook: () => void }) {
+export function MaterialsCard({ textbookDisabled, onTextbook, subjectDisabled = false, onSubject }: {
+  textbookDisabled: boolean
+  onTextbook: () => void
+  subjectDisabled?: boolean
+  /** classroom.subject-switch; without it the button only shows the coming-soon notice. */
+  onSubject?: () => void
+}) {
   const [notice, setNotice] = useState(false)
   useEffect(() => {
     if (!notice) return
@@ -17,7 +23,7 @@ export function MaterialsCard({ textbookDisabled, onTextbook }: { textbookDisabl
     <h2 id="materials-card-title">{designContent.meetingMaterialsTitle}</h2>
     <button className="materials-item" disabled={textbookDisabled} onClick={onTextbook}><Icon name="grid" size={18} />{designContent.meetingMaterialsTextbook}</button>
     <button className="materials-item" onClick={comingSoon}><Icon name="file" size={18} />{designContent.meetingMaterialsWorksheet}</button>
-    <button className="materials-subject" onClick={comingSoon}>{designContent.meetingMaterialsSubject}</button>
+    <button className="materials-subject" aria-haspopup={onSubject ? "dialog" : undefined} disabled={!!onSubject && subjectDisabled} onClick={onSubject ?? comingSoon}>{designContent.meetingMaterialsSubject}</button>
     <button className="materials-homework" onClick={comingSoon}><Icon name="calendar" size={18} />{designContent.meetingMaterialsHomework}</button>
     <p className="materials-notice" role="status">{notice ? designContent.meetingMaterialsComingSoon : ""}</p>
   </section>

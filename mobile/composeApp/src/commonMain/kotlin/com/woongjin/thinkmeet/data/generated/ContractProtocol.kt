@@ -6,7 +6,7 @@ class ContractCommand<P>(val type: String, val serializer: kotlinx.serialization
 data class ContractFeature(val id: String, val stage: String, val requiresRevision: Int, val defaultEnabled: Boolean, val platforms: Set<String>)
 
 object ContractProtocol {
-    const val Revision = 16
+    const val Revision = 17
     const val ApiBasePath = "/api/v1"
     const val SocketPath = "/socket.io"
     const val PlatformHeader = "X-ThinkMeet-Platform"
@@ -36,6 +36,8 @@ object ContractProtocol {
         const val ClassroomRecording = "classroom.recording"
         const val ClassroomSubjectStorage = "classroom.subject-storage"
         const val MeetingRemoteAnnotation = "meeting.remote-annotation"
+        const val ClassroomRepeatSchedule = "classroom.repeat-schedule"
+        const val ClassroomSubjectSwitch = "classroom.subject-switch"
     }
     /** Server error codes from contracts/openapi.json ErrorCode; compare exact values, never substrings. */
     object ErrorCodes {
@@ -122,12 +124,14 @@ object ContractProtocol {
         ContractHttpOperation("listTeacherSubjects", "GET", "/api/v1/subjects", "classroom.subjects"),
         ContractHttpOperation("listLessons", "GET", "/api/v1/lessons", "classroom.core"),
         ContractHttpOperation("createLesson", "POST", "/api/v1/lessons", "classroom.core"),
+        ContractHttpOperation("createLessonSeries", "POST", "/api/v1/lesson-series", "classroom.repeat-schedule"),
         ContractHttpOperation("resolveLesson", "GET", "/api/v1/join/{code}", "classroom.core"),
         ContractHttpOperation("getLesson", "GET", "/api/v1/lessons/{id}", "classroom.core"),
         ContractHttpOperation("updateLesson", "PATCH", "/api/v1/lessons/{id}", "classroom.core"),
         ContractHttpOperation("cancelLesson", "POST", "/api/v1/lessons/{id}/cancel", "classroom.core"),
         ContractHttpOperation("connectedLesson", "POST", "/api/v1/lessons/{id}/connected", "classroom.core"),
         ContractHttpOperation("endLesson", "POST", "/api/v1/lessons/{id}/end", null),
+        ContractHttpOperation("switchLessonSubject", "POST", "/api/v1/lessons/{id}/subject-switch", "classroom.subject-switch"),
         ContractHttpOperation("joinLesson", "POST", "/api/v1/lessons/{id}/join", "classroom.core"),
         ContractHttpOperation("leaveLesson", "POST", "/api/v1/lessons/{id}/leave", null),
         ContractHttpOperation("kickParticipant", "POST", "/api/v1/lessons/{id}/kick", "classroom.core"),
@@ -167,6 +171,8 @@ object ContractProtocol {
         ContractFeature("classroom.recording", "in-progress", 14, true, setOf("web", "android", "ios")),
         ContractFeature("classroom.subject-storage", "in-progress", 15, true, setOf("web", "android", "ios")),
         ContractFeature("meeting.remote-annotation", "in-progress", 16, true, setOf("web", "android", "ios")),
+        ContractFeature("classroom.repeat-schedule", "in-progress", 16, true, setOf("web", "android", "ios")),
+        ContractFeature("classroom.subject-switch", "in-progress", 17, true, setOf("web", "android", "ios")),
     )
     private val commandFeatures: Map<String, String?> = mapOf(
         "lesson.start" to "classroom.lesson-modes",

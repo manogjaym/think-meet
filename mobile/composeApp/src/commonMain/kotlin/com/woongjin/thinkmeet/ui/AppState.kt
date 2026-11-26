@@ -21,12 +21,17 @@ sealed interface Route {
     sealed interface ForLesson : Route { val lesson: Lesson }
     data class Detail(override val lesson: Lesson) : ForLesson
     data class Edit(override val lesson: Lesson) : ForLesson
-    data class Created(override val lesson: Lesson) : ForLesson
+    /** [seriesCount] is the number of lessons booked by one repeat schedule; [lesson] is the first. */
+    data class Created(override val lesson: Lesson, val seriesCount: Int = 1) : ForLesson
     data class Prejoin(override val lesson: Lesson) : ForLesson
     data class Waiting(override val lesson: Lesson) : ForLesson
-    data class Meeting(val admission: JoinResult) : ForLesson {
+    /**
+     * [switched]: this admission continues a lesson whose subject the teacher changed (classroom.subject-switch).
+     * [continued]: the admitted lesson continued in place as this lesson (same media room and admission).
+     */
+    data class Meeting(val admission: JoinResult, val switched: Boolean = false, val continued: Lesson? = null) : ForLesson {
         init { require(!admission.waiting) }
-        override val lesson: Lesson get() = admission.lesson
+        override val lesson: Lesson get() = continued ?: admission.lesson
     }
     data class Ended(override val lesson: Lesson) : ForLesson
 }
@@ -40,7 +45,7 @@ private fun Route.refreshFrom(lessons: List<Lesson>): Route {
         is Route.Created -> copy(lesson = current)
         is Route.Prejoin -> copy(lesson = current)
         is Route.Waiting -> copy(lesson = current)
-        is Route.Meeting -> copy(admission = admission.copy(lesson = current))
+        is Route.Meeting -> if (continued != null) copy(continued = current) else copy(admission = admission.copy(lesson = current))
         is Route.Ended -> copy(lesson = current)
     }
 }
@@ -57,6 +62,8 @@ data class AppUiState(
     val microphone: Boolean = false,
     /** The owner chose to record the screen for the next admission from prejoin. */
     val recordLesson: Boolean = false,
+    /** After a subject change while recording: ask again in the new lesson, since the OS capture ended with the old one. */
+    val recordPrompt: Boolean = false,
 )
 
 /** One owner for requests and admission: repeated taps cannot rotate a live admission token. */
@@ -267,6 +274,12 @@ class AppState(val api: ThinkMeetApi, private val scope: CoroutineScope) {
         mutable.update { it.copy(route = if (lessonId == null) Route.Created(lesson) else Route.Detail(lesson)) }
         refresh()
     }
+    fun saveSeries(input: LessonInput, repeat: LessonRepeat) = work {
+        if (state.value.route != Route.Create) return@work
+        val lessons = api.createLessonSeries(LessonSeriesInput(input, repeat)).lessons
+        mutable.update { it.copy(route = Route.Created(lessons.first(), lessons.size)) }
+        refresh()
+    }
     fun cancel() = work {
         val detail = state.value.route as? Route.Detail ?: return@work
         val lesson = api.cancel(detail.lesson.id)
@@ -371,13 +384,45 @@ class AppState(val api: ThinkMeetApi, private val scope: CoroutineScope) {
             } finally { presence.cancel(); updates.cancel(); realtime.close() }
         }
     }
+    /**
+     * classroom.subject-switch: the meeting ended because its subject changed. Everyone (teacher and students)
+     * joins the new live lesson with the same microphone/camera; a teacher who was recording is asked again.
+     */
+    fun followLesson(nextLessonId: String, askRecording: Boolean, camera: Boolean, microphone: Boolean) {
+        val meeting = state.value.route as? Route.Meeting ?: return
+        // A request still running from the old meeting must not block the admission.
+        cancelWork(); cancelWaiting()
+        mutable.update { it.copy(camera = camera, microphone = microphone, recordLesson = false, recordPrompt = false) }
+        work {
+            val result = try { api.join(nextLessonId) }
+            catch (error: CancellationException) { throw error }
+            catch (error: Exception) {
+                // Without the new lesson the old one still shows its summary.
+                if (state.value.route === meeting) meetingExit(true)
+                throw error
+            }
+            currentCoroutineContext().ensureActive()
+            if (state.value.route !== meeting) return@work
+            val route = if (result.waiting) Route.Waiting(result.lesson) else Route.Meeting(result, switched = true)
+            mutable.update { it.copy(route = route, error = null, recordPrompt = askRecording && route is Route.Meeting && asksRecording(result.lesson)) }
+            if (route is Route.Waiting) waitForTeacher(route.lesson.id)
+        }
+    }
+    /** classroom.subject-switch: the meeting continued in place as [next]; the screen and its media stay. */
+    fun continueLesson(next: Lesson) {
+        mutable.update { state ->
+            val meeting = state.route as? Route.Meeting ?: return@update state
+            state.copy(route = meeting.copy(continued = next))
+        }
+    }
+    fun answerRecordPrompt(record: Boolean) { mutable.update { it.copy(recordPrompt = false, recordLesson = record) } }
     fun meetingExit(ended: Boolean) {
         val before = state.value
         val user = before.user ?: return
         val meeting = before.route as? Route.Meeting ?: return
         val endedRoute = Route.Ended(meeting.lesson)
         val version = sessionVersion
-        mutable.update { it.copy(route = endedRoute, recordLesson = false) }
+        mutable.update { it.copy(route = endedRoute, recordLesson = false, recordPrompt = false) }
         postMeetingJob?.cancel()
         postMeetingJob = scope.launch {
             try {

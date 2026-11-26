@@ -616,6 +616,9 @@ final class NativeBridge: NSObject, IosNativeBridge, RoomDelegate, TrackDelegate
     func stopRecording(completion: @escaping (String?, String?) -> Void) {
         lessonRecorder.stop { result, error in DispatchQueue.main.async { _ = completion(result, error) } }
     }
+    func splitRecording(path: String, completion: @escaping (String?, String?) -> Void) {
+        lessonRecorder.split(path: path) { result, error in DispatchQueue.main.async { _ = completion(result, error) } }
+    }
     /// Presents the system player; the private URL is authenticated with the session cookie, as for materials.
     func playRecording(url: String, cookie: String, onClose: @escaping () -> Void) {
         guard let resource = URL(string: url), let presenter = topController() else { _ = onClose(); return }

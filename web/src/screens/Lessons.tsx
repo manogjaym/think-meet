@@ -1,11 +1,13 @@
 import { TeacherWorksheets } from "./ClassNotes"
 import { LessonRecordings } from "../components/LessonRecordings"
 import { useEffect, useState } from "react"
-import type { LessonInput, TeacherSubject } from "../generated/contracts"
+import type { LessonInput, LessonSeriesInput, TeacherSubject } from "../generated/contracts"
 import { designContent } from "../generated/design-content"
 import { useFeature } from "../lib/useFeature"
 import { completedLessonTime } from "../lib/lessonRecord"
 import { LessonSubjectDialog } from "../components/LessonSubjectDialog"
+import { LessonRepeatField } from "../components/LessonRepeatField"
+import { defaultRepeatUntil, MAX_SERIES_LESSONS, repeatDates, weekdayOf, type LessonRepeatMode } from "../lib/lessonRepeat"
 import { call, colorFor, displayLesson, joinLink, type ApiLesson, type LessonAccessMode, type User } from "../lib/api"
 import type { Role, Screen } from "../models"
 import type { Lesson } from "./Home"
@@ -316,7 +318,8 @@ export function Form({
   teacherId,
 }: {
   setScreen: (s: Screen) => void
-  onCreated?: (lesson: Lesson) => void
+  /** `count` is the number of lessons booked by a repeat schedule. */
+  onCreated?: (lesson: Lesson, count?: number) => void
   lesson?: Lesson
   students: User[]
   lessons: ApiLesson[]
@@ -375,6 +378,26 @@ export function Form({
       })(),
   )
   const [noScheduledEnd, setNoScheduledEnd] = useState(lesson?.endsAt === null)
+  // Repeat applies to new bookings only; editing changes one lesson.
+  const repeatEnabled = useFeature(FEATURE_IDS.ClassroomRepeatSchedule) && !lesson
+  const [repeatMode, setRepeatMode] = useState<LessonRepeatMode>("NONE")
+  const [repeatWeekdays, setRepeatWeekdays] = useState<number[]>([])
+  const [repeatUntil, setRepeatUntil] = useState("")
+  const repeating = repeatEnabled && repeatMode !== "NONE"
+  const lessonDates = repeating ? repeatDates(date, repeatUntil, repeatMode, repeatWeekdays) : []
+  const repeatError = !repeating ? undefined
+    : !repeatWeekdays.length ? designContent.lessonRepeatWeekdaysError
+    : !repeatUntil || repeatUntil < date ? designContent.lessonRepeatUntilError
+    : !lessonDates.length ? designContent.lessonRepeatEmptyError
+    : lessonDates.length > MAX_SERIES_LESSONS ? designContent.lessonRepeatLimitError.replace("{max}", String(MAX_SERIES_LESSONS))
+    : undefined
+  const changeRepeatMode = (mode: LessonRepeatMode) => {
+    setRepeatMode(mode)
+    if (mode === "NONE") return
+    const weekday = weekdayOf(date)
+    if (!repeatWeekdays.length && weekday) setRepeatWeekdays([weekday])
+    if (!repeatUntil || repeatUntil < date) setRepeatUntil(defaultRepeatUntil(date))
+  }
   const [accessMode, setAccessMode] = useState<LessonAccessMode>(
     lesson?.accessMode || "INVITE_ONLY",
   )
@@ -417,6 +440,7 @@ export function Form({
       nextErrors.end = "종료 시간은 시작 시간보다 늦어야 해요."
     if (!isOpen && !selected.length)
       nextErrors.students = "학생을 한 명 이상 선택해 주세요."
+    if (repeatError) nextErrors.repeat = repeatError
     if (subjectRequired && !selectedSubjectId)
       nextErrors.subject = subjects?.length === 0
         ? designContent.lessonSubjectsEmptyRequired
@@ -436,6 +460,15 @@ export function Form({
             studentIds: isOpen ? [] : selected,
             ...(subjectsEnabled && subjects !== null && subjectChange !== undefined ? { subjectId: subjectChange } : {}),
           }
+      if (repeating) {
+        const series: LessonSeriesInput = {
+          lesson: body,
+          repeat: { frequency: repeatMode, weekdays: repeatWeekdays, until: repeatUntil },
+        }
+        const { lessons: created } = await call("createLessonSeries", { body: series })
+        onCreated?.(displayLesson(created[0]), created.length)
+        return
+      }
       const result = lesson
         ? await call("updateLesson", { params: { id: lesson.id }, body })
         : await call("createLesson", { body })
@@ -587,6 +620,20 @@ export function Form({
               <p className="mt-2 text-sm text-[var(--muted)]">
                 선생님이 수업 종료를 누를 때까지 계속 참여할 수 있어요.
               </p>
+            )}
+            {repeatEnabled && (
+              <LessonRepeatField
+                mode={repeatMode}
+                weekdays={repeatWeekdays}
+                until={repeatUntil}
+                minUntil={date}
+                dates={lessonDates}
+                error={errors.repeat ? repeatError : undefined}
+                disabled={saving}
+                onMode={changeRepeatMode}
+                onWeekdays={setRepeatWeekdays}
+                onUntil={setRepeatUntil}
+              />
             )}
             {Object.keys(errors).length > 0 && (
               <div className="inline-error" role="alert">
@@ -756,7 +803,7 @@ export function Form({
               취소
             </button>
             <button type="submit" disabled={saving} className="primary">
-              {saving ? "저장 중" : lesson ? "변경사항 저장" : "수업 예약"}
+              {saving ? "저장 중" : lesson ? "변경사항 저장" : repeating && !repeatError ? `수업 ${lessonDates.length}회 예약` : "수업 예약"}
             </button>
           </div>
         </div>
@@ -768,9 +815,12 @@ export function Form({
 export function Created({
   setScreen,
   lesson,
+  seriesCount,
 }: {
   setScreen: (s: Screen) => void
   lesson: Lesson
+  /** Lessons booked together by a repeat schedule; `lesson` is the first one. */
+  seriesCount?: number
 }) {
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">(
     "idle",
@@ -783,6 +833,11 @@ export function Created({
         </div>
         <p className="eyebrow">예약 완료</p>
         <h1>수업 일정이 저장되었어요</h1>
+        {seriesCount && seriesCount > 1 && (
+          <p className="created-series-count" role="status">
+            {designContent.lessonRepeatCreated.replace("{count}", String(seriesCount))}
+          </p>
+        )}
         <p>
           {lesson.accessMode === "OPEN"
             ? "함께 배우고 싶은 누구나 참여할 수 있어요."

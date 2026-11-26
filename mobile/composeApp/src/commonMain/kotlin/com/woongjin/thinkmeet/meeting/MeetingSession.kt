@@ -3,6 +3,7 @@ package com.woongjin.thinkmeet.meeting
 import com.woongjin.thinkmeet.data.ApiException
 import com.woongjin.thinkmeet.data.ContractProtocol
 import com.woongjin.thinkmeet.data.JoinResult
+import com.woongjin.thinkmeet.data.Lesson
 import com.woongjin.thinkmeet.data.MeetingRealtime
 import com.woongjin.thinkmeet.data.MeetingSnapshot
 import com.woongjin.thinkmeet.data.RealtimeError
@@ -48,6 +49,11 @@ internal class MeetingSession(
     private val onExit: (Boolean) -> Unit,
     private val report: (String) -> Unit,
     dispatcher: CoroutineDispatcher = Dispatchers.Main.immediate,
+    /**
+     * classroom.subject-switch: when set, an ENDED lesson with `nextLessonId` continues in place (same media room)
+     * and this receives the new lesson. If following fails, the session ends as before.
+     */
+    private val onContinued: ((Lesson) -> Unit)? = null,
 ) {
     private val job = SupervisorJob()
     private val scope = CoroutineScope(dispatcher + job)
@@ -60,13 +66,20 @@ internal class MeetingSession(
     private var localCleanup: Job? = null
     private var realtimeClosed = false
     private var disposed = false
+    private var following: String? = null
 
     fun start(admission: JoinResult, camera: Boolean, microphone: Boolean) {
         if (observers != null || disposed) return
         val watching = SupervisorJob(job)
         observers = watching
         val watch = CoroutineScope(scope.coroutineContext + watching)
-        watch.launch { link.snapshot.collect { if (snapshotHasEnded()) endFromServer() } }
+        watch.launch {
+            link.snapshot.collect { snapshot ->
+                val next = snapshot?.lesson?.nextLessonId
+                if (snapshot?.lesson?.status == "ENDED" && next != null && onContinued != null) follow(next)
+                else if (snapshotHasEnded()) endFromServer()
+            }
+        }
         // Observe native dismissal directly even while the stopped Activity is not recomposing.
         watch.launch { pip.state.collect { if (it.closedByUser) requestExit(Exit.Pip) } }
         watch.launch {
@@ -142,12 +155,25 @@ internal class MeetingSession(
         lastError?.let { report(it.message ?: requestError) }
     }
 
+    private fun follow(nextLessonId: String) {
+        if (following == nextLessonId || disposed || localCleanup != null || mutable.value.exited) return
+        following = nextLessonId
+        scope.launch {
+            val lesson = try { link.follow(nextLessonId) }
+            catch (error: CancellationException) { throw error }
+            catch (_: Exception) { endFromServer(); return@launch }
+            if (!disposed && localCleanup == null) onContinued?.invoke(lesson)
+        }
+    }
+
     fun leave(endForAll: Boolean) = requestExit(if (endForAll) Exit.End else Exit.Leave)
     fun returnToLessons() = requestExit(Exit.Return)
 
     private fun snapshotHasEnded(): Boolean {
-        val status = link.snapshot.value?.lesson?.status
-        return status == "ENDED" || status == "CANCELLED"
+        val lesson = link.snapshot.value?.lesson
+        // A lesson being followed into its subject change is not over for this session.
+        if (lesson?.status == "ENDED" && lesson.nextLessonId != null && lesson.nextLessonId == following) return false
+        return lesson?.status == "ENDED" || lesson?.status == "CANCELLED"
     }
 
     private fun endFromServer() {
@@ -265,14 +291,18 @@ internal interface MeetingSessionTransport {
     suspend fun refreshSnapshot()
     suspend fun confirmConnection()
     suspend fun requestExit(endForAll: Boolean)
+    /** Moves this session to the lesson that continues the ended one and returns it. */
+    suspend fun follow(nextLessonId: String): Lesson
     fun close()
 }
 
 internal class ApiMeetingSessionTransport(
     private val api: ThinkMeetApi,
     private val realtime: MeetingRealtime,
-    private val lessonId: String,
+    admittedLessonId: String,
 ) : MeetingSessionTransport {
+    private val lessonId get() = realtime.currentLessonId.value ?: error("수업을 먼저 선택해 주세요.")
+    init { check(realtime.currentLessonId.value == admittedLessonId) }
     override val snapshot = realtime.snapshot
     override val connected = realtime.connected
     override val roomErrors = realtime.roomErrors
@@ -281,6 +311,12 @@ internal class ApiMeetingSessionTransport(
     override suspend fun confirmConnection() { api.connected(lessonId) }
     override suspend fun requestExit(endForAll: Boolean) {
         if (endForAll) api.end(lessonId) else api.leave(lessonId)
+    }
+    override suspend fun follow(nextLessonId: String): Lesson {
+        realtime.follow(nextLessonId)
+        // Confirms this participant in the moved room; the server keeps its admission and attendance.
+        api.connected(nextLessonId)
+        return api.snapshot(nextLessonId).also(realtime::accept).lesson
     }
     override fun close() = realtime.close()
 }

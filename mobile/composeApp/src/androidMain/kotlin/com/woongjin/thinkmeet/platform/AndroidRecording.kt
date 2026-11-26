@@ -255,6 +255,26 @@ internal class AndroidLessonRecorder(private val context: Context) {
         mutable.value = mutable.value.copy(interrupted = false)
     }
 
+    /**
+     * Hands the running projection and virtual display to a new file's encoders (VirtualDisplay.setSurface), then
+     * finishes the current file. No new consent is needed because the projection itself continues.
+     */
+    suspend fun split(onFinished: (RecordedFile?) -> Unit) {
+        val current = session ?: error("녹화 중이 아니에요.")
+        val capture = current.releaseCapture() ?: error("화면 녹화가 멈춰 있어 이어서 나눌 수 없어요.")
+        val next = try {
+            withContext(Dispatchers.Default) { Session(context, null, onFinished, capture) }
+        } catch (error: Exception) {
+            runCatching { capture.second.release() }; runCatching { capture.first.stop() }
+            throw IllegalStateException("녹화 파일을 나누지 못했어요. ${error.message.orEmpty()}".trim(), error)
+        }
+        session = next
+        mutable.value = RecordingState(active = true, startedAtMillis = next.startedAtMillis)
+        next.begin()
+        // The foreground service keeps running for the next file.
+        current.finish { file -> main.post { current.onFinished(file) } }
+    }
+
     fun stop() {
         val current = session ?: return
         session = null
@@ -270,7 +290,11 @@ internal class AndroidLessonRecorder(private val context: Context) {
         if (session === from) mutable.value = mutable.value.copy(interrupted = true)
     }
 
-    private inner class Session(context: Context, consent: Intent, val onFinished: (RecordedFile?) -> Unit) {
+    private inner class Session(
+        context: Context, consent: Intent?, val onFinished: (RecordedFile?) -> Unit,
+        /** A projection and display taken over from the previous file (see split). */
+        inherited: Pair<MediaProjection, VirtualDisplay>? = null,
+    ) {
         val startedAtMillis = System.currentTimeMillis()
         private val startNs = System.nanoTime()
         val playback = PcmRing(RecordingProfile.AudioSampleRate)
@@ -292,6 +316,7 @@ internal class AndroidLessonRecorder(private val context: Context) {
         private var muxing = false
         private val pendingAudio = ArrayDeque<Pair<ByteArray, MediaCodec.BufferInfo>>()
         private var projection: MediaProjection? = null
+        private var projectionCallback: MediaProjection.Callback? = null
         private var display: VirtualDisplay? = null
         private var audioFrames = 0L
         private var lastVideoUs = -1L
@@ -328,7 +353,7 @@ internal class AndroidLessonRecorder(private val context: Context) {
                     }, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
                 }
                 video.start(); audio.start()
-                attachProjection(consent)
+                if (inherited != null) adopt(inherited) else attachProjection(checkNotNull(consent))
             } catch (error: Exception) {
                 releaseAll()
                 file.delete()
@@ -336,12 +361,42 @@ internal class AndroidLessonRecorder(private val context: Context) {
             }
         }
 
+        private fun watch(next: MediaProjection) {
+            val callback = object : MediaProjection.Callback() {
+                override fun onStop() { handler.post { if (projection === next) { detachProjection(); interrupted(this@Session) } } }
+            }
+            next.registerCallback(callback, handler)
+            projectionCallback = callback
+        }
+
+        /** Continues the previous file's projection: the same display now renders into this file's encoder. */
+        private fun adopt(capture: Pair<MediaProjection, VirtualDisplay>) {
+            val (next, virtual) = capture
+            watch(next)
+            projection = next
+            display = virtual
+            virtual.resize(width, height, density)
+            virtual.surface = surface
+        }
+
+        /** Gives up the running projection and display without stopping them; null when the OS already ended them. */
+        suspend fun releaseCapture(): Pair<MediaProjection, VirtualDisplay>? {
+            val released = CompletableDeferred<Pair<MediaProjection, VirtualDisplay>?>()
+            handler.post {
+                val current = projection
+                val virtual = display
+                projectionCallback?.let { callback -> current?.unregisterCallback(callback) }
+                projection = null; display = null; projectionCallback = null
+                released.complete(if (current != null && virtual != null) current to virtual else null)
+            }
+            return released.await()
+        }
+
         /** Each consent yields one projection and one virtual display (Android 14 forbids reuse). */
         fun attachProjection(consent: Intent) {
             val next = projections.getMediaProjection(Activity.RESULT_OK, consent) ?: error("화면 녹화 권한을 받지 못했어요.")
-            next.registerCallback(object : MediaProjection.Callback() {
-                override fun onStop() { handler.post { if (projection === next) detachProjection(); interrupted(this@Session) } }
-            }, handler)
+            projectionCallback?.let { callback -> projection?.unregisterCallback(callback) }
+            watch(next)
             val previous = projection
             projection = next
             display?.release()

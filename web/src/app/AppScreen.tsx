@@ -1,4 +1,4 @@
-import { lazy, type ReactElement } from "react"
+import { lazy, useRef, type ReactElement } from "react"
 import type { Location, NavigateFunction } from "react-router-dom"
 import { designContent } from "../generated/design-content"
 import { call, displayLesson, type ApiLesson, type JoinResult, type User } from "../lib/api"
@@ -32,9 +32,16 @@ export type AppScreenProps = {
   setHomeView: (view: HomeView) => void
   devices: JoinDevices
   startJoin: (lesson: ApiLesson, devices: JoinDevices) => Promise<void>
+  /** classroom.subject-switch: admits this user to the lesson that continues the current one. */
+  followLesson: (nextLessonId: string, media: { mic: boolean; cam: boolean }) => Promise<void>
   admission?: JoinResult
   setAdmission: (result: JoinResult | undefined) => void
   waitingError: string
+}
+
+/** A meeting keeps its key (and its LiveKit room) while a subject change moves it to the next lesson. */
+export function meetingKey(location: Location, lessonId: string | undefined) {
+  return (location.state as { meetingKey?: string } | null)?.meetingKey ?? lessonId ?? ""
 }
 
 /** Chooses the screen component for the current route. Navigation rules live in ../routes.ts. */
@@ -42,13 +49,19 @@ export function AppScreen(props: AppScreenProps) {
   const { route, user, location, navigate, setScreen, rememberScroll, features, directory, detail } = props
   const { screen, lessonId } = route
   const { lessons, students, loading, error, refresh } = directory
-  const lesson = detail.selected && detail.selected.id === lessonId ? displayLesson(detail.selected) : null
+  const selected = detail.selected && detail.selected.id === lessonId ? displayLesson(detail.selected) : null
+  // classroom.subject-switch: the router commits the move to the next lesson as a transition, so for one render the
+  // selected lesson and the address disagree. Keep the same meeting (and its LiveKit room) mounted through that gap.
+  const shownMeeting = useRef<{ key: string; lesson: ReturnType<typeof displayLesson> } | null>(null)
+  const currentMeetingKey = screen === "meeting" ? meetingKey(location, lessonId) : null
+  if (selected && currentMeetingKey) shownMeeting.current = { key: currentMeetingKey, lesson: selected }
+  const lesson = selected ?? (currentMeetingKey && shownMeeting.current?.key === currentMeetingKey ? shownMeeting.current.lesson : null)
   const lessonRole = lesson?.teacher.id === user.id ? "teacher" : "student"
   const directoryGate = (ready: () => ReactElement) => loading ? <Status /> : error ? <Status error={error} retry={() => void refresh()} /> : ready()
-  const created = (item: ApiLesson) => {
+  const created = (item: ApiLesson, count?: number) => {
     detail.setSelected(item)
     void refresh()
-    navigate(`/lessons/${item.id}/created`)
+    navigate(`/lessons/${item.id}/created`, count && count > 1 ? { state: { seriesCount: count } } : undefined)
   }
 
   if (route.page !== "screen") return <Status />
@@ -107,7 +120,7 @@ export function AppScreen(props: AppScreenProps) {
             setScreen={(next) => next === "home" ? navigate(`/lessons/${lesson.id}`) : setScreen(next)} onCreated={created} />
         : <Exception type="account" message="예정된 본인 수업만 수정할 수 있어요." setScreen={setScreen} />)
     case "created":
-      return <Created lesson={lesson} setScreen={setScreen} />
+      return <Created lesson={lesson} setScreen={setScreen} seriesCount={(location.state as { seriesCount?: number } | null)?.seriesCount} />
     case "prejoin":
       return lesson.status === "CANCELLED" || lesson.status === "ENDED"
         ? <Exception type={lesson.status === "CANCELLED" ? "cancelled" : "ended"} setScreen={setScreen} />
@@ -130,11 +143,23 @@ export function AppScreen(props: AppScreenProps) {
     case "meeting":
       return (
         <Meeting
-          key={lesson.id}
+          key={meetingKey(location, lesson.id)}
           lesson={lesson}
           user={user}
           initialDevices={props.devices}
           admission={props.admission?.lesson.id === lesson.id && !props.admission.waiting ? props.admission : undefined}
+          switched={(location.state as { switched?: boolean } | null)?.switched === true}
+          onContinued={next => {
+            // Same room and admission: keep this Meeting mounted and only move the address to the new lesson.
+            sessionStorage.setItem(`think-meet.left.${lesson.id}`, new Date().toISOString())
+            detail.setSelected(next)
+            navigate(`/lessons/${next.id}/meeting`, { replace: true, state: { meetingKey: meetingKey(location, lesson.id) } })
+          }}
+          onFollow={(nextLessonId, media) => {
+            sessionStorage.setItem(`think-meet.left.${lesson.id}`, new Date().toISOString())
+            props.setAdmission(undefined)
+            void props.followLesson(nextLessonId, media)
+          }}
           onWaiting={() => {
             props.setAdmission(undefined)
             navigate(`/lessons/${lesson.id}/waiting`, { replace: true, state: { waitConfirmed: true } })

@@ -20,6 +20,7 @@ export async function lessonDto(db: Database, lesson: any) {
     students: users.filter(user => user.id !== lesson.teacherId).map(publicUser),
     startsAt: lesson.startsAt.toISOString(), endsAt: lesson.endsAt?.toISOString() || null, status: lesson.status, code: lesson.code,
     startedAt: lesson.startedAt?.toISOString() || null, endedAt: lesson.endedAt?.toISOString() || null,
+    ...(lesson.nextLessonId ? { nextLessonId: lesson.nextLessonId } : {}),
     attendance: attendance.map(row => ({ userId: row.userId, joinedAt: row.joinedAt.toISOString(), leftAt: row.leftAt?.toISOString() || null })),
     participants: members.filter((m: any) => m.online && !m.banned).map((m: any) => ({ userId: m.userId, joinedAt: attendance.find(row => row.userId === m.userId && !row.leftAt)?.joinedAt.toISOString() || lesson.startedAt?.toISOString() || new Date().toISOString() })),
   }

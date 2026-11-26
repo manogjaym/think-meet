@@ -13,6 +13,7 @@ import { commandContext, commandHandler } from './lesson/commands'
 import { lessonDto, materialDto, meetingSnapshot, subjectSelect } from './lesson/dto'
 import { admissionMetadata, LiveKitAdapter } from './lesson/livekit'
 import { LessonReconciler } from './lesson/reconciler'
+import { lessonOccurrences, lessonRepeatInput } from './lesson-series'
 import { readShare } from './lesson/share'
 const ids = z.array(z.string().uuid()).min(1).max(100)
 export const lessonInput = z.object({
@@ -26,6 +27,15 @@ export const lessonInput = z.object({
   if (data.endsAt !== null && Date.parse(data.endsAt) <= Date.parse(data.startsAt)) ctx.addIssue({ code: 'custom', message: '종료 시간은 시작 시간보다 늦어야 합니다.' })
   if (Date.parse(data.startsAt) < Date.now() - 60000) ctx.addIssue({ code: 'custom', message: '현재 시간 이후로 예약해 주세요.' })
 })
+
+function newLessonData(teacherId: string, data: z.infer<typeof lessonInput>, startsAt: Date, endsAt: Date | null) {
+  return {
+    teacherId, title: data.title, description: data.description, accessMode: data.accessMode, startsAt, endsAt,
+    subjectId: data.subjectId,
+    code: randomBytes(6).toString('hex'), roomName: `lesson-${randomUUID()}`,
+    members: { create: [teacherId, ...data.studentIds].map(userId => ({ userId })) },
+  }
+}
 
 /**
  * Lesson lifecycle facade used by controllers, the gateway and other services.
@@ -136,15 +146,27 @@ export class Lessons implements OnModuleInit, OnModuleDestroy {
     const data = lessonInput.parse(input)
     await this.validateSubject(user.id, data.subjectId, requireSubject)
     if (data.studentIds.length) await this.validateRoster(user.id, data.studentIds)
-    const lesson = await this.db.lesson.create({ include: { subject: { select: subjectSelect } }, data: {
-      teacherId: user.id, title: data.title, description: data.description, accessMode: data.accessMode, startsAt: new Date(data.startsAt), endsAt: data.endsAt === null ? null : new Date(data.endsAt),
-      subjectId: data.subjectId,
-      code: randomBytes(6).toString('hex'), roomName: `lesson-${randomUUID()}`,
-      members: { create: [user.id, ...data.studentIds].map(userId => ({ userId })) },
-    } })
+    const lesson = await this.db.lesson.create({ include: { subject: { select: subjectSelect } }, data: newLessonData(user.id, data, new Date(data.startsAt), data.endsAt === null ? null : new Date(data.endsAt)) })
     this.notifyUsers([user.id, ...data.studentIds])
     if (data.accessMode === 'OPEN') this.notifyAllUsers()
     return this.dto(lesson)
+  }
+  /** classroom.repeat-schedule: one lesson per repeat date, created all-or-nothing. */
+  async createSeries(user: PublicUser, input: unknown, requireSubject = false) {
+    this.teacher(user)
+    const body = z.object({ lesson: z.unknown(), repeat: lessonRepeatInput }).parse(input)
+    const data = lessonInput.parse(body.lesson)
+    const slots = lessonOccurrences(data.startsAt, data.endsAt, body.repeat)
+    await this.validateSubject(user.id, data.subjectId, requireSubject)
+    if (data.studentIds.length) await this.validateRoster(user.id, data.studentIds)
+    const lessons = await this.db.$transaction(async tx => {
+      const created = []
+      for (const slot of slots) created.push(await tx.lesson.create({ include: { subject: { select: subjectSelect } }, data: newLessonData(user.id, data, slot.startsAt, slot.endsAt) }))
+      return created
+    }, { timeout: 30_000 })
+    this.notifyUsers([user.id, ...data.studentIds])
+    if (data.accessMode === 'OPEN') this.notifyAllUsers()
+    return { lessons: await Promise.all(lessons.map(lesson => this.dto(lesson))) }
   }
   async edit(id: string, user: PublicUser, input: unknown, requireSubject = false) {
     return this.locked(id, async () => {
@@ -183,7 +205,9 @@ export class Lessons implements OnModuleInit, OnModuleDestroy {
   async resolve(code: string, user: PublicUser) {
     const match = await this.db.lesson.findUnique({ where: { code }, select: { id: true } })
     if (!match) throw new ApiError('INVALID', '링크 또는 참여 코드가 올바르지 않습니다.', 404)
-    const lesson = await this.access(match.id, user)
+    let lesson = await this.access(match.id, user)
+    // A link to a lesson whose subject changed opens the lesson that continues it.
+    for (let hops = 0; lesson.status === 'ENDED' && lesson.nextLessonId && hops < 20; hops++) lesson = await this.access(lesson.nextLessonId, user)
     if (lesson.status === 'CANCELLED' || lesson.status === 'ENDED') throw new ApiError(lesson.status, lesson.status === 'ENDED' ? '이미 종료된 수업입니다.' : '취소된 수업입니다.', 409)
     return this.dto(lesson)
   }
@@ -334,6 +358,55 @@ export class Lessons implements OnModuleInit, OnModuleDestroy {
       if (lesson.accessMode === 'OPEN') this.notifyAllUsers()
       return this.dto(await this.get(id))
     })
+  }
+  /**
+   * classroom.subject-switch: ends this live lesson and continues it as a live lesson in another subject with the same
+   * title and members. The LiveKit room, admissions and presence move to the new lesson, so connected participants keep
+   * their media connection; clients follow `nextLessonId` in place. Shares and mirroring end with the old lesson.
+   * Captures, recordings and materials then belong to the new lesson and its subject.
+   */
+  async switchSubject(id: string, user: PublicUser, input: unknown) {
+    const { subjectId } = z.object({ subjectId: z.string().uuid('과목을 선택해 주세요.') }).parse(input)
+    const result = await this.locked(id, async () => {
+      const lesson = await this.access(id, user, false, true)
+      if (lesson.status !== 'LIVE' || lesson.nextLessonId) throw new ApiError('CONFLICT', '진행 중인 수업에서만 과목을 바꿀 수 있어요.', 409)
+      if (lesson.subjectId === subjectId) throw new ApiError('VALIDATION', '지금 진행 중인 과목이에요.')
+      await this.validateSubject(lesson.teacherId, subjectId, true)
+      const now = new Date()
+      // Lesson modes continue in the new lesson; its timer restarts with the new lesson.
+      const phase = lesson.instructionPhase
+      const next = await this.db.$transaction(async tx => {
+        // Same closing writes as end(); the status condition keeps a concurrent end from being overwritten.
+        // The room name is released first so the new lesson can take the running room.
+        // The share ends here: clients stop their captures when this ENDED snapshot clears it.
+        const { count } = await tx.lesson.updateMany({ where: { id, status: 'LIVE', nextLessonId: null }, data: { status: 'ENDED', endedAt: now, share: Prisma.DbNull, roomName: `ended-${randomUUID()}` } })
+        if (!count) throw new ApiError('CONFLICT', '진행 중인 수업에서만 과목을 바꿀 수 있어요.', 409)
+        const created = await tx.lesson.create({ data: {
+          teacherId: lesson.teacherId, title: lesson.title, description: lesson.description, accessMode: lesson.accessMode, subjectId,
+          startsAt: now, endsAt: lesson.endsAt && lesson.endsAt > now ? lesson.endsAt : null,
+          status: 'LIVE', startedAt: now, instructionPhase: phase, instructionStartedAt: phase && phase !== 'preparing' ? now : null,
+          code: randomBytes(6).toString('hex'), roomName: lesson.roomName,
+          members: { create: lesson.members.map(member => ({
+            userId: member.userId, banned: member.banned, annotationAllowed: member.annotationAllowed,
+            admissionId: member.admissionId, online: member.online, disconnectedAt: member.disconnectedAt,
+          })) },
+        } })
+        await tx.lesson.update({ where: { id }, data: { nextLessonId: created.id } })
+        await tx.lessonMember.updateMany({ where: { lessonId: id }, data: { online: false, raised: false, admissionId: null } })
+        // Open attendance moves with its LiveKit participant (livekitSid is unique), so presence keeps working.
+        const open = await tx.attendance.findMany({ where: { lessonId: id, leftAt: null } })
+        await tx.attendance.updateMany({ where: { lessonId: id, leftAt: null }, data: { leftAt: now, livekitSid: null } })
+        for (const row of open) await tx.attendance.create({ data: { lessonId: created.id, userId: row.userId, admissionId: row.admissionId, livekitSid: row.livekitSid, joinedAt: now } })
+        return created
+      }, { timeout: 30_000 })
+      this.assistance.remove(id)
+      await this.broadcast(id)
+      if (lesson.accessMode === 'OPEN') this.notifyAllUsers()
+      return { next, memberIds: lesson.members.map(member => member.userId) }
+    })
+    const dto = await this.locked(result.next.id, () => this.broadcast(result.next.id).then(snapshot => snapshot.lesson))
+    this.notifyUsers(result.memberIds)
+    return dto
   }
   async kick(id: string, user: PublicUser, input: any) {
     const { userId } = z.object({ userId: z.string().uuid() }).parse(input)

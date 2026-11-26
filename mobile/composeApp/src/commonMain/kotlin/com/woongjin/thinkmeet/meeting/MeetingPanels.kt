@@ -62,6 +62,8 @@ internal fun MeetingPanel(
     onPanel: (Panel) -> Unit, unread: Int, miniVisible: Boolean, onMini: () -> Unit,
     pipState: PictureInPictureState, pipEnabled: Boolean, onPip: () -> Unit,
     textbookEnabled: Boolean, textbookConnected: Boolean, closeAfterTextbook: Boolean,
+    /** classroom.subject-switch: opens the subject picker from the more menu (phone width has no materials rail). */
+    onSubject: (() -> Unit)? = null,
 ) {
     var textbookTab by remember(panel, textbookEnabled) { mutableStateOf(textbookEnabled) }
     val textbookHeader = panel == Panel.Materials && textbookTab
@@ -110,7 +112,7 @@ internal fun MeetingPanel(
             }
             Panel.Settings -> DevicePanel(media, mediaState, report)
             Panel.Invite -> InvitePanel(api, lesson, report)
-            Panel.More -> MorePanel(lesson, user, snapshot, realtime, report, onPanel, unread, miniVisible, onMini, pipState, pipEnabled, onPip)
+            Panel.More -> MorePanel(lesson, user, snapshot, realtime, report, onPanel, unread, miniVisible, onMini, pipState, pipEnabled, onPip, onSubject)
         }
     }
 }
@@ -119,7 +121,7 @@ internal fun MeetingPanel(
 private fun ColumnScope.MorePanel(
     lesson: Lesson, user: User, snapshot: MeetingSnapshot?, realtime: MeetingRealtime, report: (Throwable) -> Unit,
     onPanel: (Panel) -> Unit, unread: Int, miniVisible: Boolean, onMini: () -> Unit,
-    pipState: PictureInPictureState, pipEnabled: Boolean, onPip: () -> Unit,
+    pipState: PictureInPictureState, pipEnabled: Boolean, onPip: () -> Unit, onSubject: (() -> Unit)?,
 ) {
     val scope = rememberCoroutineScope()
     LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(horizontal = Space.S24, vertical = Space.S16), verticalArrangement = Arrangement.spacedBy(Space.S8)) {
@@ -128,6 +130,10 @@ private fun ColumnScope.MorePanel(
             item { MeetingMenuItem(if (lesson.isOpen) "link" else "users", if (lesson.isOpen) "참여 링크 공유" else "다른 참석자 추가", if (lesson.isOpen) "누구나 참여할 수 있는 공개 수업" else "초대 학생과 참여 링크 관리") { onPanel(Panel.Invite) } }
             if (snapshot?.instruction?.phase.let { it == null || it == "classroom" }) {
                 item { MeetingMenuItem("folder", "수업 자료", "영상과 PDF를 함께 보기") { onPanel(Panel.Materials) } }
+            }
+            if (onSubject != null) item {
+                val subject = (snapshot?.lesson ?: lesson).subject?.name
+                MeetingMenuItem("file", listOfNotNull(DesignContent.MeetingMaterialsSubject, subject).joinToString(" · "), DesignContent.MeetingSubjectSwitchMenuDetail, onClick = onSubject)
             }
         }
         item { MeetingMenuItem("settings", "카메라·마이크 설정", "입력·출력 장치 설정") { onPanel(Panel.Settings) } }

@@ -52,6 +52,12 @@ interface LessonRecorder {
     suspend fun startRecording(onFinished: (RecordedFile?) -> Unit)
     /** Asks for consent again after [RecordingState.interrupted] and continues the same file. */
     suspend fun resumeRecording()
+    /**
+     * classroom.subject-switch: closes the current file (its callback receives it) and keeps the same screen capture
+     * writing a new file for [onFinished], without asking for consent again. Throws when the capture cannot continue;
+     * the caller then stops and asks again.
+     */
+    suspend fun splitRecording(onFinished: (RecordedFile?) -> Unit)
     /** Finalizes the file in the background; the start callback receives it. Safe to call repeatedly. */
     fun stopRecording()
 }

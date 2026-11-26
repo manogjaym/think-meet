@@ -1,5 +1,5 @@
 // Generated from contracts/openapi.json and realtime.json. Do not edit.
-export const CONTRACT_REVISION = 16 as const;
+export const CONTRACT_REVISION = 17 as const;
 export const API_BASE_PATH = "/api/v1" as const;
 export const SOCKET_PATH = "/socket.io" as const;
 export const SOCKET_EVENTS = {
@@ -20,7 +20,7 @@ export type User = { id: string; username: string; name: string; role: Role };
 export type LessonParticipant = { userId: string; joinedAt: string };
 export type Attendance = { userId: string; joinedAt: string; leftAt: (string) | null };
 export type TeacherSubject = { id: string; name: string };
-export type Lesson = { id: string; title: string; description: string; accessMode?: LessonAccessMode; teacher: User; subject?: TeacherSubject; instruction?: LessonInstruction; students: Array<User>; startsAt: string; endsAt: (string) | null; status: "SCHEDULED" | "LIVE" | "ENDED" | "CANCELLED"; code: string; startedAt: (string) | null; endedAt: (string) | null; participants?: Array<LessonParticipant>; attendance?: Array<Attendance> };
+export type Lesson = { id: string; title: string; description: string; accessMode?: LessonAccessMode; teacher: User; subject?: TeacherSubject; instruction?: LessonInstruction; students: Array<User>; startsAt: string; endsAt: (string) | null; status: "SCHEDULED" | "LIVE" | "ENDED" | "CANCELLED"; code: string; startedAt: (string) | null; endedAt: (string) | null; nextLessonId?: string; participants?: Array<LessonParticipant>; attendance?: Array<Attendance> };
 export type LessonInput = { title: string; subjectId?: (string) | null; description?: string; startsAt: string; endsAt: (string) | null; accessMode?: LessonAccessMode; studentIds?: Array<string> };
 export type JoinResult = { waiting: boolean; lesson: Lesson; token?: string; livekitUrl?: string; admissionId?: string };
 export type Material = { id: string; name: string; type: "media" | "document"; size: number; duration?: (number) | null; pages?: (number) | null; createdAt: string; subject?: TeacherSubject };
@@ -81,6 +81,11 @@ export type PrejoinStudent = { id: string; name: string };
 export type PrejoinStatus = { status: "SCHEDULED" | "LIVE" | "ENDED" | "CANCELLED"; waitingStudents?: Array<PrejoinStudent> };
 export type LessonRecordingInput = { requestId: string; size: number; durationMs: number; width: number; height: number; startedAt: string };
 export type LessonRecording = { id: string; lessonId: string; lessonTitle: string; status: "uploading" | "ready"; size: number; uploadedBytes: number; chunkSize: number; durationMs: number; width: number; height: number; startedAt: string; createdAt: string; expiresAt: string; lesson?: ClassNoteLesson };
+export type LessonRepeatFrequency = "WEEKLY" | "BIWEEKLY";
+export type LessonRepeat = { frequency: LessonRepeatFrequency; weekdays: Array<number>; until: string };
+export type LessonSeriesInput = { lesson: LessonInput; repeat: LessonRepeat };
+export type LessonSeries = { lessons: Array<Lesson> };
+export type LessonSubjectSwitchInput = { subjectId: string };
 export type ApiLesson = Lesson;
 export const ERROR_CODES = ["ACCOUNT","ANNOTATION_NOT_ALLOWED","ASSISTANCE_BUSY","ASSISTANCE_UNAVAILABLE","CANCELLED","CLIENT_UPDATE_REQUIRED","CONFLICT","CONNECTION","CONSENT_REQUIRED","ENDED","FEATURE_UNAVAILABLE","FILE_TOO_LARGE","FORBIDDEN","INTERNAL","INVALID","INVALID_CREDENTIALS","INVALID_FILE","INVALID_MATERIAL","INVALID_SIGNATURE","KICKED","LESSON_MODE_CHANGED","LESSON_MODE_REQUIRED","LESSON_NOT_STARTED","LIVE","MATERIAL_IN_USE","NOTE_SHARE_CHANGED","NOTE_TARGET_CHANGED","NOT_CONNECTED","NOT_FOUND","NOT_READY","NO_SHARE","PARTICIPANT_UNAVAILABLE","RATE_LIMIT","RECORDING_OFFSET","REQUEST_FAILED","SCREEN_NOT_PUBLISHED","SHARE_BUSY","STALE_ASSISTANCE","STALE_GEOMETRY","STALE_SHARE","UNAUTHENTICATED","UNKNOWN_COMMAND","UNSUPPORTED_CODEC","UNSUPPORTED_FILE","UPLOAD_CANCELLED","VALIDATION","WAITING"] as const;
 export type ApiOperations = {
@@ -95,12 +100,14 @@ export type ApiOperations = {
   listTeacherSubjects: { method: "GET"; path: "/subjects"; params: undefined; query: undefined; body: undefined; response: Array<TeacherSubject> };
   listLessons: { method: "GET"; path: "/lessons"; params: undefined; query: undefined; body: undefined; response: Array<Lesson> };
   createLesson: { method: "POST"; path: "/lessons"; params: undefined; query: undefined; body: LessonInput; response: Lesson };
+  createLessonSeries: { method: "POST"; path: "/lesson-series"; params: undefined; query: undefined; body: LessonSeriesInput; response: LessonSeries };
   resolveLesson: { method: "GET"; path: "/join/{code}"; params: { code: string }; query: undefined; body: undefined; response: Lesson };
   getLesson: { method: "GET"; path: "/lessons/{id}"; params: { id: string }; query: undefined; body: undefined; response: Lesson };
   updateLesson: { method: "PATCH"; path: "/lessons/{id}"; params: { id: string }; query: undefined; body: LessonInput; response: Lesson };
   cancelLesson: { method: "POST"; path: "/lessons/{id}/cancel"; params: { id: string }; query: undefined; body: undefined; response: Lesson };
   connectedLesson: { method: "POST"; path: "/lessons/{id}/connected"; params: { id: string }; query: undefined; body: undefined; response: Lesson };
   endLesson: { method: "POST"; path: "/lessons/{id}/end"; params: { id: string }; query: undefined; body: undefined; response: Lesson };
+  switchLessonSubject: { method: "POST"; path: "/lessons/{id}/subject-switch"; params: { id: string }; query: undefined; body: LessonSubjectSwitchInput; response: Lesson };
   joinLesson: { method: "POST"; path: "/lessons/{id}/join"; params: { id: string }; query: undefined; body: undefined; response: JoinResult };
   leaveLesson: { method: "POST"; path: "/lessons/{id}/leave"; params: { id: string }; query: undefined; body: undefined; response: Record<string, unknown> };
   kickParticipant: { method: "POST"; path: "/lessons/{id}/kick"; params: { id: string }; query: undefined; body: KickInput; response: Record<string, unknown> };
@@ -172,6 +179,10 @@ export const API_OPERATIONS = {
     "method": "POST",
     "path": "/lessons"
   },
+  "createLessonSeries": {
+    "method": "POST",
+    "path": "/lesson-series"
+  },
   "resolveLesson": {
     "method": "GET",
     "path": "/join/{code}"
@@ -195,6 +206,10 @@ export const API_OPERATIONS = {
   "endLesson": {
     "method": "POST",
     "path": "/lessons/{id}/end"
+  },
+  "switchLessonSubject": {
+    "method": "POST",
+    "path": "/lessons/{id}/subject-switch"
   },
   "joinLesson": {
     "method": "POST",

@@ -104,6 +104,9 @@ internal fun SharedStage(
     val socketConnected by realtime.connected.collectAsState()
     val assistance = snapshot.assistance?.takeIf { it.status == "active" && it.shareId == share.id && share.type == "screen" && share.assistanceId == it.id }
     val assistanceEnabled = capabilities.supports(ContractProtocol.FeatureIds.MeetingRemoteAssistance)
+    // The server marks sessions whose student app draws strokes over its own screen (Android only, never iOS).
+    val remoteAnnotationEnabled = capabilities.supports(ContractProtocol.FeatureIds.MeetingRemoteAnnotation)
+    val remoteDraw = remoteAnnotationEnabled && owner && assistance?.annotation == true
     val scope = rememberCoroutineScope()
     var annotating by remember(share.id) { mutableStateOf(false) }
     // Classroom and mirroring modes keep annotation on; legacy rooms still start and stop it explicitly.
@@ -131,7 +134,11 @@ internal fun SharedStage(
             guideReady = true
         }
     }
-    LaunchedEffect(assistance?.id) { if (assistance != null) { annotating = false; draft = null } }
+    LaunchedEffect(assistance?.id) {
+        draft = null
+        // A mirroring session starts with the pointer; ordinary shares never offer it.
+        if (assistance != null) { annotating = false; tool = "pointer" } else if (tool == "pointer") tool = "pen"
+    }
     LaunchedEffect(canAnnotate) { if (!canAnnotate) { annotating = false; draft = null } }
     LaunchedEffect(pulse) { if (pulse != null) { delay(1_500); pulse = null } }
     LaunchedEffect(share.id, screenAspect) { if (share.type == "screen" && screenAspect != null && screenAspect in .05f..20f) aspect = screenAspect }
@@ -224,8 +231,8 @@ internal fun SharedStage(
         }
     }
     val annotationControls: @Composable (Modifier) -> Unit = { controlsModifier ->
-        if (!canAnnotate) Unit
-        else if (!annotationOn) Surface(onClick = { annotating = true }, modifier = controlsModifier, color = Palette.Selection,
+        if (if (assistance != null) !remoteDraw else !canAnnotate) Unit
+        else if (!annotationOn && assistance == null) Surface(onClick = { annotating = true }, modifier = controlsModifier, color = Palette.Selection,
             contentColor = Palette.PrimaryPressed, shape = RoundedCornerShape(Corner.R8)) {
             Row(Modifier.heightIn(min = Space.S44).padding(horizontal = Space.S12), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.S7)) {
                 DesignIcon("pen", Modifier.size(Space.S20), Palette.PrimaryPressed)
@@ -235,7 +242,8 @@ internal fun SharedStage(
             // Icon-only tools keep page controls and annotation on one footer row; names stay in content descriptions.
             // Wider screens keep the bar on one line so the footer moves it whole to the next line (web behaviour).
             val tools: @Composable () -> Unit = {
-                listOf("pen" to "펜", "highlighter" to "형광펜", "eraser" to "지우개").forEach { (value, label) ->
+                (if (assistance != null) listOf("pointer" to DesignContent.RemoteAssistPointerTool) else emptyList<Pair<String, String>>()).plus(
+                    listOf("pen" to "펜", "highlighter" to "형광펜", "eraser" to "지우개")).forEach { (value, label) ->
                     StageButton(null, icon = value, description = label, selected = tool == value, minHeight = if (compact) Space.S36 else Space.S44) { tool = value }
                 }
                 val swatches: @Composable (Dp, () -> Unit) -> Unit = { swatch, picked ->
@@ -277,11 +285,12 @@ internal fun SharedStage(
                 StageButton(null, icon = "undo", description = "실행 취소", enabled = !pending, minHeight = if (compact) Space.S36 else Space.S44) { command(ContractProtocol.Commands.AnnotationUndo, EmptyPayload()) }
                 StageButton(null, icon = "redo", description = "다시 실행", enabled = !pending, minHeight = if (compact) Space.S36 else Space.S44) { command(ContractProtocol.Commands.AnnotationRedo, EmptyPayload()) }
                 StageButton(null, icon = "trash", description = if (owner) "전체 지우기" else "내 판서 지우기", enabled = strokes.any { owner || it.authorId == user.id }, minHeight = if (compact) Space.S36 else Space.S44) { clearConfirm = true }
-                if (!alwaysAnnotate) StageButton("판서 종료", icon = "close", minHeight = if (compact) Space.S36 else Space.S44) { annotating = false; draft = null }
+                if (!alwaysAnnotate && assistance == null) StageButton("판서 종료", icon = "close", minHeight = if (compact) Space.S36 else Space.S44) { annotating = false; draft = null }
             }
             // 44dp touch targets (as on the web) keep all seven tools on one line down to 360dp-wide phones.
             // A single row also makes the footer move the whole bar below page controls instead of squeezing it beside them.
-            if (compact) CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Space.S44) {
+            // Mirroring adds the pointer tool, so its eight buttons use 40dp targets to stay on one 360dp line.
+            if (compact) CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides if (assistance != null) Space.S40 else Space.S44) {
                 Row(Modifier.padding(Space.S4), horizontalArrangement = Arrangement.spacedBy(Space.S2), verticalAlignment = Alignment.CenterVertically) { tools() }
             }
             else Row(Modifier.padding(Space.S4), horizontalArrangement = Arrangement.spacedBy(Space.S4), verticalAlignment = Alignment.CenterVertically) { tools() }
@@ -342,7 +351,9 @@ internal fun SharedStage(
                         }
                     }
                 }
-                val drawModifier = if (!annotationOn || assistance != null) Modifier else Modifier.pointerInput(share.id, share.page, tool, color) {
+                // Mirroring draws only after the student's screen layout is confirmed, like the pointer.
+                val drawEnabled = if (assistance != null) remoteDraw && tool != "pointer" && guideReady else annotationOn
+                val drawModifier = if (!drawEnabled) Modifier else Modifier.pointerInput(share.id, share.page, tool, color) {
                     fun pointAt(offset: Offset): Point = Point((offset.x / size.width).toDouble().coerceIn(0.0, 1.0), (offset.y / size.height).toDouble().coerceIn(0.0, 1.0))
                     fun erase(point: Point) {
                         val ids = currentStrokes.filter { stroke ->
@@ -386,7 +397,7 @@ internal fun SharedStage(
                         } finally { draft = null }
                     }
                 }
-                Canvas(Modifier.fillMaxSize().onSizeChanged { surfaceSize = it; captureSize = it }.then(if (assistance != null) guideModifier else drawModifier).semantics { contentDescription = if (guideReady) DesignContent.RemoteAssistActive else "수업 판서 영역" }) {
+                Canvas(Modifier.fillMaxSize().onSizeChanged { surfaceSize = it; captureSize = it }.then(if (assistance != null && (!remoteDraw || tool == "pointer")) guideModifier else drawModifier).semantics { contentDescription = if (guideReady) DesignContent.RemoteAssistActive else "수업 판서 영역" }) {
                     cachedStrokes.forEach { drawAnnotationPath(it.tool, it.color, it.path) }
                     previews.values.forEach { (preview, _) -> drawAnnotation(preview.tool, preview.color, preview.points) }
                     optimistic.values.forEach { drawAnnotation(it.tool, it.color, it.points) }
@@ -401,7 +412,7 @@ internal fun SharedStage(
                 }
             }
             if (assistance != null) Surface(Modifier.align(Alignment.TopStart).padding(Space.S12), color = Palette.MeetingTile, shape = RoundedCornerShape(Corner.R8)) {
-                Text(if (guideReady) DesignContent.RemoteAssistActive else if (owner) DesignContent.RemoteAssistGeometryWaiting else DesignContent.RemoteAssistActiveStudent,
+                Text(if (guideReady) remoteGuideText(remoteDraw, remoteAnnotationEnabled && assistance.annotation == false) else if (owner) DesignContent.RemoteAssistGeometryWaiting else DesignContent.RemoteAssistActiveStudent,
                     Modifier.padding(Space.S10), style = MaterialTheme.typography.bodySmall, color = Palette.MeetingText)
             }
         }
@@ -432,7 +443,7 @@ internal fun SharedStage(
                         MediaTransport(share, snapshot.serverTime, owner, pending) { command(ContractProtocol.Commands.MediaUpdate, it) }
                     }
                     // Fills the rest of its line so the tools stay right-aligned even after wrapping (web: margin-inline-start:auto).
-                    if (assistance == null && canAnnotate) Box(Modifier.weight(1f).align(Alignment.CenterVertically), contentAlignment = Alignment.CenterEnd) {
+                    if (if (assistance != null) remoteDraw && share.ownerId != user.id else canAnnotate) Box(Modifier.weight(1f).align(Alignment.CenterVertically), contentAlignment = Alignment.CenterEnd) {
                         annotationControls(Modifier)
                     }
                 }
@@ -574,9 +585,8 @@ private fun DrawScope.drawAnnotation(tool: String, color: String, points: List<P
 private fun annotationPath(points: List<Point>, width: Float, height: Float): Path = Path().apply { points.forEachIndexed { index, point -> if (index == 0) moveTo((point.x * width).toFloat(), (point.y * height).toFloat()) else lineTo((point.x * width).toFloat(), (point.y * height).toFloat()) } }
 private fun DrawScope.drawAnnotationPath(tool: String, ink: Color, path: Path, widthScale: Float = 1f) = drawPath(path, ink, alpha = if (tool == "highlighter") .38f else 1f, style = DrawStroke((if (tool == "highlighter") 18.dp else 4.dp).toPx() * widthScale, cap = StrokeCap.Round, join = StrokeJoin.Round))
 /** Segment distance, rather than only point distance, also erases quickly drawn sparse strokes. */
-private fun hitsStroke(point: Point, points: List<Point>, width: Float, height: Float): Boolean {
+internal fun hitsStroke(point: Point, points: List<Point>, width: Float, height: Float, tolerance: Double = 14.0): Boolean {
     val px = point.x * width; val py = point.y * height
-    val tolerance = 14.0
     if (points.size == 1) { val dx = points[0].x * width - px; val dy = points[0].y * height - py; return dx * dx + dy * dy <= tolerance * tolerance }
     for (index in 1 until points.size) {
         val a = points[index - 1]; val b = points[index]
@@ -587,4 +597,11 @@ private fun hitsStroke(point: Point, points: List<Point>, width: Float, height: 
         if (ex * ex + ey * ey <= tolerance * tolerance) return true
     }
     return false
+}
+
+/** The teacher's mirroring hint: drawing is offered only when the student's app can show it (never iOS). */
+internal fun remoteGuideText(remoteDraw: Boolean, annotationUnavailable: Boolean) = when {
+    remoteDraw -> DesignContent.RemoteAssistActiveAnnotate
+    annotationUnavailable -> DesignContent.RemoteAssistAnnotationUnavailable
+    else -> DesignContent.RemoteAssistActive
 }

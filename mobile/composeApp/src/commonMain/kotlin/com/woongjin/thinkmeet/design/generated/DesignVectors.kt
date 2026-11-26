@@ -278,6 +278,12 @@ object DesignVectors {
             addPath(pathData = PathParser().parsePathString("m8 12 3 3 5-6").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.8f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
         }.build()
     }
+    private val pointer by lazy {
+        ImageVector.Builder(name = "pointer", defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f).apply {
+            addPath(pathData = PathParser().parsePathString("M4 12a8 8 0 1 0 16 0a8 8 0 1 0 -16 0Z").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.8f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+            addPath(pathData = PathParser().parsePathString("M9.5 12a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0 -5 0Z").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.8f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+        }.build()
+    }
     fun icon(name: String): ImageVector = when (name) {
         "brand" -> brand
         "globe" -> globe
@@ -325,6 +331,7 @@ object DesignVectors {
         "camera" -> camera
         "user" -> user
         "checkSquare" -> checkSquare
+        "pointer" -> pointer
         else -> error("Unknown shared icon: $name")
     }
 }

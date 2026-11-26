@@ -94,6 +94,13 @@ class MirroringPipActionsTest {
             eventually("system PiP") { inPip(activity) }
             eventually("text button bar", 10_000) { visible(By.text(DesignContent.NotesCapture)) != null && visible(By.text(DesignContent.MirroringStop)) != null }
             screenshot("mirroring-pip-text-bar")
+            // The student's annotation toolbar takes the centre, so the bar moves to the bottom start and keeps working.
+            val centred = visible(By.text(DesignContent.MirroringStop))!!.visibleBounds
+            instrumentation.runOnMainSync { controller.setActionBarAtStart(true) }
+            eventually("text button bar at the start", 5_000) {
+                visible(By.text(DesignContent.NotesCapture))?.visibleBounds?.let { it.left < centred.left && it.left < device.displayWidth / 4 } == true
+            }
+            screenshot("mirroring-pip-text-bar-start")
             click(By.text(DesignContent.NotesCapture))
             eventually("capture action delivered", 5_000) { received.contains(PipAction.CaptureScreen) }
             assertTrue("Capture keeps PiP", inPip(activity))

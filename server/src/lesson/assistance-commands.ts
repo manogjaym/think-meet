@@ -20,7 +20,7 @@ export async function assistanceCommand(ctx: CommandContext) {
     if (studentId === user.id || !student || !context.studentSocketId) throw new ApiError('ASSISTANCE_UNAVAILABLE', '앱으로 연결된 학생에게 화면 보기를 요청해 주세요.', 409)
     const current = lessons.assistance.current(id)
     if (share && (!current || share.id !== current.shareId)) throw new ApiError('SHARE_BUSY', '현재 공유를 종료한 후 화면 보기를 요청해 주세요.', 409)
-    const session = lessons.assistance.request(id, user.id, studentId, context.socketId, context.studentSocketId)
+    const session = lessons.assistance.request(id, user.id, studentId, context.socketId, context.studentSocketId, context.studentAnnotation === true)
     if (!lessons.assistanceConnected(session)) { lessons.assistance.remove(id); throw new ApiError('ASSISTANCE_UNAVAILABLE', '학생 연결이 변경되었어요. 다시 요청해 주세요.', 409) }
     return
   }
@@ -61,6 +61,14 @@ export async function assistanceCommand(ctx: CommandContext) {
     lessons.assistance.activate(current, next.id, geometry, track.sid)
   } else if (type === 'assistance.geometry') {
     const { geometry } = z.object({ geometry: assistanceGeometrySchema }).parse(payload)
+    const previous = current.geometry
     lessons.assistance.geometry(current, geometry)
+    // Strokes belong to one screen layout. A new size or rotation moves the share to a fresh page,
+    // so earlier strokes stop showing on both the teacher's view and the student's overlay.
+    if (share && share.id === current.shareId && share.assistanceId === current.id && previous &&
+        (previous.width !== geometry.width || previous.height !== geometry.height || previous.rotation !== geometry.rotation)) {
+      const next: Share = { ...share, page: share.page + 1, updatedAt: new Date().toISOString() }
+      await db.lesson.updateMany({ where: { id, share: { path: ['id'], equals: share.id } }, data: { share: next as any } })
+    }
   } else throw new ApiError('UNKNOWN_COMMAND', '지원하지 않는 화면 보기 조작입니다.')
 }

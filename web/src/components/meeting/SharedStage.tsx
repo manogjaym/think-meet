@@ -25,7 +25,7 @@ const pathFor = (points: Point[]) => points.map((point, index) => `${index ? "L"
 type Props = { user: User; snapshot: MeetingSnapshot; room: Room | null; command: Command; previews: Record<string, PreviewStroke>; sendPreview: (stroke: PreviewStroke) => void; remotePointer?: RemotePointer | null; sendAssistancePointer?: (x: number, y: number) => void; assistanceConnected?: boolean; onAssistanceReady?: (ready: boolean) => void; serverOffset: number; outputDevice: string; onError: (message: string) => void; frameRef?: Ref<SharedFrame>; onFrameReady?: (ready: boolean) => void; textbookLayout?: boolean; dockedParticipants?: boolean; captureControl?: ReactNode }
 export function SharedStage({ user, snapshot, room, command, previews, sendPreview, remotePointer, sendAssistancePointer, assistanceConnected = false, onAssistanceReady, serverOffset, outputDevice, onError, frameRef, onFrameReady, textbookLayout = false, dockedParticipants = false, captureControl }: Props) {
   const share = snapshot.share!
-  const [tool, setTool] = useState<"pen" | "highlighter" | "eraser">("pen")
+  const [tool, setTool] = useState<"pointer" | "pen" | "highlighter" | "eraser">("pen")
   const [annotating, setAnnotating] = useState(false)
   const [color, setColor] = useState(colors[1])
   // Phones fold the palette into one current-colour button; the list opens above it.
@@ -45,6 +45,7 @@ export function SharedStage({ user, snapshot, room, command, previews, sendPrevi
   const [screenDimensions, setScreenDimensions] = useState({ w: 0, h: 0 })
   const [settledGeometryKey, setSettledGeometryKey] = useState("")
   const assistanceEnabled = useFeature(FEATURE_IDS.MeetingRemoteAssistance)
+  const remoteAnnotationEnabled = useFeature(FEATURE_IDS.MeetingRemoteAnnotation)
   const [available, setAvailable] = useState({ w: 800, h: 500 })
   const [loading, setLoading] = useState(false)
   const [renderedPage, setRenderedPage] = useState<number>()
@@ -86,6 +87,11 @@ export function SharedStage({ user, snapshot, room, command, previews, sendPrevi
   const annotationOn = (annotating || alwaysAnnotate) && canAnnotate
   const geometryKey = assistance ? `${assistance.id}:${assistance.geometry?.version}` : ""
   const canPoint = Boolean(assistanceEnabled && canControl && assistanceConnected && sendAssistancePointer && assistance && settledGeometryKey === geometryKey && geometryMatchesVideo(assistance.geometry, screenDimensions.w, screenDimensions.h))
+  // The server marks sessions whose student app draws strokes over its own screen (Android only, never iOS).
+  const remoteDraw = Boolean(remoteAnnotationEnabled && canControl && assistance?.annotation)
+  // Mirroring without annotation, or with the pointer tool, keeps the press-and-drag pointer.
+  const remotePointing = remoteActive && (!remoteDraw || tool === "pointer")
+  const drawOn = remoteActive ? remoteDraw && tool !== "pointer" && canPoint : annotationOn
   useEffect(() => {
     stopPointing()
     window.addEventListener("blur", stopPointing)
@@ -121,8 +127,10 @@ export function SharedStage({ user, snapshot, room, command, previews, sendPrevi
     setNatural({ w: video.videoWidth, h: video.videoHeight })
   }
   useEffect(() => {
-    if (!remoteActive) return
-    setAnnotating(false); setDraft(null); drawing.current = null
+    setDraft(null); drawing.current = null
+    // A mirroring session starts with the pointer; ordinary shares never offer it.
+    setTool(current => remoteActive ? "pointer" : current === "pointer" ? "pen" : current)
+    if (remoteActive) setAnnotating(false)
   }, [remoteActive])
   useEffect(() => {
     setSettledGeometryKey("")
@@ -209,7 +217,7 @@ export function SharedStage({ user, snapshot, room, command, previews, sendPrevi
     void command("stroke.erase", { ids }).catch(e => onError(friendlyError(e))).finally(() => ids.forEach(id => erasePending.current.delete(id)))
   }
   const begin = (event: ReactPointerEvent<SVGSVGElement>) => {
-    if (remoteActive) {
+    if (remotePointing) {
       if (!canPoint || event.button !== 0 || pointing.current) return
       event.preventDefault()
       const point = assistancePoint(event.clientX, event.clientY, event.currentTarget.getBoundingClientRect())
@@ -224,15 +232,16 @@ export function SharedStage({ user, snapshot, room, command, previews, sendPrevi
       }, 250)
       return
     }
-    if (!annotationOn || event.button !== 0) return
+    if (!drawOn || event.button !== 0) return
     event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId)
     const point = pointAt(event)
     if (tool === "eraser") { eraseAt(point); return }
+    if (tool === "pointer") return
     drawing.current = { shareId: share.id, page: share.page, tool, color, points: [point] }
     setDraft({ ...drawing.current })
   }
   const move = (event: ReactPointerEvent<SVGSVGElement>) => {
-    if (remoteActive) {
+    if (remotePointing) {
       const current = pointing.current
       if (!current || current.pointerId !== event.pointerId) return
       if (!canPoint || !(event.buttons & 1)) { stopPointing(); return }
@@ -241,7 +250,7 @@ export function SharedStage({ user, snapshot, room, command, previews, sendPrevi
       if (current.point) pointerSender.current?.(current.point.x, current.point.y)
       return
     }
-    if (!annotationOn || !(event.buttons & 1)) return
+    if (!drawOn || !(event.buttons & 1)) return
     const point = pointAt(event)
     if (tool === "eraser") { eraseAt(point); return }
     const current = drawing.current
@@ -261,12 +270,14 @@ export function SharedStage({ user, snapshot, room, command, previews, sendPrevi
   }
   const draw = (stroke: Pick<Stroke, "tool" | "color" | "points">, key: string, confirmed = false) => <path key={key} data-stroke-id={confirmed ? key : undefined} d={pathFor(stroke.points)} fill="none" stroke={stroke.color} strokeWidth={stroke.tool === "highlighter" ? 18 : 4} strokeOpacity={stroke.tool === "highlighter" ? .38 : 1} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
   const documentControls = <div className="document-controls"><div className="control-group"><button aria-label="PDF 축소" onClick={() => setZoom(value => Math.max(.5, value - .25))}>−<i className="doc-wide"> 축소</i></button><span>{Math.round(zoom * 100)}%</span><button aria-label="PDF 확대" onClick={() => setZoom(value => Math.min(4, value + .25))}>＋<i className="doc-wide"> 확대</i></button><button aria-label="화면에 맞추기" onClick={() => setZoom(1)}><i className="doc-wide">화면에 맞추기</i><i className="doc-narrow">맞춤</i></button></div><div className="control-group"><button aria-label="PDF 이전 페이지" disabled={!canControl || share.page <= 1 || controlPending} onClick={() => void execute("document.page", { page: share.page - 1 })}><i className="doc-wide">이전</i><i className="doc-narrow"><Icon name="back" size={18} /></i></button><span>{share.page} / {pages}쪽</span><button aria-label="PDF 다음 페이지" disabled={!canControl || share.page >= pages || controlPending} onClick={() => void execute("document.page", { page: share.page + 1 })}><i className="doc-wide">다음</i><i className="doc-narrow"><Icon name="chevron" size={18} /></i></button></div>{captureControl}</div>
-  const annotationControls = !remoteActive && canAnnotate && (annotationOn ? <div className="annotation-bar"><div className="annotation-tools">{(["pen", "highlighter", "eraser"] as const).map(item => <button key={item} className={`annotation-tool ${tool === item ? "active" : ""}`} onClick={() => setTool(item)} aria-label={item === "pen" ? "펜" : item === "highlighter" ? "형광펜" : "지우개"} title={item === "pen" ? "펜" : item === "highlighter" ? "형광펜" : "지우개"}><Icon name={item} size={20} /><span>{item === "pen" ? "펜" : item === "highlighter" ? "형광펜" : "지우개"}</span></button>)}</div><div ref={colorsRef} className={`annotation-colors ${colorsOpen ? "open" : ""}`} aria-label="판서 색상"><button className="color-toggle" aria-label="판서 색상 선택" aria-expanded={colorsOpen} onClick={() => setColorsOpen(open => !open)}><i style={{ backgroundColor: color }} /></button><div className="color-grid">{colors.map(item => <button key={item} className={color === item ? "selected" : ""} style={{ backgroundColor: item }} onClick={() => { setColor(item); setColorsOpen(false) }} aria-label={`색상 ${item}`}>{color === item && <Icon name="check" size={12} />}</button>)}</div></div><div className="annotation-history"><button aria-label="실행 취소" title="실행 취소" disabled={controlPending} onClick={() => void execute("annotation.undo")}><Icon name="undo" size={20} /><span>실행 취소</span></button><button aria-label="다시 실행" title="다시 실행" disabled={controlPending} onClick={() => void execute("annotation.redo")}><Icon name="redo" size={20} /><span>다시 실행</span></button></div><button className="annotation-clear" disabled={!strokes.some(stroke => canControl || stroke.authorId === user.id)} onClick={() => setClearConfirm(true)} aria-label={canControl ? "전체 지우기" : "내 판서 지우기"} title={canControl ? "전체 지우기" : "내 판서 지우기"}><Icon name="trash" size={18} /><span>{canControl ? "전체 지우기" : "내 판서 지우기"}</span></button>{!alwaysAnnotate && <button className="annotation-exit" onClick={() => setAnnotating(false)}><Icon name="close" size={18} />판서 종료</button>}</div> : <button className="annotate-entry" onClick={() => setAnnotating(true)}><Icon name="pen" />판서 시작</button>)
+  const toolLabel = { pointer: designContent.remoteAssistPointerTool, pen: "펜", highlighter: "형광펜", eraser: "지우개" } as const
+  const tools = remoteActive ? (["pointer", "pen", "highlighter", "eraser"] as const) : (["pen", "highlighter", "eraser"] as const)
+  const annotationControls = (remoteActive ? remoteDraw : canAnnotate) && (annotationOn || remoteActive ? <div className={`annotation-bar ${remoteActive ? "is-remote" : ""}`}><div className="annotation-tools">{tools.map(item => <button key={item} className={`annotation-tool ${tool === item ? "active" : ""}`} onClick={() => setTool(item)} aria-label={toolLabel[item]} aria-pressed={tool === item} title={toolLabel[item]}><Icon name={item} size={20} /><span>{toolLabel[item]}</span></button>)}</div><div ref={colorsRef} className={`annotation-colors ${colorsOpen ? "open" : ""}`} aria-label="판서 색상"><button className="color-toggle" aria-label="판서 색상 선택" aria-expanded={colorsOpen} onClick={() => setColorsOpen(open => !open)}><i style={{ backgroundColor: color }} /></button><div className="color-grid">{colors.map(item => <button key={item} className={color === item ? "selected" : ""} style={{ backgroundColor: item }} onClick={() => { setColor(item); setColorsOpen(false) }} aria-label={`색상 ${item}`}>{color === item && <Icon name="check" size={12} />}</button>)}</div></div><div className="annotation-history"><button aria-label="실행 취소" title="실행 취소" disabled={controlPending} onClick={() => void execute("annotation.undo")}><Icon name="undo" size={20} /><span>실행 취소</span></button><button aria-label="다시 실행" title="다시 실행" disabled={controlPending} onClick={() => void execute("annotation.redo")}><Icon name="redo" size={20} /><span>다시 실행</span></button></div><button className="annotation-clear" disabled={!strokes.some(stroke => canControl || stroke.authorId === user.id)} onClick={() => setClearConfirm(true)} aria-label={canControl ? "전체 지우기" : "내 판서 지우기"} title={canControl ? "전체 지우기" : "내 판서 지우기"}><Icon name="trash" size={18} /><span>{canControl ? "전체 지우기" : "내 판서 지우기"}</span></button>{!alwaysAnnotate && !remoteActive && <button className="annotation-exit" onClick={() => setAnnotating(false)}><Icon name="close" size={18} />판서 종료</button>}</div> : <button className="annotate-entry" onClick={() => setAnnotating(true)}><Icon name="pen" />판서 시작</button>)
 
   const mediaControls = <div className="media-controls"><button aria-label="영상 재생" className={share.playing ? "active" : ""} disabled={!canControl || controlPending} onClick={() => void execute("media.update", { playing: true, position: videoRef.current?.currentTime || 0 })}><Icon name="play" size={17} />재생</button><button aria-label="영상 정지" className={!share.playing ? "active" : ""} disabled={!canControl || controlPending} onClick={() => void execute("media.update", { playing: false, position: videoRef.current?.currentTime || 0 })}><Icon name="pause" size={17} />정지</button><input aria-label="영상 재생 위치" type="range" min={0} max={Number.isFinite(duration) ? duration : 0} step={.1} value={Math.min(position, Number.isFinite(duration) ? duration : 0)} disabled={!canControl || controlPending} onChange={event => void execute("media.update", { playing: share.playing, position: Number(event.target.value) })} /><span>{formatDuration(position)} / {formatDuration(duration)}</span></div>
   return <div className={`shared-stage ${textbookLayout ? "textbook-stage" : ""} ${dockedParticipants ? "textbook-stage-docked" : ""}`}>
     <div ref={contentRef} className="shared-content live-shared-content">
-      {remoteActive && canControl && <p className="remote-assist-hint" role="status">{canPoint ? designContent.remoteAssistActive : designContent.remoteAssistGeometryWaiting}</p>}
+      {remoteActive && canControl && <p className="remote-assist-hint" role="status">{!canPoint ? designContent.remoteAssistGeometryWaiting : remoteDraw ? designContent.remoteAssistActiveAnnotate : remoteAnnotationEnabled && assistance?.annotation === false ? designContent.remoteAssistAnnotationUnavailable : designContent.remoteAssistActive}</p>}
       {loading && <p className="live-stage-message">문서를 불러오는 중이에요.</p>}
       {share.type === "screen" && !screenTrack && <p className="live-stage-message">공유 화면 연결을 기다리고 있어요.</p>}
       <div ref={surfaceRef} className="content-surface" style={{ width, height, maxWidth: "none", display: loading || share.type === "screen" && !screenTrack ? "none" : undefined }}>

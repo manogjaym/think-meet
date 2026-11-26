@@ -1,0 +1,37 @@
+{
+  "id": "mirroring-remote-annotation",
+  "summary": "미러링 중 선생님이 학생 화면에 펜·형광펜으로 판서하면 Android 학생 기기의 다른 앱 위에도 같은 위치로 표시합니다. 서버가 학생 연결(Android 앱, revision 16 이상)로 판서 가능 여부를 AssistanceSession.annotation에 정하고, iPhone·iPad·이전 버전 앱 학생에게는 판서 도구를 숨기고 포인터만 허용합니다. 수업 모드에서 선생님이 공유 학생의 판서를 허용하면 학생 기기의 다른 앱 위에 펜·지우개·3색·실행 취소 도구 막대를 띄워 학생도 자기 화면에 판서하고, 선생님이 허용을 꺼야 꺼집니다. 그동안 PiP의 화면 저장·미러링 끄기 바는 왼쪽 아래로 옮깁니다.",
+  "scope": "shared",
+  "featureIds": [
+    "meeting.remote-annotation"
+  ],
+  "platforms": {
+    "server": {
+      "status": "implemented"
+    },
+    "web": {
+      "status": "implemented"
+    },
+    "android": {
+      "status": "implemented"
+    },
+    "ios": {
+      "status": "implemented"
+    }
+  },
+  "verification": [
+    "2026-11-26 Asia/Seoul. 저장소 루트에서 npm run shared:check, npm run verify(공통 13, 서버 76, 웹 19, 타입 검사, 웹 빌드) 통과.",
+    "server/: npx tsx --test test/remote-assistance.test.ts 15개 통과. revision 4 Android·revision 16 iOS 세션은 annotation:false와 stroke.add·annotation.clear 거부, revision 16 Android 세션은 선생님 판서만 허용(다른 학생·공유 학생 거부, 미리보기 미전달), 회전 시 share.page 증가를 확인.",
+    "web/: Vite 개발 서버와 e2e/fixtures/remote-assistance.tsx로 ASSISTANCE_BASE_URL=<Vite 주소> npx playwright test e2e/remote-assistance.spec.ts 실행. 새 테스트 2개(Android 세션 포인터 기본·펜 판서 저장·전체 지우기, iOS 세션 도구 숨김·포인터만) 포함 12개 통과. 기존 'web student gets Android guidance…'는 문구 변경 전 기대값('Android 학생 기기에서만 지원해요')으로 이번 변경과 무관하게 실패. 390×844·1280×800 화면은 features/evidence/remote-annotation/web-*.png.",
+    "mobile/: THINK_MEET_SERVER_ORIGIN=<서버 주소> ./gradlew :composeApp:testDebugUnitTest --tests '*RemoteAssistance*' :composeApp:assembleDebug :composeApp:assembleDebugAndroidTest :composeApp:checkDesignTokens :composeApp:checkContracts :composeApp:compileKotlinIosSimulatorArm64 통과(RemoteAssistanceTest 6개·RemoteAssistanceLifecycleTest 4개).",
+    "기존 Android 15(API 35) 에뮬레이터에서 installDebug·installDebugAndroidTest 후 adb shell am instrument -e class com.woongjin.thinkmeet.RemoteAssistanceOverlayTest 3개 통과. 다른 UID 앱 위에 판서와 포인터가 겹쳐 표시되고, 그 위 터치가 아래 앱에 전달되며, 포인터 만료 뒤 판서 유지·지우기 후 제거를 확인(features/evidence/remote-annotation/android-*.png). 실행 후 원래 설치된 앱 APK로 복원하고 teacher1 로그인 화면을 확인.",
+    "2026-11-26 학생 판서 모드 추가 후: server/ test/remote-assistance.test.ts 15개 통과(공유 학생은 수업 모드·판서 허용일 때만, 다른 학생·기존 방식 방 거부, 학생 미리보기 선생님 전달). mobile/ RemoteAssistanceTest 7개·RemoteAssistanceLifecycleTest 4개, assembleDebug·assembleDebugAndroidTest·compileKotlinIosSimulatorArm64 통과.",
+    "기존 Android 15 에뮬레이터: RemoteAssistanceOverlayTest 4개를 반복 실행해 모두 통과. 학생 도구 막대가 다른 UID 앱 위에 뜨고, 펜 드래그가 학생 판서 입력(미리보기·확정)으로 전달되어 다른 앱 위에 그려지며, 펜 선택을 풀면 아래 앱 터치가 통과하고, 실행 취소가 전달되고, 허용 해제 시 막대가 사라짐을 확인. MirroringPipActionsTest#textBarSendsActionsAndStopReturnsFullScreen에서 버튼 바가 왼쪽 아래로 옮겨진 뒤에도 두 동작이 전달됨을 확인(features/evidence/remote-annotation/android-student-annotation-toolbar.png, android-pip-action-bar-start.png).",
+    "기존 실패: MirroringPipActionsTest#mirroringMenuHasOneExpandButtonAndAppActions는 시스템 PiP 메뉴를 열지 못해 시간 초과. 변경 전 HEAD(a18fe6c)로 빌드한 앱에서도 같은 이유로 실패해 이번 변경과 무관.",
+    "2026-11-26 Asia/Seoul 실제 서버 검증: 커밋 be6a838을 infra/local(main의 compose·Caddyfile 사용, 빌드 소스만 이 브랜치)로 api·web 재배포. /api/v1/capabilities가 contractRevision 16·meeting.remote-annotation true. 같은 커밋으로 서버 CA를 넣은 릴리즈 APK를 debug 키로 서명해 infra/local/artifacts/downloads/think-meet.apk에 배포(200, 63,350,192바이트).",
+    "임시 계정(선생님·학생)과 수업을 만들어 확인 후 삭제. 웹 선생님(헤드리스 Chromium 1280×800) → 기존 Android 15 에뮬레이터 학생(새 릴리즈 앱): 승인 문구 '포인터와 판서가 표시', 선생님 펜 판서가 학생 홈 화면 위 같은 위치에 표시, 판서 허용 시 학생 도구 막대 표시·PiP 버튼 바 왼쪽 이동, 학생 펜 판서가 선생님 화면에 표시(선 2개), 학생 실행 취소·지우개(자기 판서만 삭제, 선생님 판서 유지), 허용 해제 시 막대 제거·버튼 바 가운데 복귀·판서 유지, 선생님 전체 지우기와 공유 중지 시 오버레이 정리.",
+    "Android 선생님 앱(임시 AVD pixel_7, 같은 릴리즈 앱) → 같은 학생: 도구가 한 줄(포인터 기본 선택)로 표시, 펜 판서가 학생 기기에 표시, 앱의 판서 허용 버튼으로 학생 막대 열기·닫기, 학생 판서가 선생님 앱에 표시. 증거: features/evidence/remote-annotation/e2e-*.png. 검증 후 임시 AVD 삭제, 학생 에뮬레이터는 teacher1로 다시 로그인(앱은 배포한 새 릴리즈 유지).",
+    "참고: 학생이 카메라를 켠 채 입장할 때 기존 에뮬레이터가 그래픽 오류 후 멈춰 같은 AVD로 다시 시작했고, 이후 카메라를 끄고 진행. 두 번째 에뮬레이터는 pixel_tablet 프로필에서 IPv4 경로를 받지 못해 pixel_7 프로필로 진행.",
+    "미실행: iOS Swift 호스트 빌드와 실제 iPhone·iPad(선생님 앱 판서, iOS 학생 포인터 전용 유지), 실제 Android 단말, 원격 CI."
+  ]
+}

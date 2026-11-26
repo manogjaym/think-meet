@@ -687,6 +687,24 @@
           "d": "m8 12 3 3 5-6"
         }
       }
+    ],
+    "pointer": [
+      {
+        "type": "circle",
+        "attributes": {
+          "cx": "12",
+          "cy": "12",
+          "r": "8"
+        }
+      },
+      {
+        "type": "circle",
+        "attributes": {
+          "cx": "12",
+          "cy": "12",
+          "r": "2.5"
+        }
+      }
     ]
   },
   "iconStyle": {

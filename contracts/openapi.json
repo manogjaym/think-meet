@@ -5,7 +5,7 @@
     "version": "1.0.0",
     "description": "Canonical REST schemas shared by NestJS, React and KMP. Socket.IO is defined in realtime.json."
   },
-  "x-contract-revision": 15,
+  "x-contract-revision": 16,
   "servers": [
     {
       "url": "/api/v1"
@@ -3324,6 +3324,10 @@
           },
           "geometry": {
             "$ref": "#/components/schemas/AssistanceGeometry"
+          },
+          "annotation": {
+            "type": "boolean",
+            "description": "meeting.remote-annotation: 승인한 학생 앱이 선생님 판서를 학생 기기 화면 위에 표시할 수 있으면 true입니다. 서버가 학생 연결의 플랫폼·계약 revision으로 정하며 현재 Android 앱만 true입니다. false이거나 값이 없으면 선생님은 이 공유에 판서할 수 없고 포인터만 사용합니다."
           }
         },
         "required": [

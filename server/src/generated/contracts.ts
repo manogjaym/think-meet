@@ -1,5 +1,5 @@
 // Generated from contracts/openapi.json and realtime.json. Do not edit.
-export const CONTRACT_REVISION = 15 as const;
+export const CONTRACT_REVISION = 16 as const;
 export const API_BASE_PATH = "/api/v1" as const;
 export const SOCKET_PATH = "/socket.io" as const;
 export const SOCKET_EVENTS = {
@@ -58,7 +58,7 @@ export type StrokeErasePayload = { ids: Array<string> };
 export type ParticipantControlPayload = { userId: string; microphone?: boolean; camera?: boolean; annotation?: boolean };
 export type ParticipantMediaRequest = { lessonId: string; userId: string; requestedBy: string; microphone?: boolean; camera?: boolean };
 export type AssistanceGeometry = { width: number; height: number; rotation: 0 | 90 | 180 | 270; version: number };
-export type AssistanceSession = { id: string; teacherId: string; studentId: string; status: "pending" | "approved" | "active"; expiresAt: (string) | null; shareId?: string; geometry?: AssistanceGeometry };
+export type AssistanceSession = { id: string; teacherId: string; studentId: string; status: "pending" | "approved" | "active"; expiresAt: (string) | null; shareId?: string; geometry?: AssistanceGeometry; annotation?: boolean };
 export type AssistancePointer = { lessonId: string; sessionId: string; shareId: string; geometryVersion: number; x: number; y: number; authorId?: string };
 export type AssistanceRequestPayload = { studentId: string };
 export type AssistanceRespondPayload = { sessionId: string; approved: boolean };

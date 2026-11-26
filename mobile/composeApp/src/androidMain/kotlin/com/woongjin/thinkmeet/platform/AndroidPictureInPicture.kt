@@ -83,6 +83,8 @@ internal class AndroidPictureInPictureController(
     private val barActions = mutableStateOf(emptyList<PipAction>())
     private var actionBar: ComposeView? = null
     private var actionBarWindows: WindowManager? = null
+    // The mirroring student's annotation toolbar takes the bottom centre, so the bar moves to the bottom start.
+    private var actionBarAtStart = false
 
     init {
         activity?.attachPictureInPictureController(this)
@@ -98,6 +100,19 @@ internal class AndroidPictureInPictureController(
         if (closed || pipActions == actions) return
         pipActions = actions
         applyParameters()
+        syncActionBar()
+    }
+
+    override fun setActionBarAtStart(start: Boolean) {
+        if (closed || actionBarAtStart == start) return
+        actionBarAtStart = start
+        raiseActionBar()
+    }
+
+    /** Re-adds the bar so it stays above a touchable annotation overlay added after it. */
+    internal fun raiseActionBar() {
+        if (actionBar == null) return
+        removeActionBar()
         syncActionBar()
     }
 
@@ -128,7 +143,8 @@ internal class AndroidPictureInPictureController(
         }
         val params = WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE, PixelFormat.TRANSLUCENT).apply {
-            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            gravity = Gravity.BOTTOM or if (actionBarAtStart) Gravity.LEFT else Gravity.CENTER_HORIZONTAL
+            if (actionBarAtStart) x = (DesignTokens.Spacing.S16.value * context.resources.displayMetrics.density).roundToInt()
             y = (DesignTokens.Spacing.S16.value * context.resources.displayMetrics.density).roundToInt()
             title = "ThinkMeetPipActions"
         }

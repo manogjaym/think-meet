@@ -35,7 +35,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.setViewTreeLifecycleOwner
+import androidx.lifecycle.setViewTreeViewModelStoreOwner
+import androidx.savedstate.setViewTreeSavedStateRegistryOwner
+import com.woongjin.thinkmeet.MainActivity
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import androidx.core.view.doOnPreDraw
 import com.woongjin.thinkmeet.data.AssistanceGeometry
 import com.woongjin.thinkmeet.data.AssistancePointer
@@ -90,11 +98,29 @@ internal class AndroidRemoteAssistanceController(
     private var projectionCallback: MediaProjection.Callback? = null
     private var resizeValidation: Runnable? = null
     private var resizePending = false
-    private var marker: RemotePointerView? = null
-    private var markerParams: WindowManager.LayoutParams? = null
-    private val markerOrigin = Point()
+    // One full-display window draws both the pointer and the strokes. Two overlapping translucent windows of
+    // this app would add up past the OS touch-through opacity limit and block the student's taps under the pointer.
+    private var overlay: AssistanceOverlayView? = null
+    private var overlayParams: WindowManager.LayoutParams? = null
+    private val overlayOrigin = Point()
+    private var pointerAt: android.graphics.PointF? = null
+    private var annotations: List<RemoteStroke> = emptyList()
+    // The sharing student's own drawing (meeting.remote-annotation): toolbar window, tool and the stroke in progress.
+    private var studentMode = false
+    private val studentTool = mutableStateOf<String?>("pen")
+    private val studentColor = mutableStateOf(StudentAnnotationColors.first())
+    private var toolbar: ComposeView? = null
+    private var toolbarWindows: WindowManager? = null
+    private var draft: MutableList<com.woongjin.thinkmeet.data.Point>? = null
+    private var draftPreviewAt = 0L
+    private val inputs = MutableSharedFlow<StudentAnnotationInput>(extraBufferCapacity = 64, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    override val studentInput = inputs.asSharedFlow()
+    /** Hosts the toolbar's Compose view; set by [rememberRemoteAssistanceController]. */
+    internal var toolbarHost: MainActivity? = null
+    /** Raises other app overlays (the PiP action bar) above a newly added overlay window. */
+    internal var raiseCompanions: (() -> Unit)? = null
     internal var permissionRequest: ((CompletableDeferred<Unit>) -> Unit)? = null
-    private val hideMarker = Runnable { removeMarker() }
+    private val hidePointer = Runnable { pointerAt = null; renderOverlay() }
     private val displayListener = object : DisplayManager.DisplayListener {
         override fun onDisplayAdded(displayId: Int) = Unit
         override fun onDisplayRemoved(displayId: Int) { if (displayId == Display.DEFAULT_DISPLAY) captureStopped("공유 화면이 연결 해제됐어요.") }
@@ -225,52 +251,178 @@ internal class AndroidRemoteAssistanceController(
         val geometry = mutable.value.geometry ?: return
         if (closed || !ownsCapture || !mutable.value.capturing || pointer.geometryVersion != geometry.version ||
             !pointer.x.isFinite() || !pointer.y.isFinite() || pointer.x !in 0.0..1.0 || pointer.y !in 0.0..1.0) return
-        if (!Settings.canDrawOverlays(context)) { failCapture("다른 앱 위 표시 권한이 해제됐어요."); return }
-        val existing = marker
-        val view = existing ?: RemotePointerView(context).also { marker = it }
-        val diameter = (DesignTokens.Component.RemotePointerSize.value * context.resources.displayMetrics.density).roundToInt().coerceAtLeast(1)
-        val desiredX = (pointer.x * (geometry.width - 1) - diameter / 2.0).roundToInt()
-        val desiredY = (pointer.y * (geometry.height - 1) - diameter / 2.0).roundToInt()
-        val params = markerParams ?: WindowManager.LayoutParams(diameter, diameter, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-            PixelFormat.TRANSLUCENT).apply {
+        val next = android.graphics.PointF((pointer.x * (geometry.width - 1)).toFloat(), (pointer.y * (geometry.height - 1)).toFloat())
+        val moved = pointerAt != next
+        pointerAt = next
+        // A repeated position only extends the expiry; it never redraws or moves the window.
+        if (!renderOverlay(redraw = moved)) return
+        handler.removeCallbacks(hidePointer)
+        handler.postDelayed(hidePointer, RemotePointerTtlMillis)
+    }
+
+    override fun showAnnotations(strokes: List<RemoteStroke>) {
+        if (Looper.myLooper() != Looper.getMainLooper()) { handler.post { showAnnotations(strokes) }; return }
+        if (annotations == strokes) return
+        annotations = strokes
+        renderOverlay()
+    }
+
+    override fun setStudentAnnotation(enabled: Boolean) {
+        if (Looper.myLooper() != Looper.getMainLooper()) { handler.post { setStudentAnnotation(enabled) }; return }
+        if (studentMode == enabled) return
+        studentMode = enabled
+        draft = null
+        // Each new permission starts with the pen, as on the teacher's request.
+        if (enabled) studentTool.value = "pen"
+        renderOverlay()
+        syncToolbar()
+    }
+
+    override fun clearPointer() {
+        if (Looper.myLooper() == Looper.getMainLooper()) { handler.removeCallbacks(hidePointer); pointerAt = null; renderOverlay() }
+        else handler.post { clearPointer() }
+    }
+
+    /** Shows the window while a pointer or stroke is visible and removes it otherwise. False when nothing is shown. */
+    private fun renderOverlay(redraw: Boolean = true): Boolean {
+        val geometry = mutable.value.geometry
+        if (closed || !ownsCapture || !mutable.value.capturing || geometry == null || pointerAt == null && annotations.isEmpty() && !studentMode) {
+            removeOverlay(); return false
+        }
+        if (!Settings.canDrawOverlays(context)) { failCapture("다른 앱 위 표시 권한이 해제됐어요."); return false }
+        val existing = overlay
+        val view = existing ?: AssistanceOverlayView(context).also { overlay = it }
+        view.pointer = pointerAt; view.strokes = annotations; view.geometry = geometry
+        view.draft = draft?.let { RemoteStroke("pen", studentColor.value, it.toList()) }
+        view.onTouch = ::studentTouch
+        // Only an active pen or eraser takes touches; otherwise they pass through to the app underneath.
+        val touchable = studentMode && studentTool.value != null
+        val flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or if (touchable) 0 else WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+        val params = overlayParams ?: WindowManager.LayoutParams(geometry.width, geometry.height, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            flags, PixelFormat.TRANSLUCENT).apply {
             gravity = Gravity.TOP or Gravity.LEFT
             alpha = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
                 min(.8f, context.getSystemService(InputManager::class.java).maximumObscuringOpacityForTouch) else .8f
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) { setFitInsetsTypes(0); layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS }
             else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
-        }.also { markerParams = it }
-        val x = desiredX - markerOrigin.x; val y = desiredY - markerOrigin.y
-        val moved = params.x != x || params.y != y
-        params.x = x; params.y = y
+        }.also { overlayParams = it }
+        // The OS adds its own bits to these params after addView, so compare only the touch bit.
+        val touchChanged = (params.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE == 0) != touchable
+        val resized = params.width != geometry.width || params.height != geometry.height || touchChanged
+        params.width = geometry.width; params.height = geometry.height
+        params.flags = if (touchable) params.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
+            else params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+        params.x = -overlayOrigin.x; params.y = -overlayOrigin.y
         try {
             if (existing == null) {
                 windows.addView(view, params)
                 view.doOnPreDraw {
-                    if (marker !== view || !view.isAttachedToWindow) return@doOnPreDraw
-                    // Measure the OS origin once after layout, never against the previous packet's position.
+                    if (overlay !== view || !view.isAttachedToWindow) return@doOnPreDraw
+                    // Measure the OS origin once after layout so the window covers the display from its top-left corner.
                     val actual = IntArray(2); view.getLocationOnScreen(actual)
-                    markerOrigin.set(actual[0] - params.x, actual[1] - params.y)
-                    if (markerOrigin.x != 0 || markerOrigin.y != 0) {
-                        params.x -= markerOrigin.x; params.y -= markerOrigin.y
+                    overlayOrigin.set(actual[0] - params.x, actual[1] - params.y)
+                    if (overlayOrigin.x != 0 || overlayOrigin.y != 0) {
+                        params.x = -overlayOrigin.x; params.y = -overlayOrigin.y
                         runCatching { windows.updateViewLayout(view, params) }
                     }
                 }
-            } else if (moved) windows.updateViewLayout(view, params)
-            handler.removeCallbacks(hideMarker)
-            handler.postDelayed(hideMarker, RemotePointerTtlMillis)
-        } catch (_: RuntimeException) { failCapture("다른 앱 위에 안내 표시를 띄우지 못했어요.") }
+                // A touchable overlay added later would cover the toolbar and action bar, so raise them again.
+                if (studentMode) { raiseToolbar(); raiseCompanions?.invoke() }
+            } else {
+                if (resized) windows.updateViewLayout(view, params)
+                if (redraw) view.invalidate()
+            }
+            return true
+        } catch (_: RuntimeException) { failCapture("다른 앱 위에 안내 표시를 띄우지 못했어요."); return false }
     }
 
-    override fun clearPointer() {
-        if (Looper.myLooper() == Looper.getMainLooper()) removeMarker() else handler.post { removeMarker() }
+    private fun removeOverlay() {
+        overlay?.let { runCatching { windows.removeViewImmediate(it) } }
+        overlay = null; overlayParams = null; overlayOrigin.set(0, 0)
     }
 
-    private fun removeMarker() {
-        handler.removeCallbacks(hideMarker)
-        marker?.let { runCatching { windows.removeViewImmediate(it) } }
-        marker = null; markerParams = null; markerOrigin.set(0, 0)
+    private fun clearOverlay() {
+        if (Looper.myLooper() != Looper.getMainLooper()) { handler.post { clearOverlay() }; return }
+        handler.removeCallbacks(hidePointer)
+        pointerAt = null; annotations = emptyList(); studentMode = false; draft = null
+        removeOverlay()
+        removeToolbar()
+    }
+
+    /** Pen strokes and eraser touches in display pixels, sent as 0~1 points like the teacher's. */
+    private fun studentTouch(event: android.view.MotionEvent): Boolean {
+        val geometry = mutable.value.geometry
+        val tool = studentTool.value
+        if (!studentMode || tool == null || geometry == null) return false
+        val point = com.woongjin.thinkmeet.data.Point((event.rawX / (geometry.width - 1).coerceAtLeast(1)).toDouble().coerceIn(0.0, 1.0),
+            (event.rawY / (geometry.height - 1).coerceAtLeast(1)).toDouble().coerceIn(0.0, 1.0))
+        if (tool == "eraser") {
+            if (event.actionMasked == android.view.MotionEvent.ACTION_DOWN || event.actionMasked == android.view.MotionEvent.ACTION_MOVE)
+                inputs.tryEmit(StudentAnnotationInput.Erase(point))
+            return true
+        }
+        val color = studentColor.value
+        when (event.actionMasked) {
+            android.view.MotionEvent.ACTION_DOWN -> { draft = mutableListOf(point); draftPreviewAt = 0L }
+            android.view.MotionEvent.ACTION_MOVE -> {
+                val points = draft ?: return true
+                val last = points.last()
+                if (points.size >= 2048 || abs(last.x - point.x) + abs(last.y - point.y) <= .001) return true
+                points += point
+                val now = android.os.SystemClock.uptimeMillis()
+                if (now - draftPreviewAt > 100) { draftPreviewAt = now; inputs.tryEmit(StudentAnnotationInput.Preview("pen", color, points.takeLast(256))) }
+            }
+            android.view.MotionEvent.ACTION_UP -> { draft?.let { inputs.tryEmit(StudentAnnotationInput.Stroke("pen", color, it.toList())) }; draft = null }
+            android.view.MotionEvent.ACTION_CANCEL -> draft = null
+        }
+        overlay?.let { it.draft = draft?.let { points -> RemoteStroke("pen", color, points.toList()) }; it.invalidate() }
+        return true
+    }
+
+    private fun syncToolbar() {
+        val host = toolbarHost
+        if (!studentMode || closed || host == null || host.isDestroyed || !Settings.canDrawOverlays(context)) { removeToolbar(); return }
+        if (toolbar != null) return
+        // A full-display context: the PiP Activity's own configuration is only as wide as its window.
+        val windowContext = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
+            host.applicationContext.createWindowContext(host.display ?: return, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null)
+        else host.applicationContext
+        val toolbarWindows = windowContext.getSystemService(WindowManager::class.java)
+        val view = ComposeView(windowContext).apply {
+            setViewTreeLifecycleOwner(host)
+            setViewTreeViewModelStoreOwner(host)
+            setViewTreeSavedStateRegistryOwner(host)
+            setContent {
+                StudentAnnotationToolbar(studentTool.value, studentColor.value,
+                    onTool = { studentTool.value = it; draft = null; renderOverlay() },
+                    onColor = { studentColor.value = it; if (studentTool.value != "pen") { studentTool.value = "pen"; renderOverlay() } },
+                    onUndo = { inputs.tryEmit(StudentAnnotationInput.Undo) })
+            }
+        }
+        val metrics = windowContext.resources.displayMetrics
+        // Phones have no room beside the action bar at the bottom start, so the toolbar sits above it.
+        val compact = metrics.widthPixels / metrics.density < DesignTokens.Layout.MeetingCompactBreakpoint.value
+        val bottom = DesignTokens.Spacing.S16.value + if (compact) DesignTokens.Spacing.S72.value else 0f
+        val params = WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE, PixelFormat.TRANSLUCENT).apply {
+            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            y = (bottom * metrics.density).roundToInt()
+            title = "ThinkMeetStudentAnnotation"
+        }
+        try {
+            toolbarWindows.addView(view, params)
+            toolbar = view; this.toolbarWindows = toolbarWindows
+        } catch (_: RuntimeException) { /* Overlay permission can be revoked at any time; capture checks it again. */ }
+    }
+
+    private fun raiseToolbar() { if (toolbar != null) { removeToolbar(); syncToolbar() } }
+
+    private fun removeToolbar() {
+        val view = toolbar ?: return
+        toolbar = null
+        runCatching { toolbarWindows?.removeViewImmediate(view) }
+        toolbarWindows = null
     }
 
     private fun detachCaptureObservers() {
@@ -286,7 +438,7 @@ internal class AndroidRemoteAssistanceController(
     private fun captureStopped(error: String?) {
         if (!ownsCapture) return
         ownsCapture = false; starting = false
-        detachCaptureObservers(); clearPointer()
+        detachCaptureObservers(); clearOverlay()
         mutable.value = mutable.value.copy(capturing = false, geometry = null, error = error)
         val track = ownedTrack
         if (track != null) scope.launch { releaseOwnedTrack(track) }
@@ -347,21 +499,53 @@ internal class AndroidRemoteAssistanceController(
         attemptGeneration++
         val track = ownedTrack
         if (track != null) media?.stopRemoteAssistanceCaptureNow(track)
-        captureStopped(null); clearPointer()
+        captureStopped(null); clearOverlay()
         scope.launch { try { if (track != null) runCatching { releaseOwnedTrack(track) } } finally { scope.cancel() } }
     }
 }
 
-private class RemotePointerView(context: Context) : View(context) {
+/** Full-display canvas in screen pixels: the teacher's strokes, then the pointer on top. Never touchable. */
+private class AssistanceOverlayView(context: Context) : View(context) {
+    var pointer: android.graphics.PointF? = null
+    var strokes: List<RemoteStroke> = emptyList()
+    var geometry: AssistanceGeometry? = null
+    /** The student's stroke in progress, drawn locally until the server echoes it. */
+    var draft: RemoteStroke? = null
+    var onTouch: ((android.view.MotionEvent) -> Boolean)? = null
     private val ink = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = DesignTokens.Colors.Danger.toArgb() }
+    private val pen = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
+    private val path = android.graphics.Path()
     private val density = resources.displayMetrics.density
     init { importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO; setWillNotDraw(false) }
+
+    @android.annotation.SuppressLint("ClickableViewAccessibility")
+    override fun onTouchEvent(event: android.view.MotionEvent): Boolean = onTouch?.invoke(event) ?: false
+
     override fun onDraw(canvas: Canvas) {
-        val ring = DesignTokens.Component.RemotePointerRingWidth.value * density
-        ink.style = Paint.Style.STROKE; ink.strokeWidth = ring
-        canvas.drawCircle(width / 2f, height / 2f, (width - ring) / 2f, ink)
-        ink.style = Paint.Style.FILL
-        canvas.drawCircle(width / 2f, height / 2f, DesignTokens.Component.RemotePointerCoreSize.value * density / 2f, ink)
+        // Draws in display coordinates: the controller moves this window to the display's top-left corner once
+        // after the first layout. The moved surface keeps this content, so no redraw is needed after the move.
+        val size = geometry ?: return
+        (draft?.let { strokes + it } ?: strokes).forEach { stroke ->
+            if (stroke.points.isEmpty()) return@forEach
+            pen.color = runCatching { android.graphics.Color.parseColor(stroke.color) }.getOrDefault(android.graphics.Color.BLACK)
+            // Same widths as the in-app stage (4dp pen, 18dp highlighter at 38%).
+            pen.alpha = if (stroke.tool == "highlighter") (.38f * 255).roundToInt() else 255
+            pen.strokeWidth = (if (stroke.tool == "highlighter") 18f else 4f) * density
+            path.rewind()
+            stroke.points.forEachIndexed { index, point ->
+                val x = (point.x * (size.width - 1)).toFloat(); val y = (point.y * (size.height - 1)).toFloat()
+                if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+            }
+            canvas.drawPath(path, pen)
+        }
+        pointer?.let { center ->
+            val diameter = DesignTokens.Component.RemotePointerSize.value * density
+            val ring = DesignTokens.Component.RemotePointerRingWidth.value * density
+            ink.style = Paint.Style.STROKE; ink.strokeWidth = ring
+            canvas.drawCircle(center.x, center.y, (diameter - ring) / 2f, ink)
+            ink.style = Paint.Style.FILL
+            canvas.drawCircle(center.x, center.y, DesignTokens.Component.RemotePointerCoreSize.value * density / 2f, ink)
+        }
     }
 }
 
@@ -377,6 +561,9 @@ actual fun rememberRemoteAssistanceController(media: MediaController): RemoteAss
         pending?.complete(Unit); pending = null
     }
     SideEffect {
+        val host = context.findMainActivity()
+        controller.toolbarHost = host
+        controller.raiseCompanions = { host?.pictureInPictureController?.raiseActionBar() }
         controller.permissionRequest = { result ->
             pending?.cancel(); pending = result
             permissionPip?.endTransientInteraction()

@@ -753,6 +753,27 @@
         "ios": {"status": "done", "files": ["mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/ui/LessonScreens.kt", "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/meeting/MeetingPanels.kt", "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/ui/ClassNotes.kt"]}
       },
       "verification": {}
+    },
+    {
+      "id": "meeting.remote-annotation",
+      "title": "미러링 중 학생 기기 화면 위 판서",
+      "stage": "in-progress",
+      "requiresRevision": 16,
+      "defaultEnabled": true,
+      "platforms": ["web", "android", "ios"],
+      "spec": "meeting-remote-annotation.md",
+      "contracts": {
+        "operations": [],
+        "events": [],
+        "commands": []
+      },
+      "implementation": {
+        "server": {"status": "done", "files": ["server/src/assistance.ts", "server/src/lesson/annotations.ts", "server/src/lesson/assistance-commands.ts", "server/src/gateway.ts"]},
+        "web": {"status": "done", "files": ["web/src/components/meeting/SharedStage.tsx", "web/src/lib/remoteAssistance.ts"]},
+        "android": {"status": "done", "files": ["mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/meeting/SharedStage.kt", "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/meeting/RemoteAssistanceSession.kt", "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/platform/StudentAnnotationToolbar.kt", "mobile/composeApp/src/androidMain/kotlin/com/woongjin/thinkmeet/platform/AndroidRemoteAssistance.kt", "mobile/composeApp/src/androidMain/kotlin/com/woongjin/thinkmeet/platform/AndroidPictureInPicture.kt"]},
+        "ios": {"status": "done", "files": ["mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/meeting/SharedStage.kt", "mobile/composeApp/src/commonMain/kotlin/com/woongjin/thinkmeet/meeting/RemoteAssistanceSession.kt"]}
+      },
+      "verification": {}
     }
   ]
 }

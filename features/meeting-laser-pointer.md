@@ -2,7 +2,7 @@
 
 선생님이 Android·iOS 앱 학생에게 화면 보기를 요청하고 학생이 직접 승인하면 전체 화면을 공유합니다. 운영체제 권한과 캡처 시작을 확인한 뒤 수업 앱이 화면 속 화면(PiP)으로 전환됩니다. 선생님이 웹·Android·iOS에서 공유 영상을 누른 채 마우스나 손가락을 움직이면 학생이 보고 있는 다른 앱의 원래 위치 위에 포인터가 따라갑니다. 누른 채 멈춰 있어도 표시를 유지하며, 놓으면 마지막 좌표 수신 후 1.5초 뒤 숨깁니다. 학생의 터치를 대신 실행하지 않습니다.
 
-학생 수신은 Android·iOS 앱에서 지원합니다. iOS는 기존 ReplayKit 방송으로 전체 화면을 공유하고, 선생님 포인터는 화면 속 화면(PiP) 창 안의 내 화면 사본 위에 표시합니다(아래 iOS 제약). 선생님 요청·클릭 화면은 웹·Android·iOS에 구현하며, 웹 학생에게는 승인 버튼을 제공하지 않습니다. 기능 ID는 `meeting.remote-assistance`, 계약 revision은 4, 검증 단계는 `in-progress`이며 구현된 기능은 환경변수 없이 기본 사용합니다. `THINK_MEET_FEATURE_FLAGS`는 읽지 않습니다.
+학생 수신은 Android·iOS 앱에서 지원합니다. Android 학생에게는 선생님이 판서도 할 수 있습니다([미러링 중 학생 기기 화면 위 판서](meeting-remote-annotation.md)). iOS는 기존 ReplayKit 방송으로 전체 화면을 공유하고, 선생님 포인터는 화면 속 화면(PiP) 창 안의 내 화면 사본 위에 표시합니다(아래 iOS 제약). 선생님 요청·클릭 화면은 웹·Android·iOS에 구현하며, 웹 학생에게는 승인 버튼을 제공하지 않습니다. 기능 ID는 `meeting.remote-assistance`, 계약 revision은 4, 검증 단계는 `in-progress`이며 구현된 기능은 환경변수 없이 기본 사용합니다. `THINK_MEET_FEATURE_FLAGS`는 읽지 않습니다.
 
 ## 사용 흐름
 

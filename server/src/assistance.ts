@@ -9,7 +9,8 @@ export const assistanceGeometrySchema = z.object({
   version: z.number().int().min(1).max(2147483647),
 })
 export type AssistanceBinding = AssistanceSession & { lessonId: string; teacherSocketId: string; studentSocketId: string; trackSid?: string }
-export type AssistanceCommandContext = { socketId: string; studentSocketId?: string }
+/** `studentAnnotation`: the approved student's app can draw the teacher's strokes over its own screen (meeting.remote-annotation). */
+export type AssistanceCommandContext = { socketId: string; studentSocketId?: string; studentAnnotation?: boolean }
 
 /** Consent exists only for these two live sockets; it is never restored from storage. */
 export class AssistanceSessions {
@@ -32,14 +33,14 @@ export class AssistanceSessions {
     if (!session || session.id !== sessionId) throw new ApiError('STALE_ASSISTANCE', '화면 보기 요청이 종료되었어요. 새로 요청해 주세요.', 409)
     return session
   }
-  request(lessonId: string, teacherId: string, studentId: string, teacherSocketId: string, studentSocketId: string) {
+  request(lessonId: string, teacherId: string, studentId: string, teacherSocketId: string, studentSocketId: string, annotation = false) {
     const current = this.current(lessonId)
     if (current) {
       if (current.teacherId === teacherId && current.studentId === studentId && current.teacherSocketId === teacherSocketId && current.studentSocketId === studentSocketId) return current
       throw new ApiError('ASSISTANCE_BUSY', '진행 중인 화면 보기 요청을 먼저 종료해 주세요.', 409)
     }
     const session: AssistanceBinding = { lessonId, id: randomUUID(), teacherId, studentId, teacherSocketId, studentSocketId,
-      status: 'pending', expiresAt: new Date(this.now() + 60000).toISOString() }
+      status: 'pending', expiresAt: new Date(this.now() + 60000).toISOString(), annotation }
     this.sessions.set(lessonId, session)
     return session
   }

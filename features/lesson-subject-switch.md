@@ -64,13 +64,13 @@
 
 ## 검증
 
-검사 명령과 결과는 [변경 기록](changes/lesson-subject-switch.json)에 있습니다. 공용 DB를 복제한 격리 환경에서 서버·웹·Android를 실제로 실행해 확인했습니다. iOS는 Kotlin 컴파일만 했고, Swift 녹화 코드는 이 Linux 환경에서 컴파일하지 못했습니다. 실제 iPhone·iPad 실행 전까지 `in-progress`로 둡니다.
+검사 명령과 결과는 [변경 기록](changes/lesson-subject-switch.json)에 있습니다. 공용 DB를 복제한 격리 환경과 배포한 공용 로컬 서버에서 서버·웹·Android를 실제로 실행해 확인했습니다. iOS는 Kotlin 컴파일만 했고, Swift 녹화 코드는 검토·컴파일하지 않았습니다. 실제 iPhone·iPad 실행 전까지 `in-progress`로 둡니다.
 
 | 화면 | 휴대폰 | 태블릿·PC |
 |---|---|---|
-| 더보기 메뉴 | [웹 선생님 390×844](evidence/lesson-subject-switch/web-phone-teacher-more.png) | |
-| 과목 팝업 | [웹](evidence/lesson-subject-switch/web-phone-teacher-picker.png) | [웹 1280×800](evidence/lesson-subject-switch/web-desktop-picker.png) · [Android 180dpi](evidence/lesson-subject-switch/android-tablet-picker.png) |
-| 확인 창 | [웹](evidence/lesson-subject-switch/web-phone-teacher-confirm.png) | [웹(공유·녹화 안내)](evidence/lesson-subject-switch/web-desktop-confirm.png) · [Android](evidence/lesson-subject-switch/android-tablet-confirm.png) |
-| 변경 후 | [웹 선생님](evidence/lesson-subject-switch/web-phone-teacher-after.png) | |
+| 더보기 메뉴 | [웹 선생님 390×844](evidence/lesson-subject-switch/web-phone-teacher-more.png) · [Android 선생님 420dpi](evidence/lesson-subject-switch/android-phone-teacher-more.png) | |
+| 과목 팝업 | [웹](evidence/lesson-subject-switch/web-phone-teacher-picker.png) · [Android](evidence/lesson-subject-switch/android-phone-teacher-picker.png) | [웹 1280×800](evidence/lesson-subject-switch/web-desktop-picker.png) · [Android 180dpi](evidence/lesson-subject-switch/android-tablet-picker.png) |
+| 확인 창 | [웹](evidence/lesson-subject-switch/web-phone-teacher-confirm.png) · [Android(녹화 안내)](evidence/lesson-subject-switch/android-phone-teacher-confirm.png) | [웹(공유·녹화 안내)](evidence/lesson-subject-switch/web-desktop-confirm.png) · [Android](evidence/lesson-subject-switch/android-tablet-confirm.png) |
+| 변경 후 | [웹 선생님](evidence/lesson-subject-switch/web-phone-teacher-after.png) · [Android 선생님(REC 유지)](evidence/lesson-subject-switch/android-phone-teacher-after.png) | |
 | 화면 공유 중 변경 전·후 | [웹 학생 전](evidence/lesson-subject-switch/web-phone-before.png) · [후(공유 끝남)](evidence/lesson-subject-switch/web-phone-after.png) | [웹 선생님 전](evidence/lesson-subject-switch/web-desktop-before.png) · [후](evidence/lesson-subject-switch/web-desktop-after.png) · [웹 학생 834×1194](evidence/lesson-subject-switch/web-tablet-after.png) |
 | 녹화 이어짐 | | [Android 선생님 변경 후 녹화 중](evidence/lesson-subject-switch/android-tablet-after.png) · [웹 종료·업로드](evidence/lesson-subject-switch/web-desktop-ended.png) |
